@@ -22,7 +22,9 @@ import { SYSTEM_PROMPT } from "./prompt.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-const MAX_TOKENS = 8192;
+// Higher cap because adaptive thinking burns through tokens before the JSON
+// output is produced. 16K leaves plenty of room for both.
+const MAX_TOKENS = 16384;
 const BUCKET = "drawings";
 
 const corsHeaders = {
@@ -207,8 +209,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const anthropicData = await anthropicResp.json();
+    const stopReason = anthropicData.stop_reason as string | undefined;
+    const blockTypes = (anthropicData.content ?? []).map(
+      (b: { type: string }) => b.type,
+    );
     console.log(
-      `[extract-drawing] Anthropic OK usage=${JSON.stringify(anthropicData.usage ?? {})}`,
+      `[extract-drawing] Anthropic OK stop_reason=${stopReason} blocks=${JSON.stringify(blockTypes)} usage=${JSON.stringify(anthropicData.usage ?? {})}`,
     );
 
     // 3. Extract the final text block (skip any thinking blocks).
@@ -216,7 +222,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       (b: { type: string }) => b.type === "text",
     );
     if (!textBlock || typeof textBlock.text !== "string") {
-      throw new Error("Anthropic response did not contain a text block");
+      throw new Error(
+        `Model response had no text block (stop_reason=${stopReason}, blocks=${JSON.stringify(blockTypes)}). If stop_reason is max_tokens, the model ran out of tokens during thinking before producing the JSON.`,
+      );
     }
 
     // 4. Parse + validate JSON. Some models occasionally wrap JSON in code
