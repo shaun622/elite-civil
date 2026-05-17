@@ -95,9 +95,9 @@ export function MeasurementTable({
       <div className="grid grid-cols-[24px_1fr_110px_110px_90px_28px] items-center gap-2 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         <span></span>
         <span>Label</span>
-        <span className="text-right">Length</span>
-        <span className="text-right">Height</span>
-        <span className="text-right">Thick</span>
+        <span className="text-right">Length (m)</span>
+        <span className="text-right">Height (m)</span>
+        <span className="text-right">Thick (m)</span>
         <span></span>
       </div>
 
@@ -443,7 +443,7 @@ function LengthCell({
       }}
       className="h-8 text-right tabular-nums"
       placeholder="—"
-      title="Enter as mm (e.g. 1500) or with unit (e.g. 1.5 m, 750 mm)"
+      title="Enter in metres (e.g. 1.5). Append mm to enter millimetres (e.g. 200 mm)."
     />
   );
 }

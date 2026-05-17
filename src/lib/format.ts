@@ -1,30 +1,29 @@
 /**
- * Format a length stored in millimetres for display. Values ≥ 1m get
- * rendered as metres with 2 decimals; smaller values stay as mm.
+ * Format a length stored in millimetres for display. Always rendered in
+ * metres so length / height / thickness never mix units. Up to 3 decimal
+ * places (millimetre precision), trailing zeros trimmed.
  *
  *   formatLength(28000)  → "28 m"
- *   formatLength(750)    → "750 mm"
- *   formatLength(1500)   → "1.5 m"
+ *   formatLength(750)    → "0.75 m"
+ *   formatLength(2455)   → "2.455 m"
+ *   formatLength(200)    → "0.2 m"
  *   formatLength(null)   → "—"
  */
 export function formatLength(mm: number | null | undefined): string {
   if (mm === null || mm === undefined || !Number.isFinite(mm)) return "—";
-  if (Math.abs(mm) >= 1000) {
-    const m = mm / 1000;
-    // Trim trailing zeros (28.00 → 28, 1.50 → 1.5)
-    const text = Number.isInteger(m) ? String(m) : m.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-    return `${text} m`;
-  }
-  return `${mm} mm`;
+  const m = mm / 1000;
+  let text = m.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  if (text === "" || text === "-" || text === "-0") text = "0";
+  return `${text} m`;
 }
 
 /**
- * Parse a length string into millimetres. Accepts:
- *   "1500"      → 1500
- *   "1500 mm"   → 1500
- *   "1.5"       → 1500  (interpreted as metres because of the decimal)
+ * Parse a length string into millimetres. Input is interpreted as metres
+ * by default (matching the display); append "mm" to enter millimetres.
+ *   "1.5"       → 1500
+ *   "28"        → 28000
  *   "1.5 m"     → 1500
- *   "28 m"      → 28000
+ *   "750 mm"    → 750
  *   ""          → null
  */
 export function parseLength(input: string): number | null {
@@ -34,11 +33,9 @@ export function parseLength(input: string): number | null {
   if (!match) return null;
   const num = Number(match[1]);
   if (!Number.isFinite(num)) return null;
-  const unit = match[2];
-  if (unit === "m") return Math.round(num * 1000);
-  if (unit === "mm") return Math.round(num);
-  // No suffix — decimal numbers are interpreted as metres, integers as mm.
-  return match[1].includes(".") ? Math.round(num * 1000) : Math.round(num);
+  if (match[2] === "mm") return Math.round(num);
+  // No suffix or explicit "m" → metres.
+  return Math.round(num * 1000);
 }
 
 const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
