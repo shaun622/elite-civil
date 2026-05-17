@@ -236,7 +236,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             },
             {
               type: "text",
-              text: `Image dimensions: W=${page.image_width} x H=${page.image_height} pixels. Extract retaining-wall measurements following the schema in the system prompt.`,
+              text: `This image is exactly W=${page.image_width} pixels wide and H=${page.image_height} pixels tall. Return every bounding box and polyline coordinate in this pixel space: x within 0..${page.image_width}, y within 0..${page.image_height}. Extract retaining-wall measurements following the schema in the system prompt.`,
             },
           ],
         },

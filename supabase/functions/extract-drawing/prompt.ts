@@ -30,9 +30,11 @@ Measurement policy (length_mm, height_mm, thickness_mm):
 Important: do NOT copy a single value across every wall. Each retaining wall on a drawing typically has its own height label (a small annotation next to that specific wall). Read each wall's own label even if the text is small. Only if the drawing genuinely states a single uniform value for all walls (e.g. a note "All Type 1 walls: 0.75m height") may you apply it to every Type 1 wall — and in that case put the source of the value in each segment's 'notes' field, e.g. "Height from drawing note 'All Type 1 walls 0.75m'." If individual wall heights are visible on the drawing but too small/unclear to read reliably, set height_mm to null for those walls (do not invent a value) and add a warning that resolution prevented reading per-wall heights.
 
 Coordinate system:
-- Return all bounding boxes as [x1, y1, x2, y2] in normalized coordinates from 0 to 1000, where (0,0) is top-left and (1000,1000) is bottom-right.
-- Return polylines as arrays of [x, y] points in the same normalized 0-1000 coordinate space.
-- Be precise — these coordinates will be used to draw overlay graphics on the original image.
+- The user message states the image's exact pixel dimensions as W (width) and H (height).
+- Return all bounding boxes as [x1, y1, x2, y2] in IMAGE PIXEL coordinates: x runs from 0 at the left edge to W at the right edge, y runs from 0 at the top edge to H at the bottom edge.
+- Return polylines as arrays of [x, y] points in the same pixel space.
+- Every coordinate MUST lie inside the image: 0 <= x <= W and 0 <= y <= H. Never return a value outside these bounds.
+- Be precise — these coordinates are used to draw overlay graphics directly onto the image.
 
 What counts as a bbox vs a polyline:
 - A dimension's bbox is the TIGHT rectangle around the dimension TEXT (e.g. the digits "2400"). It must NOT include the surrounding leader lines, the wall, or other annotations.

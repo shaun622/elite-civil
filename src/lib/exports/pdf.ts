@@ -453,8 +453,16 @@ async function renderAnnotatedPng(
   ctx.fillRect(0, 0, targetW, targetH);
   ctx.drawImage(img, 0, 0, targetW, targetH);
 
-  // Annotations are in normalized 0-1000 coords.
-  drawAnnotations(ctx, exportPage, targetW, targetH);
+  // Extractor coords are in original-image-pixel space; scale them onto
+  // the (possibly downscaled) annotation canvas.
+  drawAnnotations(
+    ctx,
+    exportPage,
+    targetW,
+    targetH,
+    targetW / img.naturalWidth,
+    targetH / img.naturalHeight,
+  );
 
   const blob: Blob | null = await new Promise((resolve) =>
     canvas.toBlob(resolve, "image/jpeg", 0.85),
@@ -477,17 +485,26 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
+/**
+ * Convert an extractor bbox (image-pixel space, relative to the original
+ * rasterized page) into the downscaled annotation canvas. `sx` / `sy` are
+ * canvasDimension / originalDimension. Clamped to the canvas bounds.
+ */
 function bboxToCanvas(
   bbox: Bbox,
-  w: number,
-  h: number,
+  sx: number,
+  sy: number,
+  canvasW: number,
+  canvasH: number,
 ): { x: number; y: number; w: number; h: number } {
   const [x1, y1, x2, y2] = bbox;
-  const left = (Math.min(x1, x2) / 1000) * w;
-  const top = (Math.min(y1, y2) / 1000) * h;
-  const right = (Math.max(x1, x2) / 1000) * w;
-  const bottom = (Math.max(y1, y2) / 1000) * h;
-  return { x: left, y: top, w: right - left, h: bottom - top };
+  const cx = (v: number) => Math.max(0, Math.min(canvasW, v * sx));
+  const cy = (v: number) => Math.max(0, Math.min(canvasH, v * sy));
+  const left = cx(Math.min(x1, x2));
+  const top = cy(Math.min(y1, y2));
+  const right = cx(Math.max(x1, x2));
+  const bottom = cy(Math.max(y1, y2));
+  return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
 }
 
 function rgbCss([r, g, b]: readonly [number, number, number], alpha = 1) {
@@ -499,6 +516,8 @@ function drawAnnotations(
   exportPage: ExportPage,
   w: number,
   h: number,
+  sx: number,
+  sy: number,
 ) {
   const strokeBase = Math.max(2, Math.min(w, h) / 600);
 
@@ -507,7 +526,7 @@ function drawAnnotations(
     ctx.lineWidth = strokeBase;
     ctx.setLineDash([8, 4]);
     ctx.strokeStyle = rgbCss(COLOR_SCALE_RGB, 0.85);
-    const r = bboxToCanvas(exportPage.extraction.scale_bbox, w, h);
+    const r = bboxToCanvas(exportPage.extraction.scale_bbox, sx, sy, w, h);
     ctx.strokeRect(r.x, r.y, r.w, r.h);
     ctx.setLineDash([]);
   }
@@ -526,8 +545,8 @@ function drawAnnotations(
     if (seg.polyline.length >= 2) {
       ctx.beginPath();
       seg.polyline.forEach(([px, py], idx) => {
-        const x = (px / 1000) * w;
-        const y = (py / 1000) * h;
+        const x = Math.max(0, Math.min(w, px * sx));
+        const y = Math.max(0, Math.min(h, py * sy));
         if (idx === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       });
@@ -536,7 +555,7 @@ function drawAnnotations(
 
     // Label bbox + text
     if (seg.label_bbox) {
-      const r = bboxToCanvas(seg.label_bbox, w, h);
+      const r = bboxToCanvas(seg.label_bbox, sx, sy, w, h);
       ctx.lineWidth = strokeBase;
       ctx.strokeRect(r.x, r.y, r.w, r.h);
 

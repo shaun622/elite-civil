@@ -64,7 +64,10 @@ export type DrawingWithPages = Drawing & { pages: DrawingPage[] };
 
 export type Units = "mm" | "m" | "ft" | "in" | "unknown";
 
-export type Bbox = [number, number, number, number]; // normalized 0-1000
+// Bounding boxes and polyline points are in image-pixel coordinates
+// (0..image_width, 0..image_height). Extractions made before 2026-05-17
+// used a normalized 0-1000 space — re-extract those pages.
+export type Bbox = [number, number, number, number];
 export type Point = [number, number];
 
 export interface Extraction {
