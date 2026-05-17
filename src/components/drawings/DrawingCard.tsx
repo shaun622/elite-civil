@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { FileText, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ArrowUpRight, FileText, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +11,7 @@ import type { DrawingPage, DrawingWithPages } from "@/types/db";
 
 type Props = {
   drawing: DrawingWithPages;
+  projectId: string;
   onDelete: () => Promise<void>;
   onExtract: (pageId: string) => Promise<unknown>;
 };
@@ -34,7 +36,7 @@ function statusBadge(page: DrawingPage) {
   }
 }
 
-export function DrawingCard({ drawing, onDelete, onExtract }: Props) {
+export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [busyPageIds, setBusyPageIds] = useState<Set<string>>(new Set());
@@ -167,26 +169,47 @@ export function DrawingCard({ drawing, onDelete, onExtract }: Props) {
               page.extraction_status === "pending" ||
               page.extraction_status === "failed";
 
+            const canReview =
+              page.extraction_status === "extracted" ||
+              page.extraction_status === "reviewed";
+            const thumbInner = url ? (
+              <img
+                src={url}
+                alt={`${drawing.original_filename} page ${page.page_number}`}
+                loading="lazy"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <div className="absolute inset-0 animate-pulse bg-muted" />
+            );
+
             return (
               <div
                 key={page.id}
                 className="overflow-hidden rounded-md border bg-muted/40"
               >
-                <div
-                  className="relative w-full bg-[#1f2937]"
-                  style={{ aspectRatio: aspect }}
-                >
-                  {url ? (
-                    <img
-                      src={url}
-                      alt={`${drawing.original_filename} page ${page.page_number}`}
-                      loading="lazy"
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 animate-pulse bg-muted" />
-                  )}
-                </div>
+                {canReview ? (
+                  <Link
+                    to={`/projects/${projectId}/pages/${page.id}`}
+                    className="group relative block w-full bg-[#1f2937]"
+                    style={{ aspectRatio: aspect }}
+                  >
+                    {thumbInner}
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-background/95 px-3 py-1.5 text-xs font-medium text-foreground shadow">
+                        Review
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                  </Link>
+                ) : (
+                  <div
+                    className="relative w-full bg-[#1f2937]"
+                    style={{ aspectRatio: aspect }}
+                  >
+                    {thumbInner}
+                  </div>
+                )}
                 <div className="space-y-1.5 px-2.5 py-2 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-muted-foreground">
@@ -213,6 +236,19 @@ export function DrawingCard({ drawing, onDelete, onExtract }: Props) {
                       {page.extraction_status === "failed"
                         ? "Retry"
                         : "Extract"}
+                    </Button>
+                  )}
+                  {canReview && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-full gap-1.5 text-xs"
+                    >
+                      <Link to={`/projects/${projectId}/pages/${page.id}`}>
+                        <ArrowUpRight className="h-3 w-3" />
+                        Review
+                      </Link>
                     </Button>
                   )}
                   {page.extraction_status === "failed" &&

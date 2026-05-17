@@ -209,6 +209,7 @@ export function ProjectPage() {
                   <DrawingCard
                     key={d.id}
                     drawing={d}
+                    projectId={id}
                     onDelete={() => removeDrawing(d)}
                     onExtract={extractPage}
                   />

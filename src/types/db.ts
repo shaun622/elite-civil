@@ -61,3 +61,75 @@ export interface DrawingPage {
 }
 
 export type DrawingWithPages = Drawing & { pages: DrawingPage[] };
+
+export type Units = "mm" | "m" | "ft" | "in" | "unknown";
+
+export type Bbox = [number, number, number, number]; // normalized 0-1000
+export type Point = [number, number];
+
+export interface Extraction {
+  id: string;
+  drawing_page_id: string;
+  user_id: string;
+  raw_response: unknown;
+  scale_text: string | null;
+  scale_bbox: Bbox | null;
+  units: Units;
+  view_type: ViewType;
+  overall_confidence: number | null;
+  warnings: string[];
+  reviewed: boolean;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DimensionLabel {
+  id: string;
+  extraction_id: string;
+  user_id: string;
+  source_id: string;
+  text_raw: string;
+  value_normalized_mm: number | null;
+  bbox: Bbox;
+  confidence: number;
+  applies_to_segment_id: string | null;
+  created_at: string;
+}
+
+export interface WallSegment {
+  id: string;
+  extraction_id: string;
+  user_id: string;
+  source_id: string;
+  label: string | null;
+  length_mm: number | null;
+  height_mm: number | null;
+  thickness_mm: number | null;
+  polyline: Point[];
+  label_bbox: Bbox | null;
+  source_dimension_ids: string[];
+  confidence: number;
+  notes: string | null;
+  user_edited: boolean;
+  original_values: Record<string, unknown> | null;
+  user_added: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WallSegmentUpdate = Partial<{
+  label: string | null;
+  length_mm: number | null;
+  height_mm: number | null;
+  thickness_mm: number | null;
+  notes: string | null;
+}>;
+
+export interface ExtractionBundle {
+  page: DrawingPage;
+  extraction: Extraction;
+  dimensions: DimensionLabel[];
+  segments: WallSegment[];
+}
