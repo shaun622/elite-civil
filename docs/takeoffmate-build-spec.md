@@ -215,8 +215,11 @@ Your job:
 2. Find the drawing scale from the title block, scale bar, or scale notation. Return the raw text exactly as printed.
 3. Identify the units used on the drawing (millimetres, metres, feet, inches).
 4. Find every dimension label visible on the drawing. A dimension label is a number (with or without unit suffix) that indicates a measurement. Examples: "2400", "2400mm", "1.8m", "1800 H".
-5. Identify each distinct retaining wall segment. A wall segment is a continuous run of wall with consistent specification. Group dimensions that belong to the same wall.
-6. For each wall segment, determine length, height, and thickness if labeled. Use null for anything not explicitly labeled — DO NOT estimate from the scale.
+5. Identify each distinct retaining wall segment. Return ONE wall_segment per distinct physical wall run on the drawing — NOT one per wall type. On site/layout plans showing many short walls (e.g. lot-boundary walls in a subdivision), it is correct to return 20, 30, or more segments. Type/colour information from the legend (e.g. "Type 1 Orange") belongs in the wall's `label` or `notes` field — never use it as a grouping mechanism.
+6. For each wall segment, determine length, height, and thickness using this tiered policy:
+   - If an explicit dimension label is present for the value, use it (confidence 0.85–1.0).
+   - Otherwise, if a scale bar or scale notation is visible, you MAY scale the value off the drawing. Set confidence 0.35–0.6 and add a per-segment warning naming the wall and the scale used. Put a short note in the segment's `notes` field.
+   - If neither is available, leave the value null.
 
 Coordinate system:
 - Return all bounding boxes as [x1, y1, x2, y2] in normalized coordinates from 0 to 1000, where (0,0) is top-left and (1000,1000) is bottom-right.
@@ -271,7 +274,9 @@ Critical rules:
 - Use null, not omission, for missing values.
 - Always normalize values to millimetres in value_normalized_mm and length_mm / height_mm / thickness_mm fields. If drawing is in metres, multiply by 1000. If in feet/inches, convert to mm.
 - Keep text_raw exactly as it appears on the drawing.
-- Every wall_segment must have at least one source_dimension_id, unless its measurements are null.
+- One wall_segment per distinct physical wall run, never grouped by type/colour.
+- source_dimension_ids should only include dim IDs whose label was used to derive this segment's measurements. For scaled measurements there will be no source dim, and the array may be empty.
+- For every scaled measurement, add a warning naming the wall and the scale used.
 - If you cannot find any retaining walls on this drawing, return wall_segments: [] and add an explanation to warnings.
 - If the image quality prevents reliable extraction, return overall_confidence below 0.5 and explain in warnings.
 ```
