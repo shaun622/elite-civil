@@ -7,8 +7,9 @@
 //   1. Verify the caller is authenticated and owns the drawing_page.
 //   2. Mark drawing_pages.extraction_status = 'extracting'.
 //   3. Download the rasterized PNG from the private "drawings" bucket.
-//   4. Call Anthropic Messages API (claude-sonnet-4-6) with the cached system
-//      prompt and the image. Adaptive thinking is enabled.
+//   4. Call Anthropic Messages API (claude-opus-4-7) with the system prompt
+//      and the image. Opus 4.7's high-resolution vision gives much better
+//      coordinate accuracy for the annotation overlay. Thinking is off.
 //   5. Validate the JSON response against the spec schema.
 //   6. Insert the extraction + wall_segments + dimension_labels rows
 //      (best-effort; rolls back the parent row on partial failure).
@@ -21,11 +22,14 @@ import { ExtractionResultSchema } from "./schema.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-6";
-// Thinking is disabled for this call (see anthropicBody below), so 8K is
-// plenty for the JSON output. The model writes ~1-3 KB of tokens for the
-// extraction payload.
-const MAX_TOKENS = 8192;
+// Opus 4.7: high-resolution vision (2576px long edge) gives far better
+// coordinate accuracy for the wall polylines / bounding boxes than Sonnet,
+// which downsamples to ~1568px. High-res is automatic — no beta header.
+const MODEL = "claude-opus-4-7";
+// Thinking is off (no `thinking` field — Opus 4.7's default), so the whole
+// budget is available for output. 16K covers a dense 20-30 wall site plan
+// with multi-point polylines.
+const MAX_TOKENS = 16384;
 const BUCKET = "drawings";
 
 const corsHeaders = {
@@ -204,15 +208,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 2. Call Anthropic.
     //
-    // Adaptive thinking was making the call run long enough to risk the
-    // Supabase wall-time limit. For deterministic vision-to-JSON the
-    // thinking phase isn't required — the system prompt is strict and
-    // temperature=0 keeps output stable. Re-enable thinking later (and
-    // raise max_tokens) once we have streaming / a longer timeout.
+    // Opus 4.7 removes the sampling parameters — sending `temperature`
+    // returns a 400 — so it is omitted. Thinking is left off (Opus 4.7's
+    // default) to keep the call fast and well within the edge-function
+    // wall-time limit; the strict system prompt keeps output stable.
     const anthropicBody = {
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      temperature: 0.0,
       system: [
         {
           type: "text",

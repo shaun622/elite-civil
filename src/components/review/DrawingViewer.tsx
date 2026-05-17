@@ -397,11 +397,12 @@ function SegmentOverlay({
   onHoverLeave: () => void;
 }) {
   const emphasized = selected || hovered;
-  const baseStroke = Math.min(imageWidth, imageHeight) / 400;
-  const strokeWidth = Math.max(
-    emphasized ? baseStroke * 2 : baseStroke,
-    emphasized ? 4 : 2.5,
-  );
+  // Idle polylines render thin + faint — an approximate guide, not a
+  // precise CAD trace. The hovered/selected wall pops bold at full opacity.
+  const minEdge = Math.min(imageWidth, imageHeight);
+  const strokeWidth = emphasized
+    ? Math.max(minEdge / 280, 4)
+    : Math.max(minEdge / 850, 1.5);
   return (
     <>
       {polylinePx.length >= 4 && (
@@ -409,14 +410,14 @@ function SegmentOverlay({
           points={polylinePx}
           stroke={color}
           strokeWidth={strokeWidth}
-          opacity={emphasized ? 1 : 0.8}
+          opacity={emphasized ? 1 : 0.45}
           lineCap="round"
           lineJoin="round"
           onClick={onClick}
           onTap={onClick}
           onMouseEnter={onHoverEnter}
           onMouseLeave={onHoverLeave}
-          hitStrokeWidth={Math.max(strokeWidth * 3, 14)}
+          hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
         />
       )}
       {segment.label_bbox && (
@@ -426,7 +427,7 @@ function SegmentOverlay({
             imageWidth={imageWidth}
             imageHeight={imageHeight}
             stroke={color}
-            opacity={emphasized ? 1 : 0.8}
+            opacity={emphasized ? 1 : 0.4}
           />
           {segment.label && (
             <SegmentLabelText

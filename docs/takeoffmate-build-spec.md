@@ -22,7 +22,7 @@ This is part of the MateHQ portfolio (matehq.online) and follows the established
 
 - **Frontend**: React + Vite + Tailwind, PWA-enabled, shadcn/ui components
 - **Backend**: Supabase (auth, Postgres, Storage, Edge Functions)
-- **AI**: Anthropic API — `claude-sonnet-4-5` for extraction (use latest available)
+- **AI**: Anthropic API — extraction uses `claude-opus-4-7`. (The brief originally specced Sonnet for cost, but Opus 4.7's high-resolution vision is needed for accurate annotation-overlay coordinates on large site plans — accepted cost increase, decided 2026-05-17. Do not silently revert to Sonnet.)
 - **PDF rendering**: pdf.js on client for preview + rasterization to PNG
 - **Overlay rendering**: react-konva for interactive annotation layer
 - **Payments**: Stripe (subscription + 3-drawing free trial, no card required)
