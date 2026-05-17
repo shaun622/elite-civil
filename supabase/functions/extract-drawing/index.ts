@@ -128,6 +128,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  // Subscription quota check. For trial/starter plans, drawings_limit is
+  // a per-period counter (lifetime for trial). Pro plans have null limit.
+  // Re-extractions (force=true) on an already-extracted page DO count —
+  // they spend an API call against your plan.
+  const { data: sub, error: subErr } = await supabase
+    .from("subscriptions")
+    .select("plan, drawings_used_this_period, drawings_limit, status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (subErr) {
+    return errorResponse(500, `Could not load subscription: ${subErr.message}`);
+  }
+  if (sub && sub.status === "past_due") {
+    return errorResponse(
+      402,
+      "Your subscription is past due. Update payment in Settings to continue extracting.",
+    );
+  }
+  if (
+    sub &&
+    sub.drawings_limit !== null &&
+    sub.drawings_used_this_period >= sub.drawings_limit
+  ) {
+    return errorResponse(
+      402,
+      `You've used all ${sub.drawings_limit} extractions on your ${sub.plan} plan this period. Upgrade in Settings to extract more.`,
+    );
+  }
+
   if (force) {
     const { error: delErr } = await supabase
       .from("extractions")
@@ -367,6 +396,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
         view_type: result.view_type,
       })
       .eq("id", pageId);
+
+    // Bump quota counter. Only meter Trial / Starter — Pro is unlimited
+    // and has no limit configured.
+    if (sub && sub.drawings_limit !== null) {
+      await supabase
+        .from("subscriptions")
+        .update({
+          drawings_used_this_period: sub.drawings_used_this_period + 1,
+        })
+        .eq("user_id", userId);
+    }
 
     return jsonResponse({
       ok: true,

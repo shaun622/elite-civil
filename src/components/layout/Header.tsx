@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 
@@ -28,6 +28,20 @@ export function Header() {
         <div className="flex items-center gap-3 text-sm">
           {user ? (
             <>
+              <Link
+                to="/pricing"
+                className="hidden text-muted-foreground hover:text-foreground sm:inline"
+              >
+                Pricing
+              </Link>
+              <Link
+                to="/settings"
+                className="hidden text-muted-foreground hover:text-foreground sm:inline-flex sm:items-center sm:gap-1"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Settings
+              </Link>
+              <span className="hidden text-muted-foreground sm:inline">·</span>
               <span className="hidden text-muted-foreground sm:inline">
                 {user.email}
               </span>
@@ -43,6 +57,12 @@ export function Header() {
             </>
           ) : (
             <>
+              <Link
+                to="/pricing"
+                className="hidden text-muted-foreground hover:text-foreground sm:inline"
+              >
+                Pricing
+              </Link>
               <Link
                 to="/login"
                 className="text-muted-foreground hover:text-foreground"

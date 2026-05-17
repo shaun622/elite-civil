@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { Archive, ArrowLeft, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, Download, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EditProjectDialog } from "@/components/projects/EditProjectDialog";
 import { DrawingUploader } from "@/components/upload/DrawingUploader";
 import { DrawingCard } from "@/components/drawings/DrawingCard";
+import { ExportDialog } from "@/components/export/ExportDialog";
 import { useProject } from "@/hooks/useProjects";
 import { useDrawings } from "@/hooks/useDrawings";
 import { timeAgo } from "@/lib/format";
@@ -112,6 +113,15 @@ export function ProjectPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <ExportDialog
+                  projectId={project.id}
+                  trigger={
+                    <Button variant="outline" size="sm" className="gap-2">
+                      <Download className="h-4 w-4" />
+                      Export
+                    </Button>
+                  }
+                />
                 <EditProjectDialog
                   project={project}
                   onSave={update}

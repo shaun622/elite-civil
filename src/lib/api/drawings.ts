@@ -82,6 +82,12 @@ export async function uploadDrawing(opts: {
   onProgress?: UploadProgress;
 }): Promise<DrawingWithPages> {
   const { file, projectId, userId, onProgress } = opts;
+
+  // Storage-quota pre-check. The PDF + rasterized PNGs together will use
+  // more than file.size bytes (typically 1.5-3x for line-art drawings),
+  // but checking against the PDF size alone gives a useful early fail.
+  await ensureStorageBudget(userId, file.size);
+
   const drawingId = newDrawingId();
   const pdfPath = storagePath(userId, drawingId, "original.pdf");
 
@@ -98,7 +104,9 @@ export async function uploadDrawing(opts: {
   const pdf = await loadPdf(await file.arrayBuffer());
   const total = pdf.numPages;
 
-  const pageInserts: Omit<DrawingPage, "id" | "created_at">[] = [];
+  const pageInserts: (Omit<DrawingPage, "id" | "created_at"> & {
+    bytes: number;
+  })[] = [];
 
   try {
     for (let pageNumber = 1; pageNumber <= total; pageNumber++) {
@@ -125,6 +133,7 @@ export async function uploadDrawing(opts: {
         view_type: "unknown",
         extraction_status: "pending",
         extraction_error: null,
+        bytes: rendered.blob.size,
       });
     }
 
@@ -139,6 +148,7 @@ export async function uploadDrawing(opts: {
         original_filename: file.name,
         file_path: pdfPath,
         page_count: total,
+        bytes: file.size,
       })
       .select()
       .single();
@@ -180,4 +190,34 @@ export async function deleteDrawing(drawing: DrawingWithPages): Promise<void> {
     .delete()
     .eq("id", drawing.id);
   if (error) throw error;
+}
+
+/**
+ * Resolve current storage usage + the user's storage limit and throw a
+ * friendly error if adding `incomingBytes` would push them over. Skipped
+ * silently if the user has no subscription row (newer migrations always
+ * create one on signup, but older accounts may not have backfilled yet).
+ */
+async function ensureStorageBudget(userId: string, incomingBytes: number) {
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("storage_bytes_limit, plan")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!sub || sub.storage_bytes_limit === null) return;
+
+  const { data: usage } = await supabase
+    .from("user_storage_usage")
+    .select("total_bytes")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const used = (usage?.total_bytes ?? 0) as number;
+
+  const limit = sub.storage_bytes_limit as number;
+  if (used + incomingBytes > limit) {
+    const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+    throw new Error(
+      `Storage limit exceeded for your ${sub.plan} plan. Used ${mb(used)} + ${mb(incomingBytes)} for this upload would exceed your ${mb(limit)} limit. Upgrade your plan or delete an existing drawing.`,
+    );
+  }
 }

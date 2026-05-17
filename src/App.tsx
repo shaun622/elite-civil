@@ -5,6 +5,8 @@ import { SignupPage } from "@/pages/SignupPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { ReviewPage } from "@/pages/ReviewPage";
+import { PricingPage } from "@/pages/PricingPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 
 export function App() {
@@ -13,6 +15,15 @@ export function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard"
         element={

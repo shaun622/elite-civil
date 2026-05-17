@@ -20,6 +20,9 @@ export function ReviewPage() {
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
   );
+  const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(
+    null,
+  );
 
   if (!projectId || !pageId) {
     return <Navigate to="/dashboard" replace />;
@@ -115,7 +118,9 @@ export function ReviewPage() {
                     dimensions={review.bundle.dimensions}
                     segments={review.bundle.segments}
                     selectedSegmentId={selectedSegmentId}
+                    hoveredSegmentId={hoveredSegmentId}
                     onSelectSegment={setSelectedSegmentId}
+                    onHoverSegment={setHoveredSegmentId}
                   />
                 </div>
               </div>
@@ -134,9 +139,11 @@ export function ReviewPage() {
                 <MeasurementTable
                   segments={review.bundle.segments}
                   selectedSegmentId={selectedSegmentId}
+                  hoveredSegmentId={hoveredSegmentId}
                   savingId={review.savingId}
                   locked={review.bundle.extraction.reviewed}
                   onSelect={setSelectedSegmentId}
+                  onHover={setHoveredSegmentId}
                   onSave={review.saveSegment}
                   onAdd={review.addSegment}
                   onDelete={review.removeSegment}

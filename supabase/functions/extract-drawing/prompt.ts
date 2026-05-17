@@ -27,6 +27,8 @@ Measurement policy (length_mm, height_mm, thickness_mm):
 - If there is NO explicit dimension AND no usable scale, leave the value null. Do not guess.
 - Per-segment confidence should reflect the WEAKEST measurement on that segment. A wall with one labeled value and two scaled values is at most ~0.5.
 
+Important: do NOT copy a single value across every wall. Each retaining wall on a drawing typically has its own height label (a small annotation next to that specific wall). Read each wall's own label even if the text is small. Only if the drawing genuinely states a single uniform value for all walls (e.g. a note "All Type 1 walls: 0.75m height") may you apply it to every Type 1 wall — and in that case put the source of the value in each segment's 'notes' field, e.g. "Height from drawing note 'All Type 1 walls 0.75m'." If individual wall heights are visible on the drawing but too small/unclear to read reliably, set height_mm to null for those walls (do not invent a value) and add a warning that resolution prevented reading per-wall heights.
+
 Coordinate system:
 - Return all bounding boxes as [x1, y1, x2, y2] in normalized coordinates from 0 to 1000, where (0,0) is top-left and (1000,1000) is bottom-right.
 - Return polylines as arrays of [x, y] points in the same normalized 0-1000 coordinate space.

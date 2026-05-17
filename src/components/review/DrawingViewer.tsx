@@ -31,7 +31,9 @@ type Props = {
   dimensions: DimensionLabel[];
   segments: WallSegment[];
   selectedSegmentId: string | null;
+  hoveredSegmentId: string | null;
   onSelectSegment: (id: string | null) => void;
+  onHoverSegment: (id: string | null) => void;
 };
 
 export function DrawingViewer({
@@ -42,7 +44,9 @@ export function DrawingViewer({
   dimensions,
   segments,
   selectedSegmentId,
+  hoveredSegmentId,
   onSelectSegment,
+  onHoverSegment,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -207,6 +211,7 @@ export function DrawingViewer({
           {layers.walls &&
             segments.map((seg) => {
               const selected = seg.id === selectedSegmentId;
+              const hovered = seg.id === hoveredSegmentId;
               const color = seg.user_added ? COLOR_USER : COLOR_WALL;
               const polylinePx = pointsToPixels(
                 seg.polyline,
@@ -222,7 +227,10 @@ export function DrawingViewer({
                   imageHeight={imageHeight}
                   color={color}
                   selected={selected}
+                  hovered={hovered}
                   onClick={() => onSelectSegment(seg.id)}
+                  onHoverEnter={() => onHoverSegment(seg.id)}
+                  onHoverLeave={() => onHoverSegment(null)}
                 />
               );
             })}
@@ -372,7 +380,10 @@ function SegmentOverlay({
   imageHeight,
   color,
   selected,
+  hovered,
   onClick,
+  onHoverEnter,
+  onHoverLeave,
 }: {
   segment: WallSegment;
   polylinePx: number[];
@@ -380,11 +391,16 @@ function SegmentOverlay({
   imageHeight: number;
   color: string;
   selected: boolean;
+  hovered: boolean;
   onClick: () => void;
+  onHoverEnter: () => void;
+  onHoverLeave: () => void;
 }) {
+  const emphasized = selected || hovered;
+  const baseStroke = Math.min(imageWidth, imageHeight) / 400;
   const strokeWidth = Math.max(
-    selected ? 4 : 2.5,
-    Math.min(imageWidth, imageHeight) / 400,
+    emphasized ? baseStroke * 2 : baseStroke,
+    emphasized ? 4 : 2.5,
   );
   return (
     <>
@@ -393,11 +409,13 @@ function SegmentOverlay({
           points={polylinePx}
           stroke={color}
           strokeWidth={strokeWidth}
-          opacity={selected ? 1 : 0.85}
+          opacity={emphasized ? 1 : 0.8}
           lineCap="round"
           lineJoin="round"
           onClick={onClick}
           onTap={onClick}
+          onMouseEnter={onHoverEnter}
+          onMouseLeave={onHoverLeave}
           hitStrokeWidth={Math.max(strokeWidth * 3, 14)}
         />
       )}
@@ -408,7 +426,7 @@ function SegmentOverlay({
             imageWidth={imageWidth}
             imageHeight={imageHeight}
             stroke={color}
-            opacity={selected ? 1 : 0.85}
+            opacity={emphasized ? 1 : 0.8}
           />
           {segment.label && (
             <SegmentLabelText
