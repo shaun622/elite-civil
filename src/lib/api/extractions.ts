@@ -22,21 +22,32 @@ export async function extractDrawingPage(
     body: { drawing_page_id: drawingPageId },
   });
   if (error) {
-    // FunctionsHttpError surfaces the response body as `context.response`; try
-    // to pull the structured error message out of it.
-    type Ctx = { context?: { response?: Response } };
-    const ctx = (error as unknown as Ctx).context;
-    if (ctx?.response) {
+    // supabase-js FunctionsHttpError stores the raw Response as `context`
+    // (not `context.response`). Pull the structured error message out of it.
+    type CtxErr = { context?: Response | { response?: Response } };
+    const ctxField = (error as unknown as CtxErr).context;
+    const response =
+      ctxField instanceof Response
+        ? ctxField
+        : ctxField && "response" in ctxField
+          ? ctxField.response
+          : undefined;
+
+    if (response) {
       let body: { error?: string } | null = null;
       try {
-        body = (await ctx.response.json()) as { error?: string };
+        body = (await response.clone().json()) as { error?: string };
       } catch {
-        // body wasn't JSON; fall through to the original error below.
+        // not JSON; fall through to the original error below.
       }
       if (body?.error) {
+        // eslint-disable-next-line no-console
+        console.error("[extract-drawing] server error:", body.error);
         throw new Error(body.error);
       }
     }
+    // eslint-disable-next-line no-console
+    console.error("[extract-drawing] unhandled invoke error:", error);
     throw error;
   }
   if (!data || !("ok" in data)) {
