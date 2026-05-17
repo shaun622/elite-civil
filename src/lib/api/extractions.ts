@@ -15,11 +15,12 @@ export type ExtractDrawingSuccess = {
 
 export async function extractDrawingPage(
   drawingPageId: string,
+  opts: { force?: boolean } = {},
 ): Promise<ExtractDrawingSuccess> {
   const { data, error } = await supabase.functions.invoke<
     ExtractDrawingSuccess | { error: string }
   >("extract-drawing", {
-    body: { drawing_page_id: drawingPageId },
+    body: { drawing_page_id: drawingPageId, force: opts.force === true },
   });
   if (error) {
     // supabase-js FunctionsHttpError stores the raw Response as `context`

@@ -100,26 +100,32 @@ export function useDrawings(projectId: string | undefined) {
     }));
   }
 
-  const extractPage = useCallback(async (pageId: string) => {
-    patchPage(pageId, { extraction_status: "extracting", extraction_error: null });
-    try {
-      const result = await extractDrawingPage(pageId);
+  const extractPage = useCallback(
+    async (pageId: string, opts: { force?: boolean } = {}) => {
       patchPage(pageId, {
-        extraction_status: "extracted",
+        extraction_status: "extracting",
         extraction_error: null,
-        view_type: result.view_type,
       });
-      return result;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Extraction failed.";
-      patchPage(pageId, {
-        extraction_status: "failed",
-        extraction_error: message,
-      });
-      throw err;
-    }
-  }, []);
+      try {
+        const result = await extractDrawingPage(pageId, opts);
+        patchPage(pageId, {
+          extraction_status: "extracted",
+          extraction_error: null,
+          view_type: result.view_type,
+        });
+        return result;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Extraction failed.";
+        patchPage(pageId, {
+          extraction_status: "failed",
+          extraction_error: message,
+        });
+        throw err;
+      }
+    },
+    [],
+  );
 
   return {
     ...state,

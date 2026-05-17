@@ -80,7 +80,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  let payload: { drawing_page_id?: string };
+  let payload: { drawing_page_id?: string; force?: boolean };
   try {
     payload = await req.json();
   } catch {
@@ -91,6 +91,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!pageId || typeof pageId !== "string") {
     return errorResponse(400, "drawing_page_id is required");
   }
+  const force = payload.force === true;
 
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData.user) {
@@ -112,11 +113,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse(409, "Extraction already in progress for this page");
   }
 
-  // Block re-extracting an already-extracted page for now (Step 5 will add
-  // explicit re-run UI; the unique constraint on extractions enforces this
-  // server-side too).
-  if (page.extraction_status === "extracted" || page.extraction_status === "reviewed") {
-    return errorResponse(409, "Page is already extracted");
+  // For already-extracted / reviewed pages, require `force: true` so a
+  // stray click doesn't burn another extraction. With force=true we
+  // delete the existing extraction (cascade clears segments + dims) and
+  // re-run from scratch.
+  if (
+    (page.extraction_status === "extracted" ||
+      page.extraction_status === "reviewed") &&
+    !force
+  ) {
+    return errorResponse(
+      409,
+      "Page is already extracted. Send force=true to re-extract.",
+    );
+  }
+
+  if (force) {
+    const { error: delErr } = await supabase
+      .from("extractions")
+      .delete()
+      .eq("drawing_page_id", pageId);
+    if (delErr) {
+      return errorResponse(
+        500,
+        `Failed to clear existing extraction before re-run: ${delErr.message}`,
+      );
+    }
   }
 
   await supabase

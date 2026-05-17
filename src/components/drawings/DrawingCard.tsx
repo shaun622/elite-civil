@@ -13,7 +13,10 @@ type Props = {
   drawing: DrawingWithPages;
   projectId: string;
   onDelete: () => Promise<void>;
-  onExtract: (pageId: string) => Promise<unknown>;
+  onExtract: (
+    pageId: string,
+    opts?: { force?: boolean },
+  ) => Promise<unknown>;
 };
 
 function statusBadge(page: DrawingPage) {
@@ -74,11 +77,11 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
     });
   }
 
-  async function extractOne(pageId: string) {
+  async function extractOne(pageId: string, opts: { force?: boolean } = {}) {
     setPageError(null);
     markBusy(pageId, true);
     try {
-      await onExtract(pageId);
+      await onExtract(pageId, opts);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : "Extraction failed.");
     } finally {
@@ -239,17 +242,44 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
                     </Button>
                   )}
                   {canReview && (
-                    <Button
-                      asChild
-                      variant="outline"
-                      size="sm"
-                      className="h-7 w-full gap-1.5 text-xs"
-                    >
-                      <Link to={`/projects/${projectId}/pages/${page.id}`}>
-                        <ArrowUpRight className="h-3 w-3" />
-                        Review
-                      </Link>
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-7 flex-1 gap-1.5 text-xs"
+                      >
+                        <Link to={`/projects/${projectId}/pages/${page.id}`}>
+                          <ArrowUpRight className="h-3 w-3" />
+                          Review
+                        </Link>
+                      </Button>
+                      {page.extraction_status === "extracted" && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={busy || batchRunning}
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "Re-run extraction on this page? This will replace the existing extraction and uses one API call.",
+                              )
+                            ) {
+                              void extractOne(page.id, { force: true });
+                            }
+                          }}
+                          title="Re-run extraction"
+                        >
+                          {busy ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   )}
                   {page.extraction_status === "failed" &&
                     page.extraction_error && (

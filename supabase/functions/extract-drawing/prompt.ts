@@ -23,6 +23,12 @@ Coordinate system:
 - Return polylines as arrays of [x, y] points in the same normalized 0-1000 coordinate space.
 - Be precise — these coordinates will be used to draw overlay graphics on the original image.
 
+What counts as a bbox vs a polyline:
+- A dimension's bbox is the TIGHT rectangle around the dimension TEXT (e.g. the digits "2400"). It must NOT include the surrounding leader lines, the wall, or other annotations.
+- A wall segment's label_bbox is the TIGHT rectangle around the TEXT LABEL identifying that wall (e.g. the rectangle around "Wall A" or "RW-01" callout). It must NOT cover the entire wall region or the surrounding drawing area. If there is no visible text label for a wall, set label_bbox to null.
+- A wall segment's polyline is the ACTUAL PATH of the wall on the drawing. Trace its centerline with as many points as needed to follow corners and curves accurately (typically 2-20 points). For straight walls 2 points are fine. For curved or stepped walls include intermediate points.
+- A scale_bbox is the TIGHT rectangle around the scale notation (e.g. "1:100") or scale bar graphic, not the title block as a whole.
+
 Confidence scoring:
 - 0.9-1.0: clearly labeled, unambiguous
 - 0.7-0.9: labeled but some interpretation required
