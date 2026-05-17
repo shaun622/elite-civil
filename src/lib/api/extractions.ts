@@ -22,16 +22,19 @@ export async function extractDrawingPage(
     body: { drawing_page_id: drawingPageId },
   });
   if (error) {
-    // FunctionsHttpError surfaces the response body as `context`; try to pull
-    // the structured error message out of it.
+    // FunctionsHttpError surfaces the response body as `context.response`; try
+    // to pull the structured error message out of it.
     type Ctx = { context?: { response?: Response } };
     const ctx = (error as unknown as Ctx).context;
     if (ctx?.response) {
+      let body: { error?: string } | null = null;
       try {
-        const body = (await ctx.response.json()) as { error?: string };
-        if (body?.error) throw new Error(body.error);
+        body = (await ctx.response.json()) as { error?: string };
       } catch {
-        /* fall through to generic error below */
+        // body wasn't JSON; fall through to the original error below.
+      }
+      if (body?.error) {
+        throw new Error(body.error);
       }
     }
     throw error;

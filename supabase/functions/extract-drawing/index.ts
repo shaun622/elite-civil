@@ -122,6 +122,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .eq("id", pageId);
 
   try {
+    console.log(`[extract-drawing] start page=${pageId} path=${page.image_path} ${page.image_width}x${page.image_height}`);
+
     // 1. Download the PNG.
     const { data: blob, error: dlErr } = await supabase.storage
       .from(BUCKET)
@@ -131,6 +133,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     const bytes = new Uint8Array(await blob.arrayBuffer());
     const base64 = encodeBase64(bytes);
+    console.log(
+      `[extract-drawing] downloaded image: ${bytes.byteLength} bytes (${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB) -> ${base64.length} base64 chars`,
+    );
+
+    // Pre-check against Anthropic's per-image size cap. The wire limit is
+    // 5 MB; we leave a small safety margin for the JSON envelope. PNGs at
+    // 200 DPI on A1/A0 architectural sheets can easily exceed this — surface
+    // a clear error instead of letting the API 400 with a less useful message.
+    const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024;
+    if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      throw new Error(
+        `Page image is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB, which exceeds Anthropic's ~5 MB per-image limit. Re-rasterize at lower DPI (we will lower the default in a follow-up).`,
+      );
+    }
 
     // 2. Call Anthropic.
     const anthropicBody = {
@@ -166,6 +182,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ],
     };
 
+    console.log(`[extract-drawing] calling Anthropic model=${MODEL}`);
     const anthropicResp = await fetch(ANTHROPIC_API_URL, {
       method: "POST",
       headers: {
@@ -178,10 +195,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (!anthropicResp.ok) {
       const errText = await anthropicResp.text();
+      console.error(
+        `[extract-drawing] Anthropic API non-OK status=${anthropicResp.status} body=${errText.slice(0, 1000)}`,
+      );
       throw new Error(`Anthropic API ${anthropicResp.status}: ${errText.slice(0, 500)}`);
     }
 
     const anthropicData = await anthropicResp.json();
+    console.log(
+      `[extract-drawing] Anthropic OK usage=${JSON.stringify(anthropicData.usage ?? {})}`,
+    );
 
     // 3. Extract the final text block (skip any thinking blocks).
     const textBlock = (anthropicData.content ?? []).find(
@@ -202,6 +225,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     try {
       parsed = JSON.parse(stripped);
     } catch (e) {
+      console.error(
+        `[extract-drawing] JSON parse failed. raw output (first 500 chars):`,
+        raw.slice(0, 500),
+      );
       throw new Error(
         `Model output was not valid JSON: ${e instanceof Error ? e.message : "parse error"}`,
       );
@@ -209,6 +236,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const validated = ExtractionResultSchema.safeParse(parsed);
     if (!validated.success) {
+      console.error(
+        `[extract-drawing] schema validation failed. issues:`,
+        JSON.stringify(validated.error.issues),
+      );
       throw new Error(
         `Model output did not match schema: ${validated.error.message.slice(0, 500)}`,
       );
@@ -315,6 +346,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Extraction failed";
+    console.error(`[extract-drawing] page=${pageId} failed:`, err);
 
     await supabase
       .from("drawing_pages")
