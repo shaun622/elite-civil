@@ -149,10 +149,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     // 2. Call Anthropic.
+    //
+    // Note: the spec asks for `temperature: 0.0`, but that's incompatible
+    // with adaptive thinking on Sonnet 4.6 — Anthropic 400s the request.
+    // The system prompt is explicit enough that we don't really need
+    // temperature=0 for stable output. We omit `temperature` (default 1.0)
+    // and rely on adaptive thinking + the strict JSON schema in the prompt.
     const anthropicBody = {
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      temperature: 0.0,
       thinking: { type: "adaptive" },
       system: [
         {
