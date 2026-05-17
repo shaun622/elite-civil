@@ -1,7 +1,0 @@
-fix(extraction): drop temperature for adaptive thinking compatibility
-
-Anthropic 400s requests that combine `temperature` with extended /
-adaptive thinking — the spec's `temperature: 0.0` is incompatible
-with `thinking: { type: "adaptive" }` on Sonnet 4.6. Removed the
-field; the strict JSON schema in the system prompt is what actually
-keeps output stable, not the sampling temperature.

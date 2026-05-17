@@ -38,3 +38,4 @@ supabase/.branches
 *.tsbuildinfo
 coverage
 .cache
+.git-commit-msg.tmp
