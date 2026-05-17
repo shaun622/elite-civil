@@ -15,15 +15,15 @@ Your job:
 2. Find the drawing scale from the title block, scale bar, or scale notation. Return the raw text exactly as printed.
 3. Identify the units used on the drawing (millimetres, metres, feet, inches).
 4. Find every dimension label visible on the drawing. A dimension label is a number (with or without unit suffix) that indicates a measurement. Examples: "2400", "2400mm", "1.8m", "1800 H".
-5. Identify each distinct retaining wall segment. Return ONE wall_segment per distinct physical wall run on the drawing — NOT one per wall type. On site/layout plans showing many short walls (e.g. lot-boundary walls in a subdivision), it is correct to return 20, 30, or more segments. Type / colour information from the legend (e.g. "Type 1 Orange", "Type 2 Pink") belongs in the wall's `label` field or `notes` field — never use it as a grouping mechanism.
+5. Identify each distinct retaining wall segment. Return ONE wall_segment per distinct physical wall run on the drawing — NOT one per wall type. On site/layout plans showing many short walls (e.g. lot-boundary walls in a subdivision), it is correct to return 20, 30, or more segments. Type / colour information from the legend (e.g. "Type 1 Orange", "Type 2 Pink") belongs in the wall's 'label' field or 'notes' field — never use it as a grouping mechanism.
 6. For each wall segment, determine length, height, and thickness using the measurement policy below.
 
 Measurement policy (length_mm, height_mm, thickness_mm):
 - If the drawing has an EXPLICIT dimension label for the value (e.g. "2400" next to the wall, "1.8m H" on an elevation), use it. Set confidence between 0.85 and 1.0.
 - If there is NO explicit dimension label for the value but the drawing has a clear scale bar OR scale notation (e.g. "1:100", "1:500"), you MAY scale the value off the drawing geometry. When you do this:
   - Set the value's contribution to the segment's confidence between 0.35 and 0.6 (lean lower if the wall is curved, the scale bar is unclear, or the geometry is ambiguous).
-  - Add a per-segment warning to the `warnings` array, e.g. "Wall <label> length scaled from drawing at 1:500 — verify on site before quoting." Include the wall label and the scale used.
-  - Put a short note in the segment's `notes` field, e.g. "Length scaled from 1:500 plan."
+  - Add a per-segment warning to the 'warnings' array, e.g. "Wall <label> length scaled from drawing at 1:500 — verify on site before quoting." Include the wall label and the scale used.
+  - Put a short note in the segment's 'notes' field, e.g. "Length scaled from 1:500 plan."
 - If there is NO explicit dimension AND no usable scale, leave the value null. Do not guess.
 - Per-segment confidence should reflect the WEAKEST measurement on that segment. A wall with one labeled value and two scaled values is at most ~0.5.
 
