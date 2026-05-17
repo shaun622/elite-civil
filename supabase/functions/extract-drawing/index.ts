@@ -22,9 +22,10 @@ import { SYSTEM_PROMPT } from "./prompt.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
-// Higher cap because adaptive thinking burns through tokens before the JSON
-// output is produced. 16K leaves plenty of room for both.
-const MAX_TOKENS = 16384;
+// Thinking is disabled for this call (see anthropicBody below), so 8K is
+// plenty for the JSON output. The model writes ~1-3 KB of tokens for the
+// extraction payload.
+const MAX_TOKENS = 8192;
 const BUCKET = "drawings";
 
 const corsHeaders = {
@@ -152,15 +153,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // 2. Call Anthropic.
     //
-    // Note: the spec asks for `temperature: 0.0`, but that's incompatible
-    // with adaptive thinking on Sonnet 4.6 — Anthropic 400s the request.
-    // The system prompt is explicit enough that we don't really need
-    // temperature=0 for stable output. We omit `temperature` (default 1.0)
-    // and rely on adaptive thinking + the strict JSON schema in the prompt.
+    // Adaptive thinking was making the call run long enough to risk the
+    // Supabase wall-time limit. For deterministic vision-to-JSON the
+    // thinking phase isn't required — the system prompt is strict and
+    // temperature=0 keeps output stable. Re-enable thinking later (and
+    // raise max_tokens) once we have streaming / a longer timeout.
     const anthropicBody = {
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      thinking: { type: "adaptive" },
+      temperature: 0.0,
       system: [
         {
           type: "text",
