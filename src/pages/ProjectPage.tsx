@@ -7,13 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { EditProjectDialog } from "@/components/projects/EditProjectDialog";
+import { DrawingUploader } from "@/components/upload/DrawingUploader";
+import { DrawingCard } from "@/components/drawings/DrawingCard";
 import { useProject } from "@/hooks/useProjects";
+import { useDrawings } from "@/hooks/useDrawings";
 import { timeAgo } from "@/lib/format";
 
 export function ProjectPage() {
@@ -21,6 +23,15 @@ export function ProjectPage() {
   const navigate = useNavigate();
   const { project, loading, error, update, archive, restore, remove } =
     useProject(id);
+  const {
+    drawings,
+    loading: drawingsLoading,
+    error: drawingsError,
+    upload,
+    remove: removeDrawing,
+    uploadStage,
+    uploadError,
+  } = useDrawings(id);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
@@ -163,19 +174,45 @@ export function ProjectPage() {
               </Card>
             )}
 
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle className="text-base">Drawings</CardTitle>
-                <CardDescription>
-                  Upload + AI extraction ship in the next step of the build.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border border-dashed p-12 text-center text-sm text-muted-foreground">
-                  PDF upload area lands in Step 3.
-                </div>
-              </CardContent>
-            </Card>
+            <div className="mt-8 flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight">Drawings</h2>
+              {drawings && drawings.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {drawings.length}{" "}
+                  {drawings.length === 1 ? "drawing" : "drawings"}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <DrawingUploader
+                onUpload={upload}
+                stage={uploadStage}
+                error={uploadError}
+              />
+            </div>
+
+            {drawingsError && (
+              <Alert variant="destructive" className="mt-6">
+                <AlertDescription>{drawingsError}</AlertDescription>
+              </Alert>
+            )}
+
+            {drawingsLoading && (
+              <div className="mt-6 h-40 animate-pulse rounded-lg border bg-card" />
+            )}
+
+            {!drawingsLoading && drawings && drawings.length > 0 && (
+              <div className="mt-6 space-y-4">
+                {drawings.map((d) => (
+                  <DrawingCard
+                    key={d.id}
+                    drawing={d}
+                    onDelete={() => removeDrawing(d)}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
       </main>
