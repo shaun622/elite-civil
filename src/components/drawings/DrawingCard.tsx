@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, FileText, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUpRight, FileText, Loader2, RefreshCw, Ruler, Sparkles, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -281,6 +281,19 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
                       )}
                     </div>
                   )}
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full gap-1.5 text-xs"
+                  >
+                    <Link
+                      to={`/projects/${projectId}/pages/${page.id}/measure`}
+                    >
+                      <Ruler className="h-3 w-3" />
+                      Measure from PDF
+                    </Link>
+                  </Button>
                   {page.extraction_status === "failed" &&
                     page.extraction_error && (
                       <p

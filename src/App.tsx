@@ -5,6 +5,7 @@ import { SignupPage } from "@/pages/SignupPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { ProjectPage } from "@/pages/ProjectPage";
 import { ReviewPage } from "@/pages/ReviewPage";
+import { WallMeasurePage } from "@/pages/WallMeasurePage";
 import { PricingPage } from "@/pages/PricingPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { VectorProbePage } from "@/pages/dev/VectorProbePage";
@@ -46,6 +47,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <ReviewPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:projectId/pages/:pageId/measure"
+        element={
+          <ProtectedRoute>
+            <WallMeasurePage />
           </ProtectedRoute>
         }
       />
