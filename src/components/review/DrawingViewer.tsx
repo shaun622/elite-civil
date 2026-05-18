@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image as KonvaImage, Layer, Line, Rect, Stage, Text } from "react-konva";
+import {
+  Circle,
+  Image as KonvaImage,
+  Layer,
+  Line,
+  Rect,
+  Stage,
+  Text,
+} from "react-konva";
 import type Konva from "konva";
 import { Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +17,7 @@ import type {
   DimensionLabel,
   Extraction,
   WallSegment,
+  WallSegmentUpdate,
 } from "@/types/db";
 
 const COLOR_DIM = "#10b981"; // green
@@ -32,8 +41,13 @@ type Props = {
   segments: WallSegment[];
   selectedSegmentId: string | null;
   hoveredSegmentId: string | null;
+  locked: boolean;
   onSelectSegment: (id: string | null) => void;
   onHoverSegment: (id: string | null) => void;
+  onSaveSegment: (
+    segment: WallSegment,
+    patch: WallSegmentUpdate,
+  ) => Promise<void>;
 };
 
 export function DrawingViewer({
@@ -45,8 +59,10 @@ export function DrawingViewer({
   segments,
   selectedSegmentId,
   hoveredSegmentId,
+  locked,
   onSelectSegment,
   onHoverSegment,
+  onSaveSegment,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -149,6 +165,19 @@ export function DrawingViewer({
     setOrigin({ x: e.target.x(), y: e.target.y() });
   }
 
+  const mmPerPx = readMmPerPx(extraction.raw_response);
+  // Render the selected segment last so its drag handles sit above the
+  // other walls' linework.
+  const orderedSegments = useMemo(
+    () =>
+      [...segments].sort(
+        (a, b) =>
+          (a.id === selectedSegmentId ? 1 : 0) -
+          (b.id === selectedSegmentId ? 1 : 0),
+      ),
+    [segments, selectedSegmentId],
+  );
+
   if (containerSize.width === 0) {
     return (
       <div ref={containerRef} className="h-full min-h-[400px] w-full" />
@@ -209,7 +238,7 @@ export function DrawingViewer({
             ))}
 
           {layers.walls &&
-            segments.map((seg) => {
+            orderedSegments.map((seg) => {
               const selected = seg.id === selectedSegmentId;
               const hovered = seg.id === hoveredSegmentId;
               const color = seg.user_added ? COLOR_USER : COLOR_WALL;
@@ -228,9 +257,18 @@ export function DrawingViewer({
                   color={color}
                   selected={selected}
                   hovered={hovered}
+                  editable={selected && !locked}
+                  zoom={zoom}
+                  mmPerPx={mmPerPx}
                   onClick={() => onSelectSegment(seg.id)}
                   onHoverEnter={() => onHoverSegment(seg.id)}
                   onHoverLeave={() => onHoverSegment(null)}
+                  onSaveGeometry={(polyline, lengthMm) =>
+                    void onSaveSegment(seg, {
+                      polyline,
+                      length_mm: lengthMm,
+                    })
+                  }
                 />
               );
             })}
@@ -379,6 +417,38 @@ function BboxRect({
   );
 }
 
+function clampNum(v: number, max: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(max, v));
+}
+
+/** Total length of a flat [x0,y0,x1,y1,...] point array, in pixels. */
+function flatPolylineLength(pts: number[]): number {
+  let total = 0;
+  for (let k = 2; k + 1 < pts.length; k += 2) {
+    total += Math.hypot(pts[k] - pts[k - 2], pts[k + 1] - pts[k - 1]);
+  }
+  return total;
+}
+
+function flatToPairs(flat: number[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (let k = 0; k + 1 < flat.length; k += 2) {
+    out.push([flat[k], flat[k + 1]]);
+  }
+  return out;
+}
+
+/** The vector pipeline records mm-per-pixel on the extraction, so a dragged
+ *  wall's length can be recomputed exactly from its new geometry. */
+function readMmPerPx(raw: unknown): number | null {
+  if (raw && typeof raw === "object" && "mm_per_px" in raw) {
+    const v = (raw as Record<string, unknown>).mm_per_px;
+    if (typeof v === "number" && v > 0) return v;
+  }
+  return null;
+}
+
 function SegmentOverlay({
   segment,
   polylinePx,
@@ -387,9 +457,13 @@ function SegmentOverlay({
   color,
   selected,
   hovered,
+  editable,
+  zoom,
+  mmPerPx,
   onClick,
   onHoverEnter,
   onHoverLeave,
+  onSaveGeometry,
 }: {
   segment: WallSegment;
   polylinePx: number[];
@@ -398,24 +472,60 @@ function SegmentOverlay({
   color: string;
   selected: boolean;
   hovered: boolean;
+  editable: boolean;
+  zoom: number;
+  mmPerPx: number | null;
   onClick: () => void;
   onHoverEnter: () => void;
   onHoverLeave: () => void;
+  onSaveGeometry: (
+    polyline: [number, number][],
+    lengthMm: number | null,
+  ) => void;
 }) {
   const emphasized = selected || hovered;
-  // Every wall gets a white halo so its centreline stays legible on top of
-  // the drawing's dense black linework. The hovered/selected wall pops via a
-  // much thicker stroke — that size jump is the "this is the one" cue.
+  // While an endpoint is dragged we preview the new polyline locally; once
+  // the saved geometry round-trips back via `segment.polyline` we drop it.
+  const [drag, setDrag] = useState<number[] | null>(null);
+  useEffect(() => {
+    setDrag(null);
+  }, [segment.polyline]);
+
+  const livePx = drag ?? polylinePx;
   const minEdge = Math.min(imageWidth, imageHeight);
   const strokeWidth = emphasized
     ? Math.max(minEdge / 280, 4)
     : Math.max(minEdge / 620, 2.2);
+  const handleRadius = 7 / zoom;
+
+  function commitDrag(index: number, x: number, y: number) {
+    const next = [...polylinePx];
+    next[index * 2] = clampNum(x, imageWidth);
+    next[index * 2 + 1] = clampNum(y, imageHeight);
+    setDrag(next);
+
+    const newPxLen = flatPolylineLength(next);
+    let lengthMm: number | null;
+    if (mmPerPx != null) {
+      lengthMm = Math.round(newPxLen * mmPerPx);
+    } else if (segment.length_mm != null) {
+      const oldPxLen = flatPolylineLength(polylinePx);
+      lengthMm =
+        oldPxLen > 0
+          ? Math.round(segment.length_mm * (newPxLen / oldPxLen))
+          : segment.length_mm;
+    } else {
+      lengthMm = null;
+    }
+    onSaveGeometry(flatToPairs(next), lengthMm);
+  }
+
   return (
     <>
-      {polylinePx.length >= 4 && (
+      {livePx.length >= 4 && (
         <>
           <Line
-            points={polylinePx}
+            points={livePx}
             stroke="#ffffff"
             strokeWidth={strokeWidth + (emphasized ? 5 : 3)}
             opacity={emphasized ? 0.95 : 0.6}
@@ -424,7 +534,7 @@ function SegmentOverlay({
             listening={false}
           />
           <Line
-            points={polylinePx}
+            points={livePx}
             stroke={color}
             strokeWidth={strokeWidth}
             opacity={emphasized ? 1 : 0.9}
@@ -436,6 +546,29 @@ function SegmentOverlay({
             onMouseLeave={onHoverLeave}
             hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
           />
+          {editable &&
+            flatToPairs(livePx).map(([hx, hy], i) => (
+              <Circle
+                key={i}
+                x={hx}
+                y={hy}
+                radius={handleRadius}
+                fill="#ffffff"
+                stroke={color}
+                strokeWidth={2 / zoom}
+                draggable
+                onMouseDown={(e) => {
+                  e.cancelBubble = true;
+                }}
+                onDragMove={(e) => {
+                  const next = [...livePx];
+                  next[i * 2] = e.target.x();
+                  next[i * 2 + 1] = e.target.y();
+                  setDrag(next);
+                }}
+                onDragEnd={(e) => commitDrag(i, e.target.x(), e.target.y())}
+              />
+            ))}
         </>
       )}
       {segment.label_bbox && (

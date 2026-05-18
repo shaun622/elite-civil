@@ -128,6 +128,7 @@ export type WallSegmentUpdate = Partial<{
   height_mm: number | null;
   thickness_mm: number | null;
   notes: string | null;
+  polyline: Point[];
 }>;
 
 export interface ExtractionBundle {

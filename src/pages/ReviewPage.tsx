@@ -119,8 +119,10 @@ export function ReviewPage() {
                     segments={review.bundle.segments}
                     selectedSegmentId={selectedSegmentId}
                     hoveredSegmentId={hoveredSegmentId}
+                    locked={review.bundle.extraction.reviewed}
                     onSelectSegment={setSelectedSegmentId}
                     onHoverSegment={setHoveredSegmentId}
+                    onSaveSegment={review.saveSegment}
                   />
                 </div>
               </div>
