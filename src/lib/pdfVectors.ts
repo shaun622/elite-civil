@@ -249,6 +249,8 @@ export type VectorPath = {
   points: number[];
   color: string;
   lineWidth: number;
+  /** The paint operator that produced this path (stroke / closeFillStroke …). */
+  paintOp: string;
 };
 
 export type PageVectors = {
@@ -396,6 +398,7 @@ export async function extractPageVectors(
       pending = parseConstructPath(args);
     } else if (STROKE_OPS_SET.has(fn)) {
       const full = compose(baseMatrix, ctm);
+      const paintOp = OPS_BY_CODE[fn] ?? `op_${fn}`;
       for (const sub of pending) {
         const dev: number[] = [];
         for (let k = 0; k + 1 < sub.length; k += 2) {
@@ -403,7 +406,7 @@ export async function extractPageVectors(
           dev.push(dx, dy);
         }
         if (dev.length >= 4) {
-          paths.push({ points: dev, color: strokeColor, lineWidth });
+          paths.push({ points: dev, color: strokeColor, lineWidth, paintOp });
         }
       }
       pending = [];
@@ -452,6 +455,46 @@ export type WallRun = {
   /** Total length of all segments in this run, in device pixels. */
   lengthPx: number;
 };
+
+/** A bucket of paths sharing colour + line weight + paint operator. */
+export type PathBucket = {
+  color: string;
+  lineWidth: number;
+  paintOp: string;
+  count: number;
+  lengthPx: number;
+};
+
+/**
+ * Break a colour-filtered set of paths down by (line weight, paint op) so we
+ * can tell which bucket is the actual wall line vs hatch / batter ticks.
+ */
+export function bucketPaths(
+  paths: VectorPath[],
+  colors: Set<string>,
+): PathBucket[] {
+  const buckets = new Map<string, PathBucket>();
+  for (const p of paths) {
+    if (!colors.has(p.color.toLowerCase())) continue;
+    const lw = Math.round(p.lineWidth);
+    const key = `${p.color.toLowerCase()}|${lw}|${p.paintOp}`;
+    const existing = buckets.get(key);
+    const len = polylineLength(p.points);
+    if (existing) {
+      existing.count++;
+      existing.lengthPx += len;
+    } else {
+      buckets.set(key, {
+        color: p.color.toLowerCase(),
+        lineWidth: lw,
+        paintOp: p.paintOp,
+        count: 1,
+        lengthPx: len,
+      });
+    }
+  }
+  return [...buckets.values()].sort((a, b) => b.lengthPx - a.lengthPx);
+}
 
 /**
  * Group stroked paths into wall runs. Only paths whose colour is in

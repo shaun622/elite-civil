@@ -5,23 +5,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
+  bucketPaths,
   extractPdfPageVectors,
   groupIntoRuns,
   probePdfVectors,
   type PageVectors,
+  type PathBucket,
+  type VectorPath,
   type VectorProbeResult,
   type WallRun,
 } from "@/lib/pdfVectors";
 
 /**
- * Dev-only PDF vector-extraction tool. Pick a drawing PDF, render a page's
- * vector linework, calibrate the scale by clicking a known distance, then
- * group the wall-coloured paths into runs and read their real lengths.
+ * Dev-only PDF vector-extraction tool: render a page's vector linework,
+ * inspect the wall-coloured paths by line weight + paint op, calibrate the
+ * scale, then group paths into runs and read their real lengths.
  */
 type Calibration = {
-  /** Two device-pixel points clicked on the canvas. */
   points: [number, number][];
-  /** mm per device-pixel, once a distance has been entered. */
   mmPerPx: number | null;
 };
 
@@ -36,13 +37,23 @@ export function VectorProbePage() {
 
   const [pageNum, setPageNum] = useState("6");
   const [isolate, setIsolate] = useState("#dd6e00,#ff00bf,#b80000");
+  const [widthFilter, setWidthFilter] = useState("");
 
   const [vectors, setVectors] = useState<PageVectors | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
+  const [buckets, setBuckets] = useState<PathBucket[] | null>(null);
   const [calib, setCalib] = useState<Calibration>({ points: [], mmPerPx: null });
   const [calibMode, setCalibMode] = useState(false);
   const [knownDist, setKnownDist] = useState("");
   const [runs, setRuns] = useState<WallRun[] | null>(null);
+
+  const widthNum = widthFilter.trim() === "" ? null : Number(widthFilter);
+
+  function pathMatches(p: VectorPath, isolated: Set<string>): boolean {
+    if (!isolated.has(p.color.toLowerCase())) return false;
+    if (widthNum !== null && Math.round(p.lineWidth) !== widthNum) return false;
+    return true;
+  }
 
   async function onPickFile(f: File) {
     setFile(f);
@@ -50,6 +61,7 @@ export function VectorProbePage() {
     setReport(null);
     setVectors(null);
     setRuns(null);
+    setBuckets(null);
     setCalib({ points: [], mmPerPx: null });
     setBusy(true);
     try {
@@ -70,9 +82,10 @@ export function VectorProbePage() {
       const n = Math.max(1, parseInt(pageNum, 10) || 1);
       const v = await extractPdfPageVectors(file, n, 2);
       setVectors(v);
-      const ds = redraw(v, parseIsolate(isolate), { points: [], mmPerPx: null });
-      setDisplayScale(ds);
-      setCalib({ points: [], mmPerPx: null });
+      setBuckets(bucketPaths(v.paths, parseIsolate(isolate)));
+      const reset = { points: [], mmPerPx: null };
+      setCalib(reset);
+      setDisplayScale(redraw(v, parseIsolate(isolate), reset));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Render failed.");
     } finally {
@@ -102,7 +115,7 @@ export function VectorProbePage() {
     const hasIso = isolated.size > 0;
     for (const pass of [0, 1]) {
       for (const path of v.paths) {
-        const match = isolated.has(path.color.toLowerCase());
+        const match = pathMatches(path, isolated);
         if (hasIso && pass === 0 && match) continue;
         if (hasIso && pass === 1 && !match) continue;
         if (!hasIso && pass === 1) continue;
@@ -119,7 +132,6 @@ export function VectorProbePage() {
       }
     }
 
-    // Calibration markers.
     ctx.fillStyle = "#7c3aed";
     ctx.strokeStyle = "#7c3aed";
     ctx.lineWidth = 1.5;
@@ -130,14 +142,8 @@ export function VectorProbePage() {
     });
     if (calibration.points.length === 2) {
       ctx.beginPath();
-      ctx.moveTo(
-        calibration.points[0][0] * ds,
-        calibration.points[0][1] * ds,
-      );
-      ctx.lineTo(
-        calibration.points[1][0] * ds,
-        calibration.points[1][1] * ds,
-      );
+      ctx.moveTo(calibration.points[0][0] * ds, calibration.points[0][1] * ds);
+      ctx.lineTo(calibration.points[1][0] * ds, calibration.points[1][1] * ds);
       ctx.stroke();
     }
     return ds;
@@ -150,9 +156,7 @@ export function VectorProbePage() {
     const dy = (e.clientY - rect.top) / displayScale;
     const next: Calibration = {
       points:
-        calib.points.length >= 2
-          ? [[dx, dy]]
-          : [...calib.points, [dx, dy]],
+        calib.points.length >= 2 ? [[dx, dy]] : [...calib.points, [dx, dy]],
       mmPerPx: null,
     };
     setCalib(next);
@@ -161,7 +165,7 @@ export function VectorProbePage() {
 
   function applyCalibration() {
     if (calib.points.length !== 2) return;
-    const distMm = parseFloat(knownDist) * 1000; // input is metres
+    const distMm = parseFloat(knownDist) * 1000;
     if (!Number.isFinite(distMm) || distMm <= 0) {
       setError("Enter the real distance in metres (e.g. 20).");
       return;
@@ -179,7 +183,9 @@ export function VectorProbePage() {
 
   function measure() {
     if (!vectors) return;
-    setRuns(groupIntoRuns(vectors.paths, parseIsolate(isolate)));
+    const isolated = parseIsolate(isolate);
+    const filtered = vectors.paths.filter((p) => pathMatches(p, isolated));
+    setRuns(groupIntoRuns(filtered, isolated));
   }
 
   return (
@@ -190,9 +196,9 @@ export function VectorProbePage() {
           Vector probe (dev)
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Render a page's vector linework, calibrate the scale by clicking a
-          known distance (e.g. the two ends of the scale bar), then group the
-          wall-coloured paths into runs and read their real lengths.
+          Render a page's vector linework, inspect the wall-coloured paths by
+          line weight + paint op, calibrate the scale, then group paths into
+          runs and read real lengths.
         </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -246,10 +252,26 @@ export function VectorProbePage() {
                   className="h-9"
                 />
               </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="width" className="text-xs">
+                  Line width (blank = any)
+                </Label>
+                <Input
+                  id="width"
+                  value={widthFilter}
+                  onChange={(e) => setWidthFilter(e.target.value)}
+                  placeholder="any"
+                  className="h-9 w-32"
+                />
+              </div>
               <Button onClick={renderPage} disabled={busy}>
                 Render page
               </Button>
             </div>
+
+            {buckets && buckets.length > 0 && (
+              <BucketTable buckets={buckets} mmPerPx={calib.mmPerPx} />
+            )}
 
             {vectors && (
               <div className="flex flex-wrap items-end gap-3 border-t pt-3">
@@ -265,7 +287,9 @@ export function VectorProbePage() {
                     }
                   }}
                 >
-                  {calibMode ? "Calibrating… click 2 points" : "Calibrate scale"}
+                  {calibMode
+                    ? "Calibrating… click 2 points"
+                    : "Calibrate scale"}
                 </Button>
                 <div className="grid gap-1.5">
                   <Label htmlFor="dist" className="text-xs">
@@ -288,7 +312,7 @@ export function VectorProbePage() {
                   Set calibration
                 </Button>
                 <Button size="sm" onClick={measure}>
-                  Group &amp; measure walls
+                  Group &amp; measure
                 </Button>
               </div>
             )}
@@ -300,9 +324,8 @@ export function VectorProbePage() {
             )}
             {calibMode && (
               <p className="text-xs text-muted-foreground">
-                Click two points a known distance apart on the drawing (the
-                scale bar is ideal), then enter that distance and Set
-                calibration.
+                Click two points a known distance apart (the scale bar is
+                ideal), enter that distance, then Set calibration.
               </p>
             )}
 
@@ -323,11 +346,67 @@ export function VectorProbePage() {
           <textarea
             readOnly
             value={report}
-            className="mt-6 h-[36vh] w-full rounded-md border bg-card p-3 font-mono text-xs"
+            className="mt-6 h-[32vh] w-full rounded-md border bg-card p-3 font-mono text-xs"
             onFocus={(e) => e.target.select()}
           />
         )}
       </main>
+    </div>
+  );
+}
+
+function BucketTable({
+  buckets,
+  mmPerPx,
+}: {
+  buckets: PathBucket[];
+  mmPerPx: number | null;
+}) {
+  const fmt = (px: number) =>
+    mmPerPx === null
+      ? `${px.toFixed(0)} px`
+      : `${((px * mmPerPx) / 1000).toFixed(1)} m`;
+  return (
+    <div className="border-t pt-3">
+      <p className="text-xs font-semibold">
+        Path breakdown (isolated colours) — colour × line weight × paint op
+      </p>
+      <div className="mt-2 overflow-auto">
+        <table className="w-full text-xs tabular-nums">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-1 pr-3">Colour</th>
+              <th className="py-1 pr-3">Width</th>
+              <th className="py-1 pr-3">Paint op</th>
+              <th className="py-1 pr-3 text-right">Paths</th>
+              <th className="py-1 pr-3 text-right">Total length</th>
+            </tr>
+          </thead>
+          <tbody>
+            {buckets.map((b, i) => (
+              <tr key={i} className="border-t">
+                <td className="py-1 pr-3">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-3 w-3 rounded-sm border"
+                      style={{ background: b.color }}
+                    />
+                    {b.color}
+                  </span>
+                </td>
+                <td className="py-1 pr-3">{b.lineWidth}</td>
+                <td className="py-1 pr-3">{b.paintOp}</td>
+                <td className="py-1 pr-3 text-right">{b.count}</td>
+                <td className="py-1 pr-3 text-right">{fmt(b.lengthPx)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">
+        Set the "Line width" field above to one of these values and re-render
+        to isolate just that bucket.
+      </p>
     </div>
   );
 }
@@ -354,7 +433,7 @@ function RunSummary({
     <div className="space-y-3 border-t pt-3 text-sm">
       {!mmPerPx && (
         <p className="text-xs text-amber-700">
-          Not calibrated — lengths shown in pixels. Calibrate to see metres.
+          Not calibrated — lengths in pixels.
         </p>
       )}
       {[...byColor.entries()].map(([color, colorRuns]) => {
@@ -372,7 +451,7 @@ function RunSummary({
               </span>
             </div>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {colorRuns.map((r, i) => (
+              {colorRuns.slice(0, 80).map((r, i) => (
                 <span
                   key={i}
                   className="rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums"
@@ -380,6 +459,11 @@ function RunSummary({
                   {fmt(r.lengthPx)}
                 </span>
               ))}
+              {colorRuns.length > 80 && (
+                <span className="text-xs text-muted-foreground">
+                  +{colorRuns.length - 80} more
+                </span>
+              )}
             </div>
           </div>
         );
