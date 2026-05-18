@@ -198,7 +198,51 @@ export function VectorProbePage() {
         : 0;
     // Cluster wall pieces that sit within ~0.6 m of each other.
     const tolPx = 600 / calib.mmPerPx;
-    setRuns(measureWallRuns(filtered, isolated, minPiecePx, tolPx));
+    const measured = measureWallRuns(filtered, isolated, minPiecePx, tolPx);
+    setRuns(measured);
+    drawRuns(vectors, measured);
+  }
+
+  /** Recolour the canvas so each measured run gets a distinct hue. */
+  function drawRuns(v: PageVectors, measured: WallRun[]) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ds = displayScale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Everything faint first.
+    ctx.strokeStyle = "#ededed";
+    ctx.lineWidth = 0.5;
+    for (const path of v.paths) {
+      ctx.beginPath();
+      const p = path.points;
+      ctx.moveTo(p[0] * ds, p[1] * ds);
+      for (let k = 2; k + 1 < p.length; k += 2) {
+        ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+      }
+      ctx.stroke();
+    }
+
+    // Each run in its own hue (golden-angle spread).
+    measured.forEach((run, i) => {
+      ctx.strokeStyle = `hsl(${(i * 137.5) % 360} 80% 42%)`;
+      ctx.lineWidth = 2.5;
+      for (const path of run.paths) {
+        ctx.beginPath();
+        const p = path.points;
+        ctx.moveTo(p[0] * ds, p[1] * ds);
+        for (let k = 2; k + 1 < p.length; k += 2) {
+          ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+        }
+        ctx.stroke();
+      }
+    });
   }
 
   return (
@@ -338,6 +382,11 @@ export function VectorProbePage() {
                 <Button size="sm" onClick={measure}>
                   Measure walls
                 </Button>
+                {runs && (
+                  <span className="text-xs text-muted-foreground">
+                    Canvas is colour-by-run — each wall a distinct hue.
+                  </span>
+                )}
               </div>
             )}
 
