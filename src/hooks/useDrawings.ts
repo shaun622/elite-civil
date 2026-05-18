@@ -7,8 +7,7 @@ import {
   type UploadProgress,
   type UploadStage,
 } from "@/lib/api/drawings";
-import { extractDrawingPage } from "@/lib/api/extractions";
-import type { DrawingPage, DrawingWithPages } from "@/types/db";
+import type { DrawingWithPages } from "@/types/db";
 import { useAuth } from "@/hooks/useAuth";
 
 type State = {
@@ -90,49 +89,11 @@ export function useDrawings(projectId: string | undefined) {
     [],
   );
 
-  function patchPage(pageId: string, patch: Partial<DrawingPage>) {
-    setState((s) => ({
-      ...s,
-      drawings: (s.drawings ?? []).map((d) => ({
-        ...d,
-        pages: d.pages.map((p) => (p.id === pageId ? { ...p, ...patch } : p)),
-      })),
-    }));
-  }
-
-  const extractPage = useCallback(
-    async (pageId: string, opts: { force?: boolean } = {}) => {
-      patchPage(pageId, {
-        extraction_status: "extracting",
-        extraction_error: null,
-      });
-      try {
-        const result = await extractDrawingPage(pageId, opts);
-        patchPage(pageId, {
-          extraction_status: "extracted",
-          extraction_error: null,
-          view_type: result.view_type,
-        });
-        return result;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Extraction failed.";
-        patchPage(pageId, {
-          extraction_status: "failed",
-          extraction_error: message,
-        });
-        throw err;
-      }
-    },
-    [],
-  );
-
   return {
     ...state,
     refresh,
     upload,
     remove,
-    extractPage,
     uploadStage: stage,
     uploadError,
   };

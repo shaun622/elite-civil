@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, FileText, Loader2, RefreshCw, Ruler, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUpRight, FileText, Ruler, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,25 +13,16 @@ type Props = {
   drawing: DrawingWithPages;
   projectId: string;
   onDelete: () => Promise<void>;
-  onExtract: (
-    pageId: string,
-    opts?: { force?: boolean },
-  ) => Promise<unknown>;
 };
 
 function statusBadge(page: DrawingPage) {
   switch (page.extraction_status) {
     case "pending":
-      return <Badge variant="outline">Pending</Badge>;
+      return <Badge variant="outline">Not measured</Badge>;
     case "extracting":
-      return (
-        <Badge variant="secondary" className="gap-1">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          Extracting
-        </Badge>
-      );
+      return <Badge variant="secondary">Measuring</Badge>;
     case "extracted":
-      return <Badge>Extracted</Badge>;
+      return <Badge>Measured</Badge>;
     case "reviewed":
       return <Badge>Reviewed</Badge>;
     case "failed":
@@ -39,20 +30,12 @@ function statusBadge(page: DrawingPage) {
   }
 }
 
-export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) {
+export function DrawingCard({ drawing, projectId, onDelete }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [busyPageIds, setBusyPageIds] = useState<Set<string>>(new Set());
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [batchRunning, setBatchRunning] = useState(false);
 
   const paths = drawing.pages.map((p) => p.image_path);
   const { urls } = useSignedUrls(paths);
-
-  const pendingPages = drawing.pages.filter(
-    (p) =>
-      p.extraction_status === "pending" || p.extraction_status === "failed",
-  );
 
   async function handleDelete() {
     if (!confirm(`Delete "${drawing.original_filename}" and all its pages?`)) {
@@ -66,45 +49,6 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
       setDeleteError(err instanceof Error ? err.message : "Delete failed.");
       setDeleting(false);
     }
-  }
-
-  function markBusy(id: string, busy: boolean) {
-    setBusyPageIds((prev) => {
-      const next = new Set(prev);
-      if (busy) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
-
-  async function extractOne(pageId: string, opts: { force?: boolean } = {}) {
-    setPageError(null);
-    markBusy(pageId, true);
-    try {
-      await onExtract(pageId, opts);
-    } catch (err) {
-      setPageError(err instanceof Error ? err.message : "Extraction failed.");
-    } finally {
-      markBusy(pageId, false);
-    }
-  }
-
-  async function extractAll() {
-    if (pendingPages.length === 0) return;
-    setPageError(null);
-    setBatchRunning(true);
-    for (const page of pendingPages) {
-      markBusy(page.id, true);
-      try {
-        await onExtract(page.id);
-      } catch (err) {
-        setPageError(err instanceof Error ? err.message : "Extraction failed.");
-        markBusy(page.id, false);
-        break;
-      }
-      markBusy(page.id, false);
-    }
-    setBatchRunning(false);
   }
 
   return (
@@ -126,38 +70,21 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {pendingPages.length > 0 && (
-              <Button
-                size="sm"
-                className="gap-2"
-                disabled={batchRunning}
-                onClick={extractAll}
-              >
-                {batchRunning ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Extract {pendingPages.length}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-destructive hover:text-destructive"
-              disabled={deleting}
-              onClick={handleDelete}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-destructive hover:text-destructive"
+            disabled={deleting}
+            onClick={handleDelete}
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
         </div>
 
-        {(deleteError || pageError) && (
+        {deleteError && (
           <Alert variant="destructive" className="mt-4">
-            <AlertDescription>{deleteError ?? pageError}</AlertDescription>
+            <AlertDescription>{deleteError}</AlertDescription>
           </Alert>
         )}
 
@@ -165,13 +92,6 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
           {drawing.pages.map((page) => {
             const url = urls[page.image_path];
             const aspect = page.image_width / page.image_height || 1;
-            const busy =
-              busyPageIds.has(page.id) ||
-              page.extraction_status === "extracting";
-            const canExtract =
-              page.extraction_status === "pending" ||
-              page.extraction_status === "failed";
-
             const canReview =
               page.extraction_status === "extracted" ||
               page.extraction_status === "reviewed";
@@ -220,89 +140,30 @@ export function DrawingCard({ drawing, projectId, onDelete, onExtract }: Props) 
                     </span>
                     {statusBadge(page)}
                   </div>
-                  {canExtract && (
+                  {canReview && (
                     <Button
-                      type="button"
+                      asChild
                       variant="outline"
                       size="sm"
                       className="h-7 w-full gap-1.5 text-xs"
-                      disabled={busy || batchRunning}
-                      onClick={() => extractOne(page.id)}
                     >
-                      {busy ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : page.extraction_status === "failed" ? (
-                        <RefreshCw className="h-3 w-3" />
-                      ) : (
-                        <Sparkles className="h-3 w-3" />
-                      )}
-                      {page.extraction_status === "failed"
-                        ? "Retry"
-                        : "Extract"}
+                      <Link to={`/projects/${projectId}/pages/${page.id}`}>
+                        <ArrowUpRight className="h-3 w-3" />
+                        Review
+                      </Link>
                     </Button>
-                  )}
-                  {canReview && (
-                    <div className="flex gap-1">
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="h-7 flex-1 gap-1.5 text-xs"
-                      >
-                        <Link to={`/projects/${projectId}/pages/${page.id}`}>
-                          <ArrowUpRight className="h-3 w-3" />
-                          Review
-                        </Link>
-                      </Button>
-                      {page.extraction_status === "extracted" && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={busy || batchRunning}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                "Re-run extraction on this page? This will replace the existing extraction and uses one API call.",
-                              )
-                            ) {
-                              void extractOne(page.id, { force: true });
-                            }
-                          }}
-                          title="Re-run extraction"
-                        >
-                          {busy ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3 w-3" />
-                          )}
-                        </Button>
-                      )}
-                    </div>
                   )}
                   <Button
                     asChild
-                    variant="ghost"
+                    variant={canReview ? "ghost" : "default"}
                     size="sm"
                     className="h-7 w-full gap-1.5 text-xs"
                   >
-                    <Link
-                      to={`/projects/${projectId}/pages/${page.id}/measure`}
-                    >
+                    <Link to={`/projects/${projectId}/pages/${page.id}/measure`}>
                       <Ruler className="h-3 w-3" />
-                      Measure from PDF
+                      {canReview ? "Re-measure" : "Measure from PDF"}
                     </Link>
                   </Button>
-                  {page.extraction_status === "failed" &&
-                    page.extraction_error && (
-                      <p
-                        className="truncate text-[10px] text-destructive"
-                        title={page.extraction_error}
-                      >
-                        {page.extraction_error}
-                      </p>
-                    )}
                 </div>
               </div>
             );

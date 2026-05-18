@@ -30,7 +30,6 @@ export function ProjectPage() {
     error: drawingsError,
     upload,
     remove: removeDrawing,
-    extractPage,
     uploadStage,
     uploadError,
   } = useDrawings(id);
@@ -221,7 +220,6 @@ export function ProjectPage() {
                     drawing={d}
                     projectId={id}
                     onDelete={() => removeDrawing(d)}
-                    onExtract={extractPage}
                   />
                 ))}
               </div>
