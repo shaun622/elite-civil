@@ -429,3 +429,105 @@ export async function extractPdfPageVectors(
   const pdf = await loadPdf(data);
   return extractPageVectors(pdf, pageNumber, scale);
 }
+
+/* ============================================================
+ * Wall-run grouping — merge connected same-colour segments.
+ * ============================================================ */
+
+/** Total polyline length of a flat [x0,y0,x1,y1,...] point array. */
+export function polylineLength(points: number[]): number {
+  let total = 0;
+  for (let k = 2; k + 1 < points.length; k += 2) {
+    total += Math.hypot(
+      points[k] - points[k - 2],
+      points[k + 1] - points[k - 1],
+    );
+  }
+  return total;
+}
+
+export type WallRun = {
+  color: string;
+  paths: VectorPath[];
+  /** Total length of all segments in this run, in device pixels. */
+  lengthPx: number;
+};
+
+/**
+ * Group stroked paths into wall runs. Only paths whose colour is in
+ * `colors` are considered; same-colour paths whose endpoints touch
+ * (within `tolerancePx`) are merged into one run via union-find.
+ */
+export function groupIntoRuns(
+  paths: VectorPath[],
+  colors: Set<string>,
+  tolerancePx = 3,
+): WallRun[] {
+  const subset = paths.filter((p) => colors.has(p.color.toLowerCase()));
+  const n = subset.length;
+  if (n === 0) return [];
+
+  const parent = subset.map((_, i) => i);
+  const find = (i: number): number => {
+    let r = i;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[i] !== r) {
+      const next = parent[i];
+      parent[i] = r;
+      i = next;
+    }
+    return r;
+  };
+  const union = (a: number, b: number) => {
+    parent[find(a)] = find(b);
+  };
+
+  const ends = subset.map((p) => {
+    const len = p.points.length;
+    return [
+      [p.points[0], p.points[1]],
+      [p.points[len - 2], p.points[len - 1]],
+    ];
+  });
+  const t2 = tolerancePx * tolerancePx;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (subset[i].color.toLowerCase() !== subset[j].color.toLowerCase()) {
+        continue;
+      }
+      let connected = false;
+      for (const ei of ends[i]) {
+        for (const ej of ends[j]) {
+          const dx = ei[0] - ej[0];
+          const dy = ei[1] - ej[1];
+          if (dx * dx + dy * dy <= t2) {
+            connected = true;
+            break;
+          }
+        }
+        if (connected) break;
+      }
+      if (connected) union(i, j);
+    }
+  }
+
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    const arr = groups.get(root);
+    if (arr) arr.push(i);
+    else groups.set(root, [i]);
+  }
+
+  const runs: WallRun[] = [];
+  for (const idxs of groups.values()) {
+    const runPaths = idxs.map((i) => subset[i]);
+    const lengthPx = runPaths.reduce(
+      (sum, p) => sum + polylineLength(p.points),
+      0,
+    );
+    runs.push({ color: runPaths[0].color, paths: runPaths, lengthPx });
+  }
+  return runs.sort((a, b) => b.lengthPx - a.lengthPx);
+}
