@@ -586,10 +586,20 @@ export function groupIntoRuns(
  * (which stays correct around corners).
  * ============================================================ */
 
+export type Obb = {
+  length: number;
+  width: number;
+  /** Centroid. */
+  cx: number;
+  cy: number;
+  /** Direction of the long axis, radians. */
+  angle: number;
+};
+
 /** Oriented bounding box of a point set, via principal-component analysis. */
-export function pathOBB(points: number[]): { length: number; width: number } {
+export function pathOBB(points: number[]): Obb {
   const n = points.length / 2;
-  if (n < 2) return { length: 0, width: 0 };
+  if (n < 2) return { length: 0, width: 0, cx: 0, cy: 0, angle: 0 };
 
   let mx = 0;
   let my = 0;
@@ -631,32 +641,10 @@ export function pathOBB(points: number[]): { length: number; width: number } {
   }
   const a = maxU - minU;
   const b = maxV - minV;
-  return { length: Math.max(a, b), width: Math.min(a, b) };
-}
-
-type Aabb = { minX: number; minY: number; maxX: number; maxY: number };
-
-function aabbOf(points: number[]): Aabb {
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (let i = 0; i < points.length; i += 2) {
-    if (points[i] < minX) minX = points[i];
-    if (points[i] > maxX) maxX = points[i];
-    if (points[i + 1] < minY) minY = points[i + 1];
-    if (points[i + 1] > maxY) maxY = points[i + 1];
+  if (a >= b) {
+    return { length: a, width: b, cx: mx, cy: my, angle: theta };
   }
-  return { minX, minY, maxX, maxY };
-}
-
-function aabbNear(a: Aabb, b: Aabb, tol: number): boolean {
-  return !(
-    a.minX - tol > b.maxX ||
-    b.minX - tol > a.maxX ||
-    a.minY - tol > b.maxY ||
-    b.minY - tol > a.maxY
-  );
+  return { length: b, width: a, cx: mx, cy: my, angle: theta + Math.PI / 2 };
 }
 
 /** OBB length + width (device px) for every path of an isolated colour. */
@@ -673,26 +661,25 @@ export function pathDimensions(
 }
 
 /**
- * Measure walls: per colour, OBB-measure each path, keep only pieces that
- * look like real wall (length >= `minPieceLengthPx` and width >=
- * `minPieceWidthPx` — drops batter ticks, setback lines and height labels),
- * cluster surviving pieces by bounding-box proximity, and sum each
- * cluster's piece lengths.
+ * Measure walls. The retaining walls are drawn as thick *dashed* lines, so
+ * each dash is a separate filled rectangle. This:
+ *   1. Keeps only pieces that look like wall dashes (length / width above
+ *      the given minimums — drops batter ticks and height-label glyphs).
+ *   2. Clusters dashes that are collinear and sequential along the same
+ *      line into one wall run (bridging the dash gaps).
+ *   3. Measures each run by the bounding box of the whole dash chain — so
+ *      the gaps between dashes are counted, giving the true wall length.
  */
 export function measureWallRuns(
   paths: VectorPath[],
   colors: Set<string>,
   minPieceLengthPx: number,
   minPieceWidthPx: number,
-  clusterTolerancePx: number,
+  maxGapPx: number,
 ): WallRun[] {
   const pieces = paths
     .filter((p) => colors.has(p.color.toLowerCase()))
-    .map((p) => ({
-      path: p,
-      obb: pathOBB(p.points),
-      aabb: aabbOf(p.points),
-    }))
+    .map((p) => ({ path: p, obb: pathOBB(p.points) }))
     .filter(
       (x) =>
         x.obb.length >= minPieceLengthPx && x.obb.width >= minPieceWidthPx,
@@ -716,17 +703,35 @@ export function measureWallRuns(
     parent[find(a)] = find(b);
   };
 
+  const MAX_ANGLE = (14 * Math.PI) / 180;
+  // Perpendicular tolerance: dashes of one wall sit on a shared centreline.
+  // Keep it tight so a parallel neighbouring wall doesn't merge in.
+  const maxPerpPx = Math.max(minPieceWidthPx * 1.5, 4);
+
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      if (
-        pieces[i].path.color.toLowerCase() !==
-        pieces[j].path.color.toLowerCase()
-      ) {
+      const pi = pieces[i];
+      const pj = pieces[j];
+      if (pi.path.color.toLowerCase() !== pj.path.color.toLowerCase()) {
         continue;
       }
-      if (aabbNear(pieces[i].aabb, pieces[j].aabb, clusterTolerancePx)) {
-        union(i, j);
-      }
+      // Collinear?
+      let da = Math.abs(pi.obb.angle - pj.obb.angle) % Math.PI;
+      if (da > Math.PI / 2) da = Math.PI - da;
+      if (da > MAX_ANGLE) continue;
+
+      const ux = Math.cos(pi.obb.angle);
+      const uy = Math.sin(pi.obb.angle);
+      const dx = pj.obb.cx - pi.obb.cx;
+      const dy = pj.obb.cy - pi.obb.cy;
+      const perp = Math.abs(-dx * uy + dy * ux);
+      if (perp > maxPerpPx) continue;
+
+      const along = Math.abs(dx * ux + dy * uy);
+      const gap = along - pi.obb.length / 2 - pj.obb.length / 2;
+      if (gap > maxGapPx) continue;
+
+      union(i, j);
     }
   }
 
@@ -741,7 +746,10 @@ export function measureWallRuns(
   const runs: WallRun[] = [];
   for (const idxs of groups.values()) {
     const members = idxs.map((i) => pieces[i]);
-    const lengthPx = members.reduce((s, m) => s + m.obb.length, 0);
+    // Length = long axis of the whole dash chain (spans the gaps).
+    const allPoints: number[] = [];
+    for (const m of members) allPoints.push(...m.path.points);
+    const lengthPx = pathOBB(allPoints).length;
     runs.push({
       color: members[0].path.color,
       paths: members.map((m) => m.path),

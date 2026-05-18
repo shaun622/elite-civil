@@ -41,6 +41,7 @@ export function VectorProbePage() {
   const [widthFilter, setWidthFilter] = useState("");
   const [minPiece, setMinPiece] = useState("1.5");
   const [minThickness, setMinThickness] = useState("0.1");
+  const [maxGap, setMaxGap] = useState("5");
 
   const [vectors, setVectors] = useState<PageVectors | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
@@ -206,14 +207,17 @@ export function VectorProbePage() {
       Number.isFinite(minThickM) && minThickM > 0
         ? (minThickM * 1000) / calib.mmPerPx
         : 0;
-    // Cluster wall pieces that sit within ~0.6 m of each other.
-    const tolPx = 600 / calib.mmPerPx;
+    const maxGapM = parseFloat(maxGap);
+    const maxGapPx =
+      Number.isFinite(maxGapM) && maxGapM > 0
+        ? (maxGapM * 1000) / calib.mmPerPx
+        : 0;
     const measured = measureWallRuns(
       filtered,
       isolated,
       minPiecePx,
       minThickPx,
-      tolPx,
+      maxGapPx,
     );
     setRuns(measured);
     drawRuns(vectors, measured);
@@ -423,13 +427,24 @@ export function VectorProbePage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="minThick" className="text-xs">
-                    Min wall thickness (m)
+                    Min thickness (m)
                   </Label>
                   <Input
                     id="minThick"
                     value={minThickness}
                     onChange={(e) => setMinThickness(e.target.value)}
-                    className="h-9 w-32"
+                    className="h-9 w-28"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="maxGap" className="text-xs">
+                    Max dash gap (m)
+                  </Label>
+                  <Input
+                    id="maxGap"
+                    value={maxGap}
+                    onChange={(e) => setMaxGap(e.target.value)}
+                    className="h-9 w-28"
                   />
                 </div>
                 <Button size="sm" onClick={measure}>
