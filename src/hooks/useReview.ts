@@ -4,6 +4,7 @@ import {
   deleteWallSegment,
   loadExtractionBundle,
   lockReview,
+  rescaleExtractionByDistance,
   rescaleExtractionWalls,
   unlockReview,
   updateWallSegment,
@@ -199,6 +200,39 @@ export function useReview(drawingPageId: string | undefined) {
     [state.bundle],
   );
 
+  const recalibrateByDistance = useCallback(
+    async (
+      p0: [number, number],
+      p1: [number, number],
+      distanceMetres: number,
+    ) => {
+      if (!state.bundle) return;
+      setActionError(null);
+      setRescaling(true);
+      try {
+        const { extraction, segments } = await rescaleExtractionByDistance(
+          state.bundle.extraction,
+          state.bundle.segments,
+          p0,
+          p1,
+          distanceMetres,
+        );
+        setState((s) =>
+          s.bundle
+            ? { ...s, bundle: { ...s.bundle, extraction, segments } }
+            : s,
+        );
+      } catch (err) {
+        setActionError(
+          err instanceof Error ? err.message : "Recalibrate failed.",
+        );
+      } finally {
+        setRescaling(false);
+      }
+    },
+    [state.bundle],
+  );
+
   return {
     ...state,
     savingId,
@@ -211,5 +245,6 @@ export function useReview(drawingPageId: string | undefined) {
     confirmReview,
     reopen,
     rescale,
+    recalibrateByDistance,
   };
 }

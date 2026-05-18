@@ -42,12 +42,15 @@ type Props = {
   selectedSegmentId: string | null;
   hoveredSegmentId: string | null;
   locked: boolean;
+  calibrating: boolean;
+  calibPoints: [number, number][];
   onSelectSegment: (id: string | null) => void;
   onHoverSegment: (id: string | null) => void;
   onSaveSegment: (
     segment: WallSegment,
     patch: WallSegmentUpdate,
   ) => Promise<void>;
+  onCalibrateClick: (point: [number, number]) => void;
 };
 
 export function DrawingViewer({
@@ -60,9 +63,12 @@ export function DrawingViewer({
   selectedSegmentId,
   hoveredSegmentId,
   locked,
+  calibrating,
+  calibPoints,
   onSelectSegment,
   onHoverSegment,
   onSaveSegment,
+  onCalibrateClick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -211,6 +217,15 @@ export function DrawingViewer({
         onMouseDown={(e) => {
           if (e.target === stageRef.current) onSelectSegment(null);
         }}
+        onClick={() => {
+          if (!calibrating) return;
+          const pointer = stageRef.current?.getPointerPosition();
+          if (!pointer) return;
+          onCalibrateClick([
+            (pointer.x - origin.x) / zoom,
+            (pointer.y - origin.y) / zoom,
+          ]);
+        }}
       >
         <Layer listening={false}>
           {image && (
@@ -261,10 +276,12 @@ export function DrawingViewer({
                   color={color}
                   selected={selected}
                   hovered={hovered}
-                  editable={selected && !locked}
+                  editable={selected && !locked && !calibrating}
                   zoom={zoom}
                   mmPerPx={mmPerPx}
-                  onClick={() => onSelectSegment(seg.id)}
+                  onClick={() => {
+                    if (!calibrating) onSelectSegment(seg.id);
+                  }}
                   onHoverEnter={() => onHoverSegment(seg.id)}
                   onHoverLeave={() => onHoverSegment(null)}
                   onSaveGeometry={(polyline, lengthMm) =>
@@ -276,6 +293,34 @@ export function DrawingViewer({
                 />
               );
             })}
+
+          {calibrating &&
+            calibPoints.map(([cx, cy], i) => (
+              <Circle
+                key={`cal-${i}`}
+                x={cx}
+                y={cy}
+                radius={7 / zoom}
+                fill="#7c3aed"
+                stroke="#ffffff"
+                strokeWidth={2 / zoom}
+                listening={false}
+              />
+            ))}
+          {calibrating && calibPoints.length === 2 && (
+            <Line
+              points={[
+                calibPoints[0][0],
+                calibPoints[0][1],
+                calibPoints[1][0],
+                calibPoints[1][1],
+              ]}
+              stroke="#7c3aed"
+              strokeWidth={2 / zoom}
+              dash={[6 / zoom, 4 / zoom]}
+              listening={false}
+            />
+          )}
         </Layer>
       </Stage>
 

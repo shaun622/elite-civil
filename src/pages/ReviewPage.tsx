@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Lock, Unlock } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DrawingViewer } from "@/components/review/DrawingViewer";
@@ -23,6 +24,30 @@ export function ReviewPage() {
   const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(
     null,
   );
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
+  const [calibDistance, setCalibDistance] = useState("");
+
+  function startCalibration() {
+    setCalibPoints([]);
+    setCalibDistance("");
+    setCalibrating(true);
+  }
+  function cancelCalibration() {
+    setCalibrating(false);
+    setCalibPoints([]);
+  }
+  function addCalibPoint(p: [number, number]) {
+    setCalibPoints((prev) => (prev.length >= 2 ? [p] : [...prev, p]));
+  }
+  async function applyCalibration() {
+    if (calibPoints.length !== 2) return;
+    const metres = parseFloat(calibDistance);
+    if (!Number.isFinite(metres) || metres <= 0) return;
+    await review.recalibrateByDistance(calibPoints[0], calibPoints[1], metres);
+    setCalibrating(false);
+    setCalibPoints([]);
+  }
 
   if (!projectId || !pageId) {
     return <Navigate to="/dashboard" replace />;
@@ -109,6 +134,46 @@ export function ReviewPage() {
 
             <div className="mt-4 grid flex-1 grid-cols-1 gap-4 lg:grid-cols-5">
               <div className="lg:col-span-3 lg:sticky lg:top-4 lg:self-start">
+                {calibrating && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 p-3 text-xs">
+                    <span className="font-medium text-violet-900">
+                      {calibPoints.length < 2
+                        ? `Click two points a known distance apart on the drawing — ${calibPoints.length}/2`
+                        : "Enter the real distance between the two points:"}
+                    </span>
+                    {calibPoints.length === 2 && (
+                      <>
+                        <Input
+                          value={calibDistance}
+                          onChange={(e) => setCalibDistance(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void applyCalibration();
+                          }}
+                          placeholder="metres"
+                          className="h-8 w-24"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8"
+                          disabled={review.rescaling}
+                          onClick={() => void applyCalibration()}
+                        >
+                          {review.rescaling ? "Applying…" : "Apply & rescale"}
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8"
+                      onClick={cancelCalibration}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
                 <div className="h-[70vh] min-h-[420px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
@@ -120,9 +185,12 @@ export function ReviewPage() {
                     selectedSegmentId={selectedSegmentId}
                     hoveredSegmentId={hoveredSegmentId}
                     locked={review.bundle.extraction.reviewed}
+                    calibrating={calibrating}
+                    calibPoints={calibPoints}
                     onSelectSegment={setSelectedSegmentId}
                     onHoverSegment={setHoveredSegmentId}
                     onSaveSegment={review.saveSegment}
+                    onCalibrateClick={addCalibPoint}
                   />
                 </div>
               </div>
@@ -134,6 +202,7 @@ export function ReviewPage() {
                   locked={review.bundle.extraction.reviewed}
                   rescaling={review.rescaling}
                   onRescale={review.rescale}
+                  onCalibrate={startCalibration}
                 />
                 <WarningsPanel warnings={review.bundle.extraction.warnings} />
                 {review.bundle.extraction.reviewed && (

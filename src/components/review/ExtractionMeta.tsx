@@ -26,6 +26,7 @@ type Props = {
   locked: boolean;
   rescaling: boolean;
   onRescale: (newRatio: number) => void;
+  onCalibrate: () => void;
 };
 
 export function ExtractionMeta({
@@ -34,6 +35,7 @@ export function ExtractionMeta({
   locked,
   rescaling,
   onRescale,
+  onCalibrate,
 }: Props) {
   const tone = confidenceTone(extraction.overall_confidence);
   const confidencePct =
@@ -117,6 +119,17 @@ export function ExtractionMeta({
         <p className="mt-1.5 text-[11px] text-muted-foreground">
           Changing the ratio recomputes every wall length for the new scale.
         </p>
+        {!locked && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-2 h-7 w-full text-xs"
+            onClick={onCalibrate}
+          >
+            Recalibrate by distance on the drawing
+          </Button>
+        )}
       </div>
     </div>
   );

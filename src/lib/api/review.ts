@@ -208,16 +208,11 @@ export type RescaleResult = {
  * dragged geometry are preserved proportionally. The extraction's scale note
  * and stored mm-per-pixel are updated so later edits use the new scale.
  */
-export async function rescaleExtractionWalls(
+async function persistRescale(
   extraction: Extraction,
   segments: WallSegment[],
-  newRatio: number,
+  newMmPerPx: number,
 ): Promise<RescaleResult> {
-  if (!Number.isFinite(newRatio) || newRatio <= 0) {
-    throw new Error("Enter a valid scale ratio, e.g. 500 for 1:500.");
-  }
-  const newMmPerPx = MM_PER_PX_PER_SCALE * newRatio;
-
   const oldMmPerPx = readMmPerPx(extraction.raw_response);
   let factor: number;
   if (oldMmPerPx) {
@@ -229,7 +224,7 @@ export async function rescaleExtractionWalls(
         "This page has no calibration to rescale from — re-measure it from the PDF instead.",
       );
     }
-    factor = newRatio / oldRatio;
+    factor = newMmPerPx / (MM_PER_PX_PER_SCALE * oldRatio);
   }
 
   const newSegments = segments.map((seg) =>
@@ -258,10 +253,11 @@ export async function rescaleExtractionWalls(
       ? { ...(extraction.raw_response as Record<string, unknown>) }
       : {};
   rawResponse.mm_per_px = newMmPerPx;
+  const ratio = Math.round(newMmPerPx / MM_PER_PX_PER_SCALE);
 
   const { data: ext, error: extErr } = await supabase
     .from("extractions")
-    .update({ scale_text: `1:${newRatio}`, raw_response: rawResponse })
+    .update({ scale_text: `1:${ratio}`, raw_response: rawResponse })
     .eq("id", extraction.id)
     .select()
     .single();
@@ -270,4 +266,42 @@ export async function rescaleExtractionWalls(
   }
 
   return { extraction: ext as Extraction, segments: newSegments };
+}
+
+/** Rescale every wall to a new drawing scale ratio (e.g. 500 for 1:500). */
+export async function rescaleExtractionWalls(
+  extraction: Extraction,
+  segments: WallSegment[],
+  newRatio: number,
+): Promise<RescaleResult> {
+  if (!Number.isFinite(newRatio) || newRatio <= 0) {
+    throw new Error("Enter a valid scale ratio, e.g. 500 for 1:500.");
+  }
+  return persistRescale(extraction, segments, MM_PER_PX_PER_SCALE * newRatio);
+}
+
+/**
+ * Rescale every wall from a known real-world distance between two points
+ * picked on the drawing (image-pixel coordinates) — the two-point
+ * calibration, applied after the page has already been measured.
+ */
+export async function rescaleExtractionByDistance(
+  extraction: Extraction,
+  segments: WallSegment[],
+  p0: [number, number],
+  p1: [number, number],
+  distanceMetres: number,
+): Promise<RescaleResult> {
+  const pixelDist = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]);
+  if (pixelDist < 1) {
+    throw new Error("The two calibration points are too close together.");
+  }
+  if (!Number.isFinite(distanceMetres) || distanceMetres <= 0) {
+    throw new Error("Enter the real distance between the points, in metres.");
+  }
+  return persistRescale(
+    extraction,
+    segments,
+    (distanceMetres * 1000) / pixelDist,
+  );
 }
