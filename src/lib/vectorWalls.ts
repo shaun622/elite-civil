@@ -4,7 +4,12 @@ import {
   extractPageVectors,
   measureWallRuns,
   pathOBB,
+  type VectorPath,
 } from "@/lib/pdfVectors";
+import type {
+  AnalyzeHeightLabel,
+  AnalyzeLot,
+} from "@/lib/api/analyzeDrawing";
 
 /**
  * Stage I of the vector pipeline: turn a PDF page's vector linework into
@@ -32,6 +37,10 @@ export type MeasuredWall = {
   /** Centreline as [x,y] pixel pairs — [[x0,y0],[x1,y1]] in raster space. */
   polyline: [number, number][];
   lengthMm: number;
+  /** Average wall height (mm), fused from the AI height labels — Stage II. */
+  heightMm?: number | null;
+  /** Lot the wall sits on, fused from the AI lot labels — Stage II. */
+  lotName?: string | null;
 };
 
 export type ExtractWallsOptions = {
@@ -114,6 +123,16 @@ export async function saveVectorWalls(opts: {
 }): Promise<SaveVectorWallsResult> {
   const { drawingPageId, userId, walls, scaleText, mmPerPx } = opts;
 
+  const withHeights = walls.filter((w) => w.heightMm != null).length;
+  const warnings =
+    withHeights > 0
+      ? [
+          `Lengths measured from PDF vector geometry. Heights auto-assigned from the drawing's labels for ${withHeights} of ${walls.length} walls — verify before quoting and fill any blanks.`,
+        ]
+      : [
+          "Lengths measured from PDF vector geometry. Wall heights are not yet populated — add them from the drawing's height labels.",
+        ];
+
   // Clear any prior extraction (cascade removes its wall_segments / dims).
   const { error: delErr } = await supabase
     .from("extractions")
@@ -135,9 +154,7 @@ export async function saveVectorWalls(opts: {
       units: "mm",
       view_type: "plan",
       overall_confidence: 0.9,
-      warnings: [
-        "Lengths measured from PDF vector geometry. Wall heights are not yet populated — add them from the drawing's height labels.",
-      ],
+      warnings,
     })
     .select()
     .single();
@@ -154,9 +171,11 @@ export async function saveVectorWalls(opts: {
       extraction_id: extraction.id,
       user_id: userId,
       source_id: `vec_${i + 1}`,
-      label: `${wall.typeLabel} wall ${n}`,
+      label: wall.lotName
+        ? `Lot ${wall.lotName} — ${wall.typeLabel}`
+        : `${wall.typeLabel} wall ${n}`,
       length_mm: Math.round(wall.lengthMm),
-      height_mm: null,
+      height_mm: wall.heightMm ?? null,
       thickness_mm: null,
       polyline: wall.polyline,
       label_bbox: null,
@@ -180,4 +199,148 @@ export async function saveVectorWalls(opts: {
     .eq("id", drawingPageId);
 
   return { extractionId: extraction.id, wallCount: walls.length };
+}
+
+/* ============================================================
+ * Stage II fusion — attach AI-read semantics to measured walls.
+ * ============================================================ */
+
+/** Distinct stroke colours present in a page's vector linework (lowercased). */
+export function distinctVectorColors(paths: VectorPath[]): string[] {
+  const seen = new Set<string>();
+  for (const p of paths) seen.add(p.color.toLowerCase());
+  return [...seen];
+}
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = hex.trim().toLowerCase().match(/^#?([0-9a-f]{6})$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * Snap an AI-estimated wall colour to the nearest colour that actually
+ * appears in the PDF's vector linework, so the measurement's exact-colour
+ * filter has a real colour to match. Returns null if nothing is close.
+ */
+export function snapHexToColors(
+  hex: string,
+  palette: string[],
+): string | null {
+  const target = hexToRgb(hex);
+  if (!target) return null;
+  let best: string | null = null;
+  let bestD = Infinity;
+  for (const c of palette) {
+    const rgb = hexToRgb(c);
+    if (!rgb) continue;
+    const d =
+      (rgb[0] - target[0]) ** 2 +
+      (rgb[1] - target[1]) ** 2 +
+      (rgb[2] - target[2]) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  // Reject a "nearest" that is not really the same colour (~80 per channel).
+  return best && bestD <= 3 * 80 * 80 ? best : null;
+}
+
+function distToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** Shortest distance from a point to a wall's centreline polyline. */
+function pointToWallDist(
+  x: number,
+  y: number,
+  polyline: [number, number][],
+): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < polyline.length; i++) {
+    const d = distToSegment(
+      x,
+      y,
+      polyline[i][0],
+      polyline[i][1],
+      polyline[i + 1][0],
+      polyline[i + 1][1],
+    );
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+function wallMidpoint(polyline: [number, number][]): [number, number] {
+  if (polyline.length === 0) return [0, 0];
+  const a = polyline[0];
+  const b = polyline[polyline.length - 1];
+  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+}
+
+/**
+ * Attach AI-read semantics to measured walls: assign each height label to
+ * its nearest wall (averaging where several fall on one wall) and name each
+ * wall by its nearest lot. Best-effort — walls with nothing nearby keep a
+ * null height and the default type label. A no-op when both lists are empty.
+ */
+export function fuseWallSemantics(
+  walls: MeasuredWall[],
+  heightLabels: AnalyzeHeightLabel[],
+  lots: AnalyzeLot[],
+  /** Max px from a wall for a height label to count as belonging to it. */
+  maxHeightDistPx = 480,
+): MeasuredWall[] {
+  const heightAcc = walls.map(() => ({ sum: 0, count: 0 }));
+
+  for (const h of heightLabels) {
+    let bestIdx = -1;
+    let bestD = Infinity;
+    walls.forEach((w, i) => {
+      const d = pointToWallDist(h.x, h.y, w.polyline);
+      if (d < bestD) {
+        bestD = d;
+        bestIdx = i;
+      }
+    });
+    if (bestIdx >= 0 && bestD <= maxHeightDistPx) {
+      heightAcc[bestIdx].sum += h.value_m;
+      heightAcc[bestIdx].count += 1;
+    }
+  }
+
+  return walls.map((wall, i) => {
+    const acc = heightAcc[i];
+    const heightMm =
+      acc.count > 0 ? Math.round((acc.sum / acc.count) * 1000) : null;
+
+    let lotName: string | null = null;
+    if (lots.length > 0) {
+      const [mx, my] = wallMidpoint(wall.polyline);
+      let bestD = Infinity;
+      for (const lot of lots) {
+        const d = (lot.x - mx) ** 2 + (lot.y - my) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          lotName = lot.name;
+        }
+      }
+    }
+
+    return { ...wall, heightMm, lotName };
+  });
 }

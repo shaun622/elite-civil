@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,11 +16,19 @@ import {
 } from "@/lib/pdfVectors";
 import { loadPdf } from "@/lib/pdfRender";
 import {
+  distinctVectorColors,
   extractWallsFromPdfPage,
+  fuseWallSemantics,
   saveVectorWalls,
+  snapHexToColors,
   VECTOR_SCALE,
   type WallColorSpec,
 } from "@/lib/vectorWalls";
+import {
+  analyzeDrawingPage,
+  type AnalyzeHeightLabel,
+  type AnalyzeLot,
+} from "@/lib/api/analyzeDrawing";
 
 /**
  * Stage I wall-measurement workflow for a drawing page. Loads the page's
@@ -54,6 +62,10 @@ export function WallMeasurePage() {
   );
   const [scaleText, setScaleText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiHeights, setAiHeights] = useState<AnalyzeHeightLabel[]>([]);
+  const [aiLots, setAiLots] = useState<AnalyzeLot[]>([]);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
 
   // Load the page's PDF from storage.
   useEffect(() => {
@@ -218,6 +230,51 @@ export function WallMeasurePage() {
     setMmPerPx(distMm / px);
   }
 
+  async function autoDetect() {
+    if (!pageId || !vectors) return;
+    setError(null);
+    setAnalyzing(true);
+    try {
+      const ai = await analyzeDrawingPage(pageId);
+
+      const sb = ai.scale_bar;
+      if (sb.found && sb.p0 && sb.p1 && sb.length_m && sb.length_m > 0) {
+        const px = Math.hypot(sb.p0[0] - sb.p1[0], sb.p0[1] - sb.p1[1]);
+        if (px >= 1) {
+          const pts: [number, number][] = [sb.p0, sb.p1];
+          setCalibPoints(pts);
+          setKnownDist(String(sb.length_m));
+          setMmPerPx((sb.length_m * 1000) / px);
+          redraw(vectors, pts);
+        }
+      }
+
+      if (ai.scale_text) setScaleText(ai.scale_text);
+
+      if (ai.wall_colors.length > 0) {
+        const palette = distinctVectorColors(vectors.paths);
+        const lines = ai.wall_colors.map((c) => {
+          const snapped = snapHexToColors(c.hex, palette);
+          return `${snapped ?? c.hex.toLowerCase()} ${c.type_label}`;
+        });
+        setColorText(lines.join("\n"));
+      }
+
+      setAiHeights(ai.height_labels);
+      setAiLots(ai.lots);
+      setAiSummary(
+        `Detected: ${sb.found ? "scale bar" : "no scale bar"}, ` +
+          `${ai.wall_colors.length} wall colour${ai.wall_colors.length === 1 ? "" : "s"}, ` +
+          `${ai.height_labels.length} height label${ai.height_labels.length === 1 ? "" : "s"}, ` +
+          `${ai.lots.length} lot${ai.lots.length === 1 ? "" : "s"}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Auto-detect failed.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   function parseColorSpecs(): WallColorSpec[] {
     const specs: WallColorSpec[] = [];
     for (const line of colorText.split("\n")) {
@@ -241,16 +298,17 @@ export function WallMeasurePage() {
     setError(null);
     setSaving(true);
     try {
-      const walls = await extractWallsFromPdfPage(
+      const measured = await extractWallsFromPdfPage(
         pdfBuffer.slice(0),
         pageNumber,
         { wallColors, mmPerPx },
       );
-      if (walls.length === 0) {
+      if (measured.length === 0) {
         throw new Error(
           "No walls measured. Check the wall colours and calibration.",
         );
       }
+      const walls = fuseWallSemantics(measured, aiHeights, aiLots);
       await saveVectorWalls({
         drawingPageId: pageId,
         userId: user.id,
@@ -312,6 +370,33 @@ export function WallMeasurePage() {
             </div>
 
             <div className="space-y-5">
+              <section className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold">Auto-detect</h2>
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={autoDetect}
+                    disabled={analyzing}
+                  >
+                    {analyzing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    {analyzing ? "Analysing…" : "Auto-detect with AI"}
+                  </Button>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Reads the scale bar, legend colours, wall heights and lot
+                  numbers off the drawing and fills in the steps below — then
+                  review and measure.
+                </p>
+                {aiSummary && (
+                  <p className="mt-2 text-xs text-emerald-700">{aiSummary}</p>
+                )}
+              </section>
+
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">1 · Calibrate scale</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
