@@ -171,3 +171,103 @@ export async function unlockReview(
 
   return data as Extraction;
 }
+
+/* ============================================================
+ * Scale rescaling — recompute every wall length for a new ratio.
+ * ============================================================ */
+
+// The page PNG is rasterized at 200 DPI of the plotted sheet, so a sheet
+// drawn at 1:R has this many mm of real distance per image pixel.
+const MM_PER_PX_PER_SCALE = 25.4 / 200;
+
+/** Parse a scale ratio out of a scale note: "1:500" -> 500, "500" -> 500. */
+export function parseScaleRatio(text: string | null): number | null {
+  if (!text) return null;
+  const afterColon = text.match(/:\s*(\d+(?:\.\d+)?)/);
+  if (afterColon) return parseFloat(afterColon[1]);
+  const bare = text.trim().match(/^(\d+(?:\.\d+)?)$/);
+  return bare ? parseFloat(bare[1]) : null;
+}
+
+function readMmPerPx(raw: unknown): number | null {
+  if (raw && typeof raw === "object" && "mm_per_px" in raw) {
+    const v = (raw as Record<string, unknown>).mm_per_px;
+    if (typeof v === "number" && v > 0) return v;
+  }
+  return null;
+}
+
+export type RescaleResult = {
+  extraction: Extraction;
+  segments: WallSegment[];
+};
+
+/**
+ * Rescale every wall on an extraction to a new drawing scale ratio. Lengths
+ * scale by the ratio of the new calibration to the old, so manual edits and
+ * dragged geometry are preserved proportionally. The extraction's scale note
+ * and stored mm-per-pixel are updated so later edits use the new scale.
+ */
+export async function rescaleExtractionWalls(
+  extraction: Extraction,
+  segments: WallSegment[],
+  newRatio: number,
+): Promise<RescaleResult> {
+  if (!Number.isFinite(newRatio) || newRatio <= 0) {
+    throw new Error("Enter a valid scale ratio, e.g. 500 for 1:500.");
+  }
+  const newMmPerPx = MM_PER_PX_PER_SCALE * newRatio;
+
+  const oldMmPerPx = readMmPerPx(extraction.raw_response);
+  let factor: number;
+  if (oldMmPerPx) {
+    factor = newMmPerPx / oldMmPerPx;
+  } else {
+    const oldRatio = parseScaleRatio(extraction.scale_text);
+    if (!oldRatio) {
+      throw new Error(
+        "This page has no calibration to rescale from — re-measure it from the PDF instead.",
+      );
+    }
+    factor = newRatio / oldRatio;
+  }
+
+  const newSegments = segments.map((seg) =>
+    seg.length_mm === null
+      ? seg
+      : { ...seg, length_mm: Math.round(seg.length_mm * factor) },
+  );
+
+  const toUpdate = newSegments.filter((s) => s.length_mm !== null);
+  const results = await Promise.all(
+    toUpdate.map((seg) =>
+      supabase
+        .from("wall_segments")
+        .update({ length_mm: seg.length_mm })
+        .eq("id", seg.id),
+    ),
+  );
+  for (const r of results) {
+    if (r.error) {
+      throw new Error(`Failed to rescale a wall: ${r.error.message}`);
+    }
+  }
+
+  const rawResponse: Record<string, unknown> =
+    extraction.raw_response && typeof extraction.raw_response === "object"
+      ? { ...(extraction.raw_response as Record<string, unknown>) }
+      : {};
+  rawResponse.mm_per_px = newMmPerPx;
+
+  const { data: ext, error: extErr } = await supabase
+    .from("extractions")
+    .update({ scale_text: `1:${newRatio}`, raw_response: rawResponse })
+    .eq("id", extraction.id)
+    .select()
+    .single();
+  if (extErr || !ext) {
+    throw new Error(extErr?.message ?? "Failed to update the scale.");
+  }
+
+  return { extraction: ext as Extraction, segments: newSegments };
+}

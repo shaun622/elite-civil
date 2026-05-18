@@ -4,6 +4,7 @@ import {
   deleteWallSegment,
   loadExtractionBundle,
   lockReview,
+  rescaleExtractionWalls,
   unlockReview,
   updateWallSegment,
 } from "@/lib/api/review";
@@ -32,6 +33,7 @@ export function useReview(drawingPageId: string | undefined) {
   });
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [rescaling, setRescaling] = useState(false);
 
   const load = useCallback(async () => {
     if (!drawingPageId) return;
@@ -172,15 +174,42 @@ export function useReview(drawingPageId: string | undefined) {
     }
   }, [state.bundle]);
 
+  const rescale = useCallback(
+    async (newRatio: number) => {
+      if (!state.bundle) return;
+      setActionError(null);
+      setRescaling(true);
+      try {
+        const { extraction, segments } = await rescaleExtractionWalls(
+          state.bundle.extraction,
+          state.bundle.segments,
+          newRatio,
+        );
+        setState((s) =>
+          s.bundle
+            ? { ...s, bundle: { ...s.bundle, extraction, segments } }
+            : s,
+        );
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Rescale failed.");
+      } finally {
+        setRescaling(false);
+      }
+    },
+    [state.bundle],
+  );
+
   return {
     ...state,
     savingId,
     actionError,
+    rescaling,
     refresh: load,
     saveSegment,
     addSegment,
     removeSegment,
     confirmReview,
     reopen,
+    rescale,
   };
 }

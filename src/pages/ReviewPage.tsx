@@ -128,7 +128,13 @@ export function ReviewPage() {
               </div>
 
               <div className="space-y-4 lg:col-span-2">
-                <ExtractionMeta extraction={review.bundle.extraction} />
+                <ExtractionMeta
+                  extraction={review.bundle.extraction}
+                  segmentCount={review.bundle.segments.length}
+                  locked={review.bundle.extraction.reviewed}
+                  rescaling={review.rescaling}
+                  onRescale={review.rescale}
+                />
                 <WarningsPanel warnings={review.bundle.extraction.warnings} />
                 {review.bundle.extraction.reviewed && (
                   <Alert>
