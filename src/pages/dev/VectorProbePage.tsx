@@ -8,6 +8,7 @@ import {
   bucketPaths,
   extractPdfPageVectors,
   measureWallRuns,
+  pathDimensions,
   probePdfVectors,
   type PageVectors,
   type PathBucket,
@@ -39,6 +40,7 @@ export function VectorProbePage() {
   const [isolate, setIsolate] = useState("#dd6e00,#ff00bf,#b80000");
   const [widthFilter, setWidthFilter] = useState("");
   const [minPiece, setMinPiece] = useState("1.5");
+  const [minThickness, setMinThickness] = useState("0.1");
 
   const [vectors, setVectors] = useState<PageVectors | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
@@ -47,6 +49,9 @@ export function VectorProbePage() {
   const [calibMode, setCalibMode] = useState(false);
   const [knownDist, setKnownDist] = useState("");
   const [runs, setRuns] = useState<WallRun[] | null>(null);
+  const [thicknessHist, setThicknessHist] = useState<
+    { label: string; count: number }[] | null
+  >(null);
 
   const widthNum = widthFilter.trim() === "" ? null : Number(widthFilter);
 
@@ -196,11 +201,48 @@ export function VectorProbePage() {
       Number.isFinite(minPieceM) && minPieceM > 0
         ? (minPieceM * 1000) / calib.mmPerPx
         : 0;
+    const minThickM = parseFloat(minThickness);
+    const minThickPx =
+      Number.isFinite(minThickM) && minThickM > 0
+        ? (minThickM * 1000) / calib.mmPerPx
+        : 0;
     // Cluster wall pieces that sit within ~0.6 m of each other.
     const tolPx = 600 / calib.mmPerPx;
-    const measured = measureWallRuns(filtered, isolated, minPiecePx, tolPx);
+    const measured = measureWallRuns(
+      filtered,
+      isolated,
+      minPiecePx,
+      minThickPx,
+      tolPx,
+    );
     setRuns(measured);
     drawRuns(vectors, measured);
+
+    // Thickness histogram of pieces that pass the length filter — helps
+    // pick the thickness threshold (walls vs setback lines).
+    const mmPerPx = calib.mmPerPx;
+    const dims = pathDimensions(filtered, isolated).filter(
+      (d) => d.lengthPx >= minPiecePx,
+    );
+    const bands = [0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.5];
+    const hist = bands.map((hi, i) => ({
+      lo: i === 0 ? 0 : bands[i - 1],
+      hi,
+      count: 0,
+    }));
+    let overflow = 0;
+    for (const d of dims) {
+      const wM = (d.widthPx * mmPerPx) / 1000;
+      const bucket = hist.find((b) => wM < b.hi);
+      if (bucket) bucket.count++;
+      else overflow++;
+    }
+    const histLabels = hist.map((b) => ({
+      label: `${b.lo.toFixed(2)}–${b.hi.toFixed(2)} m`,
+      count: b.count,
+    }));
+    histLabels.push({ label: "0.50 m +", count: overflow });
+    setThicknessHist(histLabels);
   }
 
   /** Recolour the canvas so each measured run gets a distinct hue. */
@@ -370,12 +412,23 @@ export function VectorProbePage() {
                 </Button>
                 <div className="grid gap-1.5">
                   <Label htmlFor="minPiece" className="text-xs">
-                    Min wall-piece length (m)
+                    Min piece length (m)
                   </Label>
                   <Input
                     id="minPiece"
                     value={minPiece}
                     onChange={(e) => setMinPiece(e.target.value)}
+                    className="h-9 w-28"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="minThick" className="text-xs">
+                    Min wall thickness (m)
+                  </Label>
+                  <Input
+                    id="minThick"
+                    value={minThickness}
+                    onChange={(e) => setMinThickness(e.target.value)}
                     className="h-9 w-32"
                   />
                 </div>
@@ -410,6 +463,30 @@ export function VectorProbePage() {
                 style={{ cursor: calibMode ? "crosshair" : "default" }}
               />
             </div>
+
+            {thicknessHist && (
+              <div className="border-t pt-3">
+                <p className="text-xs font-semibold">
+                  Wall-piece thickness distribution (pieces past the length
+                  filter) — pick a Min wall thickness between the setback-line
+                  spike and the wall spike.
+                </p>
+                <div className="mt-2 space-y-0.5">
+                  {thicknessHist.map((h) => (
+                    <div key={h.label} className="flex items-center gap-2 text-xs">
+                      <span className="w-24 tabular-nums text-muted-foreground">
+                        {h.label}
+                      </span>
+                      <span
+                        className="inline-block h-3 bg-foreground/70"
+                        style={{ width: `${Math.min(400, h.count * 3)}px` }}
+                      />
+                      <span className="tabular-nums">{h.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {runs && <RunSummary runs={runs} mmPerPx={calib.mmPerPx} />}
           </div>

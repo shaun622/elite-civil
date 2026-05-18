@@ -659,15 +659,31 @@ function aabbNear(a: Aabb, b: Aabb, tol: number): boolean {
   );
 }
 
+/** OBB length + width (device px) for every path of an isolated colour. */
+export function pathDimensions(
+  paths: VectorPath[],
+  colors: Set<string>,
+): { lengthPx: number; widthPx: number }[] {
+  return paths
+    .filter((p) => colors.has(p.color.toLowerCase()))
+    .map((p) => {
+      const obb = pathOBB(p.points);
+      return { lengthPx: obb.length, widthPx: obb.width };
+    });
+}
+
 /**
- * Measure walls: per colour, OBB-measure each path, drop pieces shorter
- * than `minPieceLengthPx` (batter ticks), cluster surviving pieces by
- * bounding-box proximity, and sum each cluster's piece lengths.
+ * Measure walls: per colour, OBB-measure each path, keep only pieces that
+ * look like real wall (length >= `minPieceLengthPx` and width >=
+ * `minPieceWidthPx` — drops batter ticks, setback lines and height labels),
+ * cluster surviving pieces by bounding-box proximity, and sum each
+ * cluster's piece lengths.
  */
 export function measureWallRuns(
   paths: VectorPath[],
   colors: Set<string>,
   minPieceLengthPx: number,
+  minPieceWidthPx: number,
   clusterTolerancePx: number,
 ): WallRun[] {
   const pieces = paths
@@ -677,7 +693,10 @@ export function measureWallRuns(
       obb: pathOBB(p.points),
       aabb: aabbOf(p.points),
     }))
-    .filter((x) => x.obb.length >= minPieceLengthPx);
+    .filter(
+      (x) =>
+        x.obb.length >= minPieceLengthPx && x.obb.width >= minPieceWidthPx,
+    );
 
   const n = pieces.length;
   if (n === 0) return [];
