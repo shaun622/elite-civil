@@ -9,7 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
-import { extractPageVectors, type PageVectors } from "@/lib/pdfVectors";
+import {
+  extractPageVectors,
+  nearestVertex,
+  type PageVectors,
+} from "@/lib/pdfVectors";
 import { loadPdf } from "@/lib/pdfRender";
 import {
   extractWallsFromPdfPage,
@@ -43,6 +47,7 @@ export function WallMeasurePage() {
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [knownDist, setKnownDist] = useState("");
   const [mmPerPx, setMmPerPx] = useState<number | null>(null);
+  const [snap, setSnap] = useState(true);
 
   const [colorText, setColorText] = useState(
     "#dd6e00 Type 1\n#ff00bf Type 2\n#b80000 Type 3",
@@ -152,8 +157,18 @@ export function WallMeasurePage() {
     ctx.strokeStyle = "#7c3aed";
     ctx.lineWidth = 1.5;
     points.forEach(([x, y]) => {
+      const px = x * ds;
+      const py = y * ds;
+      // A ring + crosshair so the exact calibration point is legible.
       ctx.beginPath();
-      ctx.arc(x * ds, y * ds, 4, 0, Math.PI * 2);
+      ctx.arc(px, py, 5, 0, Math.PI * 2);
+      ctx.moveTo(px - 9, py);
+      ctx.lineTo(px + 9, py);
+      ctx.moveTo(px, py - 9);
+      ctx.lineTo(px, py + 9);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 1.6, 0, Math.PI * 2);
       ctx.fill();
     });
     if (points.length === 2) {
@@ -168,8 +183,17 @@ export function WallMeasurePage() {
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!vectors) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / displayScale;
-    const y = (e.clientY - rect.top) / displayScale;
+    let x = (e.clientX - rect.left) / displayScale;
+    let y = (e.clientY - rect.top) / displayScale;
+    if (snap) {
+      // Snap onto exact drawing geometry (scale-bar ticks, wall corners)
+      // so the calibration distance is precise, not freehand.
+      const v = nearestVertex(vectors.paths, x, y, 14 / displayScale);
+      if (v) {
+        x = v[0];
+        y = v[1];
+      }
+    }
     const next: [number, number][] =
       calibPoints.length >= 2 ? [[x, y]] : [...calibPoints, [x, y]];
     setCalibPoints(next);
@@ -294,6 +318,15 @@ export function WallMeasurePage() {
                   Click two points on the drawing, then enter the real
                   distance between them.
                 </p>
+                <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={snap}
+                    onChange={(e) => setSnap(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-violet-600"
+                  />
+                  Snap clicks to the nearest drawing vertex
+                </label>
                 <div className="mt-3 grid gap-2">
                   <Label htmlFor="dist" className="text-xs">
                     Distance (metres)

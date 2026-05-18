@@ -758,3 +758,37 @@ export function measureWallRuns(
   }
   return runs.sort((a, b) => b.lengthPx - a.lengthPx);
 }
+
+/* ============================================================
+ * Snap-to-geometry — pick the vector vertex nearest a click.
+ * ============================================================ */
+
+/**
+ * Find the vector vertex nearest to a point, in the same device-pixel
+ * space the paths were extracted in. Used so manual scale calibration can
+ * snap each click onto exact drawing geometry (a scale-bar tick, a wall
+ * corner) instead of an imprecise freehand point. Returns `null` when no
+ * vertex lies within `maxDistPx`.
+ */
+export function nearestVertex(
+  paths: VectorPath[],
+  x: number,
+  y: number,
+  maxDistPx: number,
+): [number, number] | null {
+  let best: [number, number] | null = null;
+  let bestD2 = maxDistPx * maxDistPx;
+  for (const p of paths) {
+    const pts = p.points;
+    for (let k = 0; k + 1 < pts.length; k += 2) {
+      const dx = pts[k] - x;
+      const dy = pts[k + 1] - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= bestD2) {
+        bestD2 = d2;
+        best = [pts[k], pts[k + 1]];
+      }
+    }
+  }
+  return best;
+}
