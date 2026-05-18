@@ -19,6 +19,7 @@ import {
   distinctVectorColors,
   extractWallsFromPdfPage,
   fuseWallSemantics,
+  mmPerPxFromScaleRatio,
   saveVectorWalls,
   snapHexToColors,
   VECTOR_SCALE,
@@ -29,6 +30,7 @@ import {
   type AnalyzeHeightLabel,
   type AnalyzeLot,
 } from "@/lib/api/analyzeDrawing";
+import { parseScaleRatio } from "@/lib/api/review";
 
 /**
  * Stage I wall-measurement workflow for a drawing page. Loads the page's
@@ -54,6 +56,7 @@ export function WallMeasurePage() {
 
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [knownDist, setKnownDist] = useState("");
+  const [scaleRatio, setScaleRatio] = useState("");
   const [mmPerPx, setMmPerPx] = useState<number | null>(null);
   const [snap, setSnap] = useState(true);
 
@@ -230,6 +233,17 @@ export function WallMeasurePage() {
     setMmPerPx(distMm / px);
   }
 
+  function setCalibrationFromRatio() {
+    const ratio = parseScaleRatio(scaleRatio);
+    if (ratio === null || ratio <= 0) {
+      setError("Enter the drawing scale as a ratio, e.g. 1:500.");
+      return;
+    }
+    setError(null);
+    setMmPerPx(mmPerPxFromScaleRatio(ratio));
+    setScaleText(`1:${ratio}`);
+  }
+
   async function autoDetect() {
     if (!pageId || !vectors) return;
     setError(null);
@@ -400,10 +414,42 @@ export function WallMeasurePage() {
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">1 · Calibrate scale</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Click two points on the drawing, then enter the real
-                  distance between them.
+                  Set the drawing's scale — type the ratio from the title
+                  block, or click two points a known distance apart.
                 </p>
-                <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+
+                <div className="mt-3 grid gap-1.5">
+                  <Label htmlFor="ratio" className="text-xs">
+                    Scale ratio
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="ratio"
+                      value={scaleRatio}
+                      onChange={(e) => setScaleRatio(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") setCalibrationFromRatio();
+                      }}
+                      placeholder="e.g. 1:500"
+                      className="h-9 font-mono"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={setCalibrationFromRatio}
+                    >
+                      Set
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="my-3 flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  or click two points
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={snap}
@@ -433,12 +479,13 @@ export function WallMeasurePage() {
                       Set
                     </Button>
                   </div>
-                  {mmPerPx !== null && (
-                    <p className="text-xs text-emerald-700">
-                      Calibrated: 1 px = {mmPerPx.toFixed(2)} mm
-                    </p>
-                  )}
                 </div>
+
+                {mmPerPx !== null && (
+                  <p className="mt-3 text-xs text-emerald-700">
+                    Calibrated: 1 px = {mmPerPx.toFixed(2)} mm
+                  </p>
+                )}
               </section>
 
               <section className="rounded-lg border bg-card p-4">

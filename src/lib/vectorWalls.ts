@@ -24,6 +24,15 @@ const RASTER_DPI = 200;
 /** Vector extraction scale so coords match the stored 200-DPI PNG. */
 export const VECTOR_SCALE = RASTER_DPI / 72;
 
+/**
+ * mm of real-world distance per raster pixel for a drawing plotted at
+ * 1:ratio. The page is rasterized at RASTER_DPI of the plotted sheet, so
+ * one pixel spans (25.4 / RASTER_DPI) mm of paper × the scale ratio.
+ */
+export function mmPerPxFromScaleRatio(ratio: number): number {
+  return (25.4 / RASTER_DPI) * ratio;
+}
+
 export type WallColorSpec = {
   /** Lowercase hex, e.g. "#dd6e00". */
   color: string;
