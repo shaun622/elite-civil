@@ -162,6 +162,10 @@ export function DrawingViewer({
   }
 
   function onDragEnd(e: Konva.KonvaEventObject<DragEvent>) {
+    // Only the Stage's own pan moves the origin. Drag-end events bubble, so a
+    // wall endpoint handle's drag also fires this — ignore those, or the
+    // origin jumps to the handle's coords and flings the drawing off-screen.
+    if (e.target !== stageRef.current) return;
     setOrigin({ x: e.target.x(), y: e.target.y() });
   }
 
