@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   bucketPaths,
   extractPdfPageVectors,
-  groupIntoRuns,
+  measureWallRuns,
   probePdfVectors,
   type PageVectors,
   type PathBucket,
@@ -38,6 +38,7 @@ export function VectorProbePage() {
   const [pageNum, setPageNum] = useState("6");
   const [isolate, setIsolate] = useState("#dd6e00,#ff00bf,#b80000");
   const [widthFilter, setWidthFilter] = useState("");
+  const [minPiece, setMinPiece] = useState("1.5");
 
   const [vectors, setVectors] = useState<PageVectors | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
@@ -183,9 +184,21 @@ export function VectorProbePage() {
 
   function measure() {
     if (!vectors) return;
+    if (calib.mmPerPx === null) {
+      setError("Calibrate the scale first (click the scale bar's two ends).");
+      return;
+    }
+    setError(null);
     const isolated = parseIsolate(isolate);
     const filtered = vectors.paths.filter((p) => pathMatches(p, isolated));
-    setRuns(groupIntoRuns(filtered, isolated));
+    const minPieceM = parseFloat(minPiece);
+    const minPiecePx =
+      Number.isFinite(minPieceM) && minPieceM > 0
+        ? (minPieceM * 1000) / calib.mmPerPx
+        : 0;
+    // Cluster wall pieces that sit within ~0.6 m of each other.
+    const tolPx = 600 / calib.mmPerPx;
+    setRuns(measureWallRuns(filtered, isolated, minPiecePx, tolPx));
   }
 
   return (
@@ -311,8 +324,19 @@ export function VectorProbePage() {
                 >
                   Set calibration
                 </Button>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="minPiece" className="text-xs">
+                    Min wall-piece length (m)
+                  </Label>
+                  <Input
+                    id="minPiece"
+                    value={minPiece}
+                    onChange={(e) => setMinPiece(e.target.value)}
+                    className="h-9 w-32"
+                  />
+                </div>
                 <Button size="sm" onClick={measure}>
-                  Group &amp; measure
+                  Measure walls
                 </Button>
               </div>
             )}

@@ -574,3 +574,160 @@ export function groupIntoRuns(
   }
   return runs.sort((a, b) => b.lengthPx - a.lengthPx);
 }
+
+/* ============================================================
+ * OBB-based wall measurement.
+ *
+ * Walls on this drawing are filled closed polygons (closeFillStroke),
+ * so a polyline length measures the *perimeter*. Instead, each path's
+ * length is its oriented-bounding-box long axis. Short shapes (batter
+ * ticks) are dropped, surviving wall pieces are clustered by bounding-box
+ * proximity, and a wall's length is the SUM of its pieces' long axes
+ * (which stays correct around corners).
+ * ============================================================ */
+
+/** Oriented bounding box of a point set, via principal-component analysis. */
+export function pathOBB(points: number[]): { length: number; width: number } {
+  const n = points.length / 2;
+  if (n < 2) return { length: 0, width: 0 };
+
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < points.length; i += 2) {
+    mx += points[i];
+    my += points[i + 1];
+  }
+  mx /= n;
+  my /= n;
+
+  let cxx = 0;
+  let cxy = 0;
+  let cyy = 0;
+  for (let i = 0; i < points.length; i += 2) {
+    const dx = points[i] - mx;
+    const dy = points[i + 1] - my;
+    cxx += dx * dx;
+    cxy += dx * dy;
+    cyy += dy * dy;
+  }
+
+  const theta = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+  const ux = Math.cos(theta);
+  const uy = Math.sin(theta);
+
+  let minU = Infinity;
+  let maxU = -Infinity;
+  let minV = Infinity;
+  let maxV = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    const dx = points[i] - mx;
+    const dy = points[i + 1] - my;
+    const u = dx * ux + dy * uy;
+    const v = -dx * uy + dy * ux;
+    if (u < minU) minU = u;
+    if (u > maxU) maxU = u;
+    if (v < minV) minV = v;
+    if (v > maxV) maxV = v;
+  }
+  const a = maxU - minU;
+  const b = maxV - minV;
+  return { length: Math.max(a, b), width: Math.min(a, b) };
+}
+
+type Aabb = { minX: number; minY: number; maxX: number; maxY: number };
+
+function aabbOf(points: number[]): Aabb {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    if (points[i] < minX) minX = points[i];
+    if (points[i] > maxX) maxX = points[i];
+    if (points[i + 1] < minY) minY = points[i + 1];
+    if (points[i + 1] > maxY) maxY = points[i + 1];
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function aabbNear(a: Aabb, b: Aabb, tol: number): boolean {
+  return !(
+    a.minX - tol > b.maxX ||
+    b.minX - tol > a.maxX ||
+    a.minY - tol > b.maxY ||
+    b.minY - tol > a.maxY
+  );
+}
+
+/**
+ * Measure walls: per colour, OBB-measure each path, drop pieces shorter
+ * than `minPieceLengthPx` (batter ticks), cluster surviving pieces by
+ * bounding-box proximity, and sum each cluster's piece lengths.
+ */
+export function measureWallRuns(
+  paths: VectorPath[],
+  colors: Set<string>,
+  minPieceLengthPx: number,
+  clusterTolerancePx: number,
+): WallRun[] {
+  const pieces = paths
+    .filter((p) => colors.has(p.color.toLowerCase()))
+    .map((p) => ({
+      path: p,
+      obb: pathOBB(p.points),
+      aabb: aabbOf(p.points),
+    }))
+    .filter((x) => x.obb.length >= minPieceLengthPx);
+
+  const n = pieces.length;
+  if (n === 0) return [];
+
+  const parent = pieces.map((_, i) => i);
+  const find = (i: number): number => {
+    let r = i;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[i] !== r) {
+      const next = parent[i];
+      parent[i] = r;
+      i = next;
+    }
+    return r;
+  };
+  const union = (a: number, b: number) => {
+    parent[find(a)] = find(b);
+  };
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (
+        pieces[i].path.color.toLowerCase() !==
+        pieces[j].path.color.toLowerCase()
+      ) {
+        continue;
+      }
+      if (aabbNear(pieces[i].aabb, pieces[j].aabb, clusterTolerancePx)) {
+        union(i, j);
+      }
+    }
+  }
+
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    const arr = groups.get(root);
+    if (arr) arr.push(i);
+    else groups.set(root, [i]);
+  }
+
+  const runs: WallRun[] = [];
+  for (const idxs of groups.values()) {
+    const members = idxs.map((i) => pieces[i]);
+    const lengthPx = members.reduce((s, m) => s + m.obb.length, 0);
+    runs.push({
+      color: members[0].path.color,
+      paths: members.map((m) => m.path),
+      lengthPx,
+    });
+  }
+  return runs.sort((a, b) => b.lengthPx - a.lengthPx);
+}
