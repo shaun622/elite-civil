@@ -16,7 +16,7 @@ Find the graphic scale bar — a ruler-like bar with tick marks and distance num
 Read the LEGEND. Find every legend entry for a proposed retaining wall (e.g. "Proposed Concrete / Composite Sleeper Retaining Wall Type 1", "Type 2", "Type 3"). For each, return type_label (a short name such as "Type 1") and hex — your best estimate of the colour of that legend entry's line sample as a 6-digit hex string (e.g. "#dd6e00"). These walls are drawn as coloured dashed lines; the hex only needs to be close, as it is snapped to the drawing's actual vector colours afterwards.
 
 3. HEIGHT LABELS
-The plan marks the average height of each retaining wall as a small number printed in the SAME COLOUR as that wall (typically orange), e.g. "0.9", "1.2", "1.6". The legend identifies these (e.g. "Average Retaining Wall Height"). Return one entry per such height number: value_m (the number, in metres) and x, y (its pixel position). IMPORTANT: do NOT include surface levels or reduced levels — the many black numbers like "67.90", "65.30", "63.20" are ground levels, not wall heights. Only return the small coloured wall-height numbers.
+The plan marks the height of each retaining wall as a small number printed in the SAME COLOUR as that wall (typically orange), e.g. "0.9", "1.2", "1.6". The legend identifies these (e.g. "Average Retaining Wall Height"). Be THOROUGH — there is usually one such number for every wall, so a plan with around 30 retaining walls should yield roughly 30 height_labels. Scan the whole sheet systematically, section by section, and return EVERY coloured wall-height number you can read; they are small, so look carefully. Each entry: value_m (the number, in metres) and x, y (its pixel position). The ONLY numbers to exclude are the black surface levels / reduced levels (large black numbers like "67.90", "65.30", "63.20") — those are ground levels, not wall heights. Do not skip a coloured height number because it is small or faint — only skip a number if you genuinely cannot tell whether it is a coloured wall height or a black ground level.
 
 4. LOTS
 Return every lot number shown on the plan (e.g. "503", "504", "511"): name (the lot number as text) and x, y (the approximate pixel centre of that lot's area).
@@ -51,4 +51,4 @@ Critical rules:
 - If you cannot find a scale bar, set scale_bar.found = false with null p0, p1, length_m, and add a warning.
 - If you cannot find a legend or any wall colours, return wall_colors: [] and add a warning.
 - height_labels and lots may be empty arrays if none are visible — add a warning explaining why.
-- Be conservative: it is better to omit an uncertain height label than to return a wrong one.`;
+- For height_labels, return every coloured wall-height number you can read — only omit a number when you genuinely cannot tell a wall height from a ground level. Do not under-report wall heights.`;
