@@ -1,29 +1,24 @@
-// analyze-drawing edge function — Stage II semantic pass.
+// analyze-drawing edge function — Stage II semantic pass (tiled).
 //
 // POST /functions/v1/analyze-drawing
-// Body: { drawing_page_id: string }
+// Body: { page_width, page_height, tiles: [{ base64, originX, originY,
+//         width, height }] }
 //
-// Wall geometry and lengths are computed client-side from the PDF's vector
-// data. This function reads the drawing's SEMANTICS so those measured walls
-// can be calibrated, coloured, named and given heights:
-//   - the graphic scale bar (two ticks + their real distance) -> calibration
-//   - the legend's retaining-wall colours
-//   - the average-height labels and their positions
-//   - the lot numbers and their positions
-// It does NOT write to the database — it returns the parsed JSON to the
-// caller, which fuses it with the client-side vector walls.
+// The client renders the PDF page into a grid of full-resolution tiles so
+// small annotations (wall-height numbers) are not lost to image
+// downsampling. This function reads each tile with Claude in parallel,
+// offsets every coordinate back into full-page pixels, merges + de-dups the
+// results, and returns the drawing's semantics: scale bar, legend colours,
+// wall-height labels and lot numbers. Wall geometry is computed client-side.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.46.1";
-import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
-import { AnalyzeResultSchema } from "./schema.ts";
+import { AnalyzeResultSchema, type AnalyzeResult } from "./schema.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-7";
-// Output is small (scale bar, a few colours, ~30 height labels + lots) so
-// 8K tokens is ample. Thinking is off — Opus 4.7's default.
-const MAX_TOKENS = 8192;
-const BUCKET = "drawings";
+// One tile holds a fraction of the sheet, so 6K output tokens is ample.
+const MAX_TOKENS = 6000;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,6 +42,107 @@ function jsonResponse(body: Json, init: ResponseInit = {}) {
 
 function errorResponse(status: number, message: string, extra: Json = {}) {
   return jsonResponse({ error: message, ...extra }, { status });
+}
+
+type Tile = {
+  base64: string;
+  originX: number;
+  originY: number;
+  width: number;
+  height: number;
+};
+
+function isTile(v: unknown): v is Tile {
+  if (!v || typeof v !== "object") return false;
+  const t = v as Record<string, unknown>;
+  return (
+    typeof t.base64 === "string" &&
+    typeof t.originX === "number" &&
+    typeof t.originY === "number" &&
+    typeof t.width === "number" &&
+    typeof t.height === "number"
+  );
+}
+
+/** Read one tile with Claude. Returns null if the call or parse fails, so a
+ *  single bad tile never sinks the whole page. */
+async function analyzeTile(
+  tile: Tile,
+  anthropicKey: string,
+): Promise<AnalyzeResult | null> {
+  try {
+    const body = {
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: [
+        {
+          type: "text",
+          text: SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: tile.base64,
+              },
+            },
+            {
+              type: "text",
+              text: `This tile is exactly W=${tile.width} pixels wide and H=${tile.height} pixels tall — one section of a larger architectural drawing. Return every coordinate in tile-local pixels (x within 0..${tile.width}, y within 0..${tile.height}). Read the scale bar, legend wall colours, wall-height labels and lot numbers visible in this tile, following the schema in the system prompt.`,
+            },
+          ],
+        },
+      ],
+    };
+
+    const resp = await fetch(ANTHROPIC_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(
+        `[analyze-drawing] tile Anthropic non-OK ${resp.status}: ${errText.slice(0, 400)}`,
+      );
+      return null;
+    }
+
+    const data = await resp.json();
+    const textBlock = (data.content ?? []).find(
+      (b: { type: string }) => b.type === "text",
+    );
+    if (!textBlock || typeof textBlock.text !== "string") return null;
+
+    const raw = String(textBlock.text)
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
+    const parsed = JSON.parse(raw);
+    const validated = AnalyzeResultSchema.safeParse(parsed);
+    if (!validated.success) {
+      console.error(
+        `[analyze-drawing] tile schema fail: ${JSON.stringify(validated.error.issues).slice(0, 300)}`,
+      );
+      return null;
+    }
+    return validated.data;
+  } catch (err) {
+    console.error(`[analyze-drawing] tile failed:`, err);
+    return null;
+  }
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -77,178 +173,121 @@ Deno.serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  let payload: { drawing_page_id?: string };
+  let payload: { tiles?: unknown };
   try {
     payload = await req.json();
   } catch {
     return errorResponse(400, "Body must be JSON");
   }
 
-  const pageId = payload.drawing_page_id;
-  if (!pageId || typeof pageId !== "string") {
-    return errorResponse(400, "drawing_page_id is required");
+  const tilesRaw = payload.tiles;
+  if (
+    !Array.isArray(tilesRaw) ||
+    tilesRaw.length === 0 ||
+    !tilesRaw.every(isTile)
+  ) {
+    return errorResponse(400, "Body must include a non-empty `tiles` array.");
   }
+  const tiles = tilesRaw as Tile[];
 
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData.user) {
     return errorResponse(401, "Not authenticated");
   }
 
-  // RLS ensures we only see pages this user owns.
-  const { data: page, error: pageErr } = await supabase
-    .from("drawing_pages")
-    .select("id, image_path, image_width, image_height")
-    .eq("id", pageId)
-    .single();
-  if (pageErr || !page) {
-    return errorResponse(404, "Drawing page not found", {
-      detail: pageErr?.message,
-    });
-  }
-
   try {
-    console.log(
-      `[analyze-drawing] start page=${pageId} path=${page.image_path} ${page.image_width}x${page.image_height}`,
-    );
+    console.log(`[analyze-drawing] start: ${tiles.length} tiles`);
 
-    // 1. Download the rasterized PNG.
-    const { data: blob, error: dlErr } = await supabase.storage
-      .from(BUCKET)
-      .download(page.image_path);
-    if (dlErr || !blob) {
-      throw new Error(
-        `Could not download page image: ${dlErr?.message ?? "unknown"}`,
-      );
-    }
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    const base64 = encodeBase64(bytes);
-    console.log(
-      `[analyze-drawing] image ${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB`,
+    const results = await Promise.all(
+      tiles.map((t) => analyzeTile(t, anthropicKey)),
     );
-
-    const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024;
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new Error(
-        `Page image is ${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB, which exceeds Anthropic's ~5 MB per-image limit.`,
-      );
+    const okCount = results.filter((r) => r !== null).length;
+    if (okCount === 0) {
+      throw new Error("The AI could not read any of the page tiles.");
     }
 
-    // 2. Call Anthropic. Opus 4.7 rejects sampling params; thinking is off.
-    const anthropicBody = {
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/png",
-                data: base64,
-              },
-            },
-            {
-              type: "text",
-              text: `This image is exactly W=${page.image_width} pixels wide and H=${page.image_height} pixels tall. Return every coordinate in this pixel space: x within 0..${page.image_width}, y within 0..${page.image_height}. Read the drawing's scale bar, legend wall colours, wall-height labels and lot numbers following the schema in the system prompt.`,
-            },
-          ],
-        },
-      ],
-    };
+    // Merge — offset every tile-local coordinate into full-page pixels.
+    const heightLabels: { value_m: number; x: number; y: number }[] = [];
+    const lots = new Map<string, { name: string; x: number; y: number }>();
+    const wallColors = new Map<string, { type_label: string; hex: string }>();
+    const warnings = new Set<string>();
+    let scaleText: string | null = null;
+    let scaleBar: {
+      found: boolean;
+      p0: [number, number] | null;
+      p1: [number, number] | null;
+      length_m: number | null;
+    } = { found: false, p0: null, p1: null, length_m: null };
+    let bestScaleSpan = 0;
 
-    console.log(`[analyze-drawing] calling Anthropic model=${MODEL}`);
-    const anthropicResp = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(anthropicBody),
+    tiles.forEach((tile, i) => {
+      const r = results[i];
+      if (!r) return;
+      const { originX: ox, originY: oy } = tile;
+
+      for (const h of r.height_labels) {
+        heightLabels.push({ value_m: h.value_m, x: h.x + ox, y: h.y + oy });
+      }
+      for (const lot of r.lots) {
+        if (!lots.has(lot.name)) {
+          lots.set(lot.name, { name: lot.name, x: lot.x + ox, y: lot.y + oy });
+        }
+      }
+      for (const wc of r.wall_colors) {
+        if (!wallColors.has(wc.type_label)) wallColors.set(wc.type_label, wc);
+      }
+      for (const w of r.warnings) warnings.add(w);
+      if (scaleText === null && r.scale_text) scaleText = r.scale_text;
+
+      const sb = r.scale_bar;
+      if (sb.found && sb.p0 && sb.p1 && sb.length_m) {
+        const span = Math.hypot(sb.p0[0] - sb.p1[0], sb.p0[1] - sb.p1[1]);
+        if (span > bestScaleSpan) {
+          bestScaleSpan = span;
+          scaleBar = {
+            found: true,
+            p0: [sb.p0[0] + ox, sb.p0[1] + oy],
+            p1: [sb.p1[0] + ox, sb.p1[1] + oy],
+            length_m: sb.length_m,
+          };
+        }
+      }
     });
 
-    if (!anthropicResp.ok) {
-      const errText = await anthropicResp.text();
-      console.error(
-        `[analyze-drawing] Anthropic non-OK status=${anthropicResp.status} body=${errText.slice(0, 1000)}`,
+    // De-duplicate height labels seen twice in overlapping tiles: same value
+    // within 60 px is the same label.
+    const dedupHeights: { value_m: number; x: number; y: number }[] = [];
+    for (const h of heightLabels) {
+      const dup = dedupHeights.some(
+        (k) =>
+          Math.round(k.value_m * 10) === Math.round(h.value_m * 10) &&
+          Math.hypot(k.x - h.x, k.y - h.y) < 60,
       );
-      throw new Error(
-        `Anthropic API ${anthropicResp.status}: ${errText.slice(0, 500)}`,
-      );
+      if (!dup) dedupHeights.push(h);
     }
 
-    const anthropicData = await anthropicResp.json();
-    const stopReason = anthropicData.stop_reason as string | undefined;
-    console.log(
-      `[analyze-drawing] Anthropic OK stop_reason=${stopReason} usage=${JSON.stringify(anthropicData.usage ?? {})}`,
-    );
-
-    // 3. Pull the text block.
-    const textBlock = (anthropicData.content ?? []).find(
-      (b: { type: string }) => b.type === "text",
-    );
-    if (!textBlock || typeof textBlock.text !== "string") {
-      throw new Error(
-        `Model response had no text block (stop_reason=${stopReason}).`,
+    if (okCount < tiles.length) {
+      warnings.add(
+        `${tiles.length - okCount} of ${tiles.length} page tiles could not be read — some labels may be missing.`,
       );
     }
-
-    // 4. Parse + validate JSON (strip stray code fences defensively).
-    const rawText = String(textBlock.text).trim();
-    const stripped = rawText
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/```\s*$/i, "")
-      .trim();
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stripped);
-    } catch (e) {
-      console.error(
-        `[analyze-drawing] JSON parse failed. raw (first 500):`,
-        rawText.slice(0, 500),
-      );
-      throw new Error(
-        `Model output was not valid JSON: ${e instanceof Error ? e.message : "parse error"}`,
-      );
-    }
-
-    const validated = AnalyzeResultSchema.safeParse(parsed);
-    if (!validated.success) {
-      console.error(
-        `[analyze-drawing] schema validation failed:`,
-        JSON.stringify(validated.error.issues),
-      );
-      throw new Error(
-        `Model output did not match schema: ${validated.error.message.slice(0, 500)}`,
-      );
-    }
-    const result = validated.data;
 
     console.log(
-      `[analyze-drawing] page=${pageId} ok: scale_bar=${result.scale_bar.found} colors=${result.wall_colors.length} heights=${result.height_labels.length} lots=${result.lots.length}`,
+      `[analyze-drawing] merged ${okCount}/${tiles.length} tiles: scale_bar=${scaleBar.found} colors=${wallColors.size} heights=${dedupHeights.length} lots=${lots.size}`,
     );
 
     return jsonResponse({
       ok: true,
-      scale_bar: result.scale_bar,
-      scale_text: result.scale_text,
-      wall_colors: result.wall_colors,
-      height_labels: result.height_labels,
-      lots: result.lots,
-      warnings: result.warnings,
+      scale_bar: scaleBar,
+      scale_text: scaleText,
+      wall_colors: [...wallColors.values()],
+      height_labels: dedupHeights,
+      lots: [...lots.values()],
+      warnings: [...warnings],
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Analysis failed";
-    console.error(`[analyze-drawing] page=${pageId} failed:`, err);
+    console.error(`[analyze-drawing] failed:`, err);
     return errorResponse(500, message);
   }
 });

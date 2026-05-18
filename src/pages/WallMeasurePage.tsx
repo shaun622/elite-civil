@@ -245,11 +245,11 @@ export function WallMeasurePage() {
   }
 
   async function autoDetect() {
-    if (!pageId || !vectors) return;
+    if (!pdfBuffer || !vectors) return;
     setError(null);
     setAnalyzing(true);
     try {
-      const ai = await analyzeDrawingPage(pageId);
+      const ai = await analyzeDrawingPage(pdfBuffer.slice(0), pageNumber);
 
       const sb = ai.scale_bar;
       if (sb.found && sb.p0 && sb.p1 && sb.length_m && sb.length_m > 0) {
