@@ -29,8 +29,8 @@ export type WallColorSpec = {
 export type MeasuredWall = {
   color: string;
   typeLabel: string;
-  /** Centreline polyline in raster-pixel coords: [x0,y0,x1,y1]. */
-  polyline: number[];
+  /** Centreline as [x,y] pixel pairs — [[x0,y0],[x1,y1]] in raster space. */
+  polyline: [number, number][];
   lengthMm: number;
 };
 
@@ -80,11 +80,10 @@ export async function extractWallsFromPdfPage(
     const ux = Math.cos(obb.angle);
     const uy = Math.sin(obb.angle);
     const hl = obb.length / 2;
-    const polyline = [
-      obb.cx - ux * hl,
-      obb.cy - uy * hl,
-      obb.cx + ux * hl,
-      obb.cy + uy * hl,
+    // Two [x,y] pairs — the shape the review overlay + exports expect.
+    const polyline: [number, number][] = [
+      [obb.cx - ux * hl, obb.cy - uy * hl],
+      [obb.cx + ux * hl, obb.cy + uy * hl],
     ];
     return {
       color: run.color.toLowerCase(),
