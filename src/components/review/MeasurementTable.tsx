@@ -92,6 +92,9 @@ export function MeasurementTable({
 
   return (
     <div className="space-y-2">
+      <p className="px-2 text-[11px] text-muted-foreground">
+        Tip: click any length, height or thickness to edit it.
+      </p>
       <div className="grid grid-cols-[24px_1fr_110px_110px_90px_28px] items-center gap-2 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         <span></span>
         <span>Label</span>
@@ -101,35 +104,37 @@ export function MeasurementTable({
         <span></span>
       </div>
 
-      {segments.map((seg) => (
-        <SegmentRow
-          key={seg.id}
-          ref={(el) => {
-            if (el) rowRefs.current.set(seg.id, el);
-            else rowRefs.current.delete(seg.id);
-          }}
-          segment={seg}
-          selected={seg.id === selectedSegmentId}
-          hovered={seg.id === hoveredSegmentId}
-          saving={savingId === seg.id}
-          locked={locked}
-          onSelect={() => onSelect(seg.id)}
-          onHoverEnter={() => onHover(seg.id)}
-          onHoverLeave={() => onHover(null)}
-          onSave={(patch) => onSave(seg, patch)}
-          onDelete={() => onDelete(seg.id)}
-        />
-      ))}
+      <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
+        {segments.map((seg) => (
+          <SegmentRow
+            key={seg.id}
+            ref={(el) => {
+              if (el) rowRefs.current.set(seg.id, el);
+              else rowRefs.current.delete(seg.id);
+            }}
+            segment={seg}
+            selected={seg.id === selectedSegmentId}
+            hovered={seg.id === hoveredSegmentId}
+            saving={savingId === seg.id}
+            locked={locked}
+            onSelect={() => onSelect(seg.id)}
+            onHoverEnter={() => onHover(seg.id)}
+            onHoverLeave={() => onHover(null)}
+            onSave={(patch) => onSave(seg, patch)}
+            onDelete={() => onDelete(seg.id)}
+          />
+        ))}
 
-      {adding && (
-        <NewSegmentRow
-          onCancel={() => setAdding(false)}
-          onSave={async (patch) => {
-            await onAdd(patch);
-            setAdding(false);
-          }}
-        />
-      )}
+        {adding && (
+          <NewSegmentRow
+            onCancel={() => setAdding(false)}
+            onSave={async (patch) => {
+              await onAdd(patch);
+              setAdding(false);
+            }}
+          />
+        )}
+      </div>
 
       {!locked && !adding && (
         <Button
@@ -287,39 +292,41 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(function SegmentR
           </div>
         </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
-          {segment.user_added && <Badge variant="secondary">User added</Badge>}
-          {!segment.user_added && segment.user_edited && (
-            <Badge variant="secondary">Edited</Badge>
-          )}
-          {!segment.user_added && segment.confidence < 0.6 && (
-            <Badge variant="muted" title="Scaled or low-confidence value">
-              Estimated
-            </Badge>
-          )}
-          {saving && (
-            <span className="inline-flex items-center gap-1 text-[11px]">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Saving…
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setNotesOpen((v) => !v);
-            }}
-            className="ml-auto text-[11px] underline-offset-2 hover:underline"
-          >
-            {notesOpen
-              ? "Hide notes"
-              : segment.notes
-                ? "Notes"
-                : "Add notes"}
-          </button>
-        </div>
+        {(selected || saving) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
+            {segment.user_added && <Badge variant="secondary">User added</Badge>}
+            {!segment.user_added && segment.user_edited && (
+              <Badge variant="secondary">Edited</Badge>
+            )}
+            {!segment.user_added && segment.confidence < 0.6 && (
+              <Badge variant="muted" title="Scaled or low-confidence value">
+                Estimated
+              </Badge>
+            )}
+            {saving && (
+              <span className="inline-flex items-center gap-1 text-[11px]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving…
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setNotesOpen((v) => !v);
+              }}
+              className="ml-auto text-[11px] underline-offset-2 hover:underline"
+            >
+              {notesOpen
+                ? "Hide notes"
+                : segment.notes
+                  ? "Notes"
+                  : "Add notes"}
+            </button>
+          </div>
+        )}
 
-        {notesOpen && (
+        {selected && notesOpen && (
           <div className="mt-2 px-1">
             <Textarea
               rows={2}

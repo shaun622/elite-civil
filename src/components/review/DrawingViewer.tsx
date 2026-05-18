@@ -332,13 +332,19 @@ function LayerCheckbox({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-3 w-3"
+        className="h-4 w-4 cursor-pointer"
       />
       <span
         className="inline-block h-2.5 w-2.5 rounded-full"
-        style={{ background: color }}
+        style={{ background: color, opacity: checked ? 1 : 0.3 }}
       />
-      <span>{label}</span>
+      <span
+        className={
+          checked ? "font-medium text-foreground" : "text-muted-foreground"
+        }
+      >
+        {label}
+      </span>
     </label>
   );
 }
@@ -397,28 +403,40 @@ function SegmentOverlay({
   onHoverLeave: () => void;
 }) {
   const emphasized = selected || hovered;
-  // Idle polylines render thin + faint — an approximate guide, not a
-  // precise CAD trace. The hovered/selected wall pops bold at full opacity.
+  // Every wall gets a white halo so its centreline stays legible on top of
+  // the drawing's dense black linework. The hovered/selected wall pops via a
+  // much thicker stroke — that size jump is the "this is the one" cue.
   const minEdge = Math.min(imageWidth, imageHeight);
   const strokeWidth = emphasized
     ? Math.max(minEdge / 280, 4)
-    : Math.max(minEdge / 850, 1.5);
+    : Math.max(minEdge / 620, 2.2);
   return (
     <>
       {polylinePx.length >= 4 && (
-        <Line
-          points={polylinePx}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          opacity={emphasized ? 1 : 0.45}
-          lineCap="round"
-          lineJoin="round"
-          onClick={onClick}
-          onTap={onClick}
-          onMouseEnter={onHoverEnter}
-          onMouseLeave={onHoverLeave}
-          hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
-        />
+        <>
+          <Line
+            points={polylinePx}
+            stroke="#ffffff"
+            strokeWidth={strokeWidth + (emphasized ? 5 : 3)}
+            opacity={emphasized ? 0.95 : 0.6}
+            lineCap="round"
+            lineJoin="round"
+            listening={false}
+          />
+          <Line
+            points={polylinePx}
+            stroke={color}
+            strokeWidth={strokeWidth}
+            opacity={emphasized ? 1 : 0.9}
+            lineCap="round"
+            lineJoin="round"
+            onClick={onClick}
+            onTap={onClick}
+            onMouseEnter={onHoverEnter}
+            onMouseLeave={onHoverLeave}
+            hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
+          />
+        </>
       )}
       {segment.label_bbox && (
         <>

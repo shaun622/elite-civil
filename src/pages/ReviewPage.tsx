@@ -108,7 +108,7 @@ export function ReviewPage() {
             )}
 
             <div className="mt-4 grid flex-1 grid-cols-1 gap-4 lg:grid-cols-5">
-              <div className="lg:col-span-3">
+              <div className="lg:col-span-3 lg:sticky lg:top-4 lg:self-start">
                 <div className="h-[70vh] min-h-[420px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
