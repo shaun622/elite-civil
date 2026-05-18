@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Circle,
+  Group,
   Image as KonvaImage,
   Layer,
   Line,
@@ -294,19 +295,6 @@ export function DrawingViewer({
               );
             })}
 
-          {calibrating &&
-            calibPoints.map(([cx, cy], i) => (
-              <Circle
-                key={`cal-${i}`}
-                x={cx}
-                y={cy}
-                radius={7 / zoom}
-                fill="#7c3aed"
-                stroke="#ffffff"
-                strokeWidth={2 / zoom}
-                listening={false}
-              />
-            ))}
           {calibrating && calibPoints.length === 2 && (
             <Line
               points={[
@@ -316,11 +304,31 @@ export function DrawingViewer({
                 calibPoints[1][1],
               ]}
               stroke="#7c3aed"
-              strokeWidth={2 / zoom}
+              strokeWidth={1.5 / zoom}
               dash={[6 / zoom, 4 / zoom]}
               listening={false}
             />
           )}
+          {calibrating &&
+            calibPoints.map(([cx, cy], i) => {
+              // A thin full-height tick so the click can be aligned exactly
+              // against a scale-bar mark — far more precise than a dot.
+              const half = 30 / zoom;
+              return (
+                <Group key={`cal-${i}`} listening={false}>
+                  <Line
+                    points={[cx, cy - half, cx, cy + half]}
+                    stroke="#ffffff"
+                    strokeWidth={4 / zoom}
+                  />
+                  <Line
+                    points={[cx, cy - half, cx, cy + half]}
+                    stroke="#7c3aed"
+                    strokeWidth={1.5 / zoom}
+                  />
+                </Group>
+              );
+            })}
         </Layer>
       </Stage>
 
