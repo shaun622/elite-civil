@@ -96,7 +96,7 @@ export function WallMeasurePage() {
     };
   }, [pageId]);
 
-  // Render the page's vectors once the PDF is loaded.
+  // Extract the page's vectors once the PDF is loaded.
   useEffect(() => {
     if (!pdfBuffer) return;
     let active = true;
@@ -106,7 +106,6 @@ export function WallMeasurePage() {
         const v = await extractPageVectors(pdf, pageNumber, VECTOR_SCALE);
         if (!active) return;
         setVectors(v);
-        setDisplayScale(redraw(v, []));
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "Render failed.");
@@ -118,6 +117,13 @@ export function WallMeasurePage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfBuffer, pageNumber]);
+
+  // Draw the linework once the canvas has mounted (i.e. vectors are ready).
+  useEffect(() => {
+    if (!vectors) return;
+    setDisplayScale(redraw(vectors, calibPoints));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vectors]);
 
   function redraw(v: PageVectors, points: [number, number][]): number {
     const canvas = canvasRef.current;
