@@ -7,6 +7,7 @@ import { ProjectPage } from "@/pages/ProjectPage";
 import { ReviewPage } from "@/pages/ReviewPage";
 import { PricingPage } from "@/pages/PricingPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { VectorProbePage } from "@/pages/dev/VectorProbePage";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 
 export function App() {
@@ -48,6 +49,7 @@ export function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/dev/vector-probe" element={<VectorProbePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
