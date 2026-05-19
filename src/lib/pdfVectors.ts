@@ -595,32 +595,53 @@ export function pathDimensions(
 /** A wall-coloured path reduced to a measurable centreline piece. */
 type WallPiece = {
   path: VectorPath;
-  /** Ordered centreline points (flat) — the stroked path itself, or the
-   *  long axis of the oriented bounding box for a filled shape. */
+  /** Ordered centreline points (flat) — the stroked line itself, or the
+   *  long axis of the oriented bounding box for a filled / closed shape. */
   pts: number[];
   /** The two endpoints of `pts`. */
   a: [number, number];
   b: [number, number];
   /** Centreline length of this piece, device px. */
   length: number;
+  /** True for a filled block or a closed box — measured by its bounding
+   *  box, and its direction is reliable however short it is. */
+  shape: boolean;
 };
 
+/** A path is a closed shape (polygon / box) when its outline returns to
+ *  its start — its polyline length is then a perimeter, not a run. */
+function isClosedPath(pts: number[]): boolean {
+  if (pts.length < 8) return false;
+  const dx = pts[0] - pts[pts.length - 2];
+  const dy = pts[1] - pts[pts.length - 1];
+  return Math.hypot(dx, dy) <= 1.5;
+}
+
 function toWallPiece(path: VectorPath): WallPiece {
-  if (/fill/i.test(path.paintOp)) {
-    // Filled block — its outline's polyline length is a perimeter, so
-    // measure the long axis of its oriented bounding box instead.
+  // Filled blocks and closed boxes are shapes — their outline length is a
+  // perimeter, so measure the long axis of the oriented bounding box. Only
+  // an open stroked line is measured along its own polyline.
+  const shape = /fill/i.test(path.paintOp) || isClosedPath(path.points);
+  if (shape) {
     const obb = pathOBB(path.points);
     const ux = Math.cos(obb.angle);
     const uy = Math.sin(obb.angle);
     const hl = obb.length / 2;
     const a: [number, number] = [obb.cx - ux * hl, obb.cy - uy * hl];
     const b: [number, number] = [obb.cx + ux * hl, obb.cy + uy * hl];
-    return { path, pts: [a[0], a[1], b[0], b[1]], a, b, length: obb.length };
+    return {
+      path,
+      pts: [a[0], a[1], b[0], b[1]],
+      a,
+      b,
+      length: obb.length,
+      shape: true,
+    };
   }
   const p = path.points;
   const a: [number, number] = [p[0], p[1]];
   const b: [number, number] = [p[p.length - 2], p[p.length - 1]];
-  return { path, pts: p, a, b, length: polylineLength(p) };
+  return { path, pts: p, a, b, length: polylineLength(p), shape: false };
 }
 
 /** Shortest distance from a point to a segment, device px. */
@@ -724,6 +745,9 @@ function connectPieces(pieces: WallPiece[], gapPx: number): number[][] {
   const WELD = 2.5;
   const ANGLE_TOL = Math.cos((52 * Math.PI) / 180);
   const shortLimit = gapPx * 1.5;
+  // A piece has a usable direction if it is a shape (its bounding box gives
+  // the axis) or a stroked line long enough not to be a stray dot.
+  const reliable = pieces.map((p) => p.shape || p.length >= shortLimit);
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
@@ -732,18 +756,17 @@ function connectPieces(pieces: WallPiece[], gapPx: number): number[][] {
       if (link.d > gapPx) continue;
       let join = link.d <= WELD;
       if (!join) {
-        const dotLike =
-          pieces[i].length < shortLimit || pieces[j].length < shortLimit;
-        if (dotLike) {
-          // A dot is too short to have a reliable direction — chain it on
-          // proximity alone; it sits between two dashes of its own wall.
-          join = true;
-        } else {
-          // Two real dashes only chain if one continues the other's line,
-          // so a wall that merely crosses or runs parallel is not merged.
+        if (reliable[i] && reliable[j]) {
+          // Both pieces have a direction — only chain them when one
+          // continues the other's line, so a wall that merely crosses or
+          // runs parallel is never merged in.
           const di = heading(pieces[i], link.iEnd, true);
           const dj = heading(pieces[j], link.jEnd, false);
           join = di[0] * dj[0] + di[1] * dj[1] >= ANGLE_TOL;
+        } else {
+          // A stray dot has no usable direction — chain it on proximity
+          // alone; it sits between two dashes of its own wall.
+          join = true;
         }
       }
       if (join) parent[find(i)] = find(j);
