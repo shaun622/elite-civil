@@ -59,6 +59,7 @@ export function WallMeasurePage() {
   const [scaleRatio, setScaleRatio] = useState("");
   const [mmPerPx, setMmPerPx] = useState<number | null>(null);
   const [snap, setSnap] = useState(true);
+  const [showDistance, setShowDistance] = useState(false);
 
   const [wallTypes, setWallTypes] = useState<WallColorSpec[]>([]);
   const [picking, setPicking] = useState(false);
@@ -271,6 +272,7 @@ export function WallMeasurePage() {
       if (hit) addWallColor(hit.color.toLowerCase());
       return;
     }
+    if (!showDistance) return;
 
     // Calibration click — snap onto exact drawing geometry (scale-bar
     // ticks, wall corners) so the distance is precise, not freehand.
@@ -489,8 +491,8 @@ export function WallMeasurePage() {
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">1 · Calibrate scale</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Set the drawing's scale — type the ratio from the title
-                  block, or click two points a known distance apart.
+                  Type the scale ratio from the title block — it's exact and
+                  the quickest way to calibrate.
                 </p>
 
                 <div className="mt-3 grid gap-1.5">
@@ -518,43 +520,56 @@ export function WallMeasurePage() {
                   </div>
                 </div>
 
-                <div className="my-3 flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <span className="h-px flex-1 bg-border" />
-                  or click two points
-                  <span className="h-px flex-1 bg-border" />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDistance((s) => !s)}
+                  className="mt-3 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  {showDistance
+                    ? "Hide distance calibration"
+                    : "No ratio on the sheet? Calibrate by clicking a distance"}
+                </button>
 
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={snap}
-                    onChange={(e) => setSnap(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-violet-600"
-                  />
-                  Snap clicks to the nearest drawing vertex
-                </label>
-                <div className="mt-3 grid gap-2">
-                  <Label htmlFor="dist" className="text-xs">
-                    Distance (metres)
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="dist"
-                      value={knownDist}
-                      onChange={(e) => setKnownDist(e.target.value)}
-                      placeholder="e.g. 20"
-                      className="h-9"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={setCalibration}
-                      disabled={calibPoints.length !== 2}
-                    >
-                      Set
-                    </Button>
+                {showDistance && (
+                  <div className="mt-3 rounded-md border border-dashed bg-muted/30 p-3">
+                    <p className="text-[11px] text-muted-foreground">
+                      Failsafe — prefer the scale ratio above, it's exact. Use
+                      this only when the sheet has no ratio: click two points
+                      a known distance apart, then enter that distance.
+                    </p>
+                    <label className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={snap}
+                        onChange={(e) => setSnap(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-violet-600"
+                      />
+                      Snap clicks to the nearest drawing vertex
+                    </label>
+                    <div className="mt-3 grid gap-2">
+                      <Label htmlFor="dist" className="text-xs">
+                        Distance (metres)
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="dist"
+                          value={knownDist}
+                          onChange={(e) => setKnownDist(e.target.value)}
+                          placeholder="e.g. 20"
+                          className="h-9"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={setCalibration}
+                          disabled={calibPoints.length !== 2}
+                        >
+                          Set
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {mmPerPx !== null && (
                   <p className="mt-3 text-xs text-emerald-700">
