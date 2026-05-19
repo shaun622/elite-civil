@@ -214,7 +214,10 @@ export function DrawingViewer({
         draggable
         onWheel={onWheel}
         onDragEnd={onDragEnd}
-        style={{ background: "#1f2937" }}
+        style={{
+          background: "#1f2937",
+          cursor: calibrating ? "crosshair" : undefined,
+        }}
         onMouseDown={(e) => {
           if (e.target === stageRef.current) onSelectSegment(null);
         }}

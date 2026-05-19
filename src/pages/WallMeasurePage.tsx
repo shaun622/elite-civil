@@ -166,30 +166,36 @@ export function WallMeasurePage() {
       }
       ctx.stroke();
     }
-    ctx.fillStyle = "#7c3aed";
-    ctx.strokeStyle = "#7c3aed";
-    ctx.lineWidth = 1.5;
-    points.forEach(([x, y]) => {
-      const px = x * ds;
-      const py = y * ds;
-      // A ring + crosshair so the exact calibration point is legible.
-      ctx.beginPath();
-      ctx.arc(px, py, 5, 0, Math.PI * 2);
-      ctx.moveTo(px - 9, py);
-      ctx.lineTo(px + 9, py);
-      ctx.moveTo(px, py - 9);
-      ctx.lineTo(px, py + 9);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(px, py, 1.6, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    // Calibration markers: a dashed line between the two points, with a
+    // white-haloed violet vertical tick at each so it lines up precisely
+    // against a scale-bar mark.
     if (points.length === 2) {
+      ctx.strokeStyle = "#7c3aed";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
       ctx.beginPath();
       ctx.moveTo(points[0][0] * ds, points[0][1] * ds);
       ctx.lineTo(points[1][0] * ds, points[1][1] * ds);
       ctx.stroke();
+      ctx.setLineDash([]);
     }
+    points.forEach(([x, y]) => {
+      const px = x * ds;
+      const py = y * ds;
+      const half = 30;
+      ctx.beginPath();
+      ctx.moveTo(px, py - half);
+      ctx.lineTo(px, py + half);
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(px, py - half);
+      ctx.lineTo(px, py + half);
+      ctx.strokeStyle = "#7c3aed";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
     return ds;
   }
 
