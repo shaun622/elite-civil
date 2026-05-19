@@ -866,6 +866,34 @@ function simplifyFlat(flat: number[], epsPx: number): number[] {
   return out;
 }
 
+/**
+ * Centreline of a wall run. A straight wall — its bounding box is long and
+ * thin — collapses to the box's long axis: two clean points and an exact
+ * length, with no stray vertices from per-dash jitter. A wall that
+ * genuinely bends keeps a traced, corner-simplified centreline.
+ */
+function runCentreline(pieces: WallPiece[]): number[] {
+  const all: number[] = [];
+  for (const p of pieces) {
+    for (let k = 0; k + 1 < p.pts.length; k += 2) {
+      all.push(p.pts[k], p.pts[k + 1]);
+    }
+  }
+  const obb = pathOBB(all);
+  if (obb.width <= Math.max(obb.length * 0.08, 8)) {
+    const ux = Math.cos(obb.angle);
+    const uy = Math.sin(obb.angle);
+    const hl = obb.length / 2;
+    return [
+      obb.cx - ux * hl,
+      obb.cy - uy * hl,
+      obb.cx + ux * hl,
+      obb.cy + uy * hl,
+    ];
+  }
+  return simplifyFlat(traceRun(pieces), 1.5);
+}
+
 export type MeasureWallsOptions = {
   /** Override the auto-derived gap tolerance (device px). */
   gapPx?: number;
@@ -903,13 +931,13 @@ export function measureWalls(
   const runs: WallRun[] = [];
   for (const [color, pieces] of byColor) {
     for (const idxs of connectPieces(pieces, gapPx)) {
-      const traced = traceRun(idxs.map((i) => pieces[i]));
-      const polyline = simplifyFlat(traced, 1.5);
+      const runPieces = idxs.map((i) => pieces[i]);
+      const polyline = runCentreline(runPieces);
       const lengthPx = polylineLength(polyline);
       if (lengthPx < minRun) continue;
       runs.push({
         color,
-        paths: idxs.map((i) => pieces[i].path),
+        paths: runPieces.map((p) => p.path),
         polyline,
         lengthPx,
       });
