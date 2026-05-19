@@ -1,12 +1,12 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatLength, parseLength } from "@/lib/format";
-import type { WallSegment, WallSegmentUpdate } from "@/types/db";
+import type { RlPair, WallSegment, WallSegmentUpdate } from "@/types/db";
 
 type Props = {
   segments: WallSegment[];
@@ -46,9 +46,43 @@ function ConfidenceDot({ value }: { value: number }) {
   );
 }
 
-/** RL values are levels in metres (e.g. 67.90) — plain numbers, no unit. */
-function rlToInput(n: number | null): string {
-  return n == null ? "" : String(n);
+/* ---- RL pairs --------------------------------------------------------- */
+
+type RlRow = { top: string; bottom: string };
+
+/** Wall RL pairs -> editable string rows, padded to at least two rows. */
+function rlPairsToRows(pairs: RlPair[] | undefined): RlRow[] {
+  const rows: RlRow[] = (pairs ?? []).map((p) => ({
+    top: String(p.top),
+    bottom: String(p.bottom),
+  }));
+  while (rows.length < 2) rows.push({ top: "", bottom: "" });
+  return rows;
+}
+
+/** Editable rows -> the complete RL pairs (rows missing a value are dropped). */
+function rowsToPairs(rows: RlRow[]): RlPair[] {
+  const pairs: RlPair[] = [];
+  for (const r of rows) {
+    const top = parseFloat(r.top);
+    const bottom = parseFloat(r.bottom);
+    if (Number.isFinite(top) && Number.isFinite(bottom)) {
+      pairs.push({ top, bottom });
+    }
+  }
+  return pairs;
+}
+
+/** Average of the per-pair heights, in mm — null when no pair is complete. */
+function averageHeightMm(pairs: RlPair[]): number | null {
+  if (pairs.length === 0) return null;
+  const sum = pairs.reduce((s, p) => s + (p.top - p.bottom), 0);
+  return Math.round((sum / pairs.length) * 1000);
+}
+
+function pairsEqual(a: RlPair[], b: RlPair[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((p, i) => p.top === b[i].top && p.bottom === b[i].bottom);
 }
 
 export function MeasurementTable({
@@ -99,8 +133,8 @@ export function MeasurementTable({
   return (
     <div className="space-y-2">
       <p className="px-2 text-[11px] text-muted-foreground">
-        Tip: click a wall to edit it — enter Top RL and Bottom RL and the
-        height is calculated for you.
+        Tip: click a wall to edit it — enter Top RL and Bottom RL at each end
+        and the height is calculated for you.
       </p>
       <div
         className={cn(
@@ -193,8 +227,6 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
   ) {
     const [label, setLabel] = useState(segment.label ?? "");
     const [length, setLength] = useState(formatLength(segment.length_mm));
-    const [topRl, setTopRl] = useState(rlToInput(segment.top_rl));
-    const [bottomRl, setBottomRl] = useState(rlToInput(segment.bottom_rl));
     const [thickness, setThickness] = useState(
       formatLength(segment.thickness_mm),
     );
@@ -204,8 +236,6 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
     useEffect(() => {
       setLabel(segment.label ?? "");
       setLength(formatLength(segment.length_mm));
-      setTopRl(rlToInput(segment.top_rl));
-      setBottomRl(rlToInput(segment.bottom_rl));
       setThickness(formatLength(segment.thickness_mm));
       setNotes(segment.notes ?? "");
     }, [segment]);
@@ -214,29 +244,9 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
       await onSave(patch);
     }
 
-    const topNum = parseFloat(topRl);
-    const botNum = parseFloat(bottomRl);
-    const computedHeightMm =
-      Number.isFinite(topNum) && Number.isFinite(botNum)
-        ? Math.round((topNum - botNum) * 1000)
-        : null;
-    // Show the RL-derived height; fall back to any stored height otherwise.
-    const displayHeightMm = computedHeightMm ?? segment.height_mm;
-
-    function commitRls() {
-      const top = Number.isFinite(topNum) ? topNum : null;
-      const bottom = Number.isFinite(botNum) ? botNum : null;
-      const heightMm =
-        top != null && bottom != null
-          ? Math.round((top - bottom) * 1000)
-          : null;
-      if (
-        top !== segment.top_rl ||
-        bottom !== segment.bottom_rl ||
-        heightMm !== segment.height_mm
-      ) {
-        void commit({ top_rl: top, bottom_rl: bottom, height_mm: heightMm });
-      }
+    function commitRlPairs(pairs: RlPair[]) {
+      if (pairsEqual(pairs, segment.rl_pairs ?? [])) return;
+      void commit({ rl_pairs: pairs, height_mm: averageHeightMm(pairs) });
     }
 
     return (
@@ -281,55 +291,38 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
           />
           <div
             className="text-right text-sm tabular-nums text-muted-foreground"
-            title="Computed from Top RL − Bottom RL"
+            title="Average of the per-pair RL heights"
           >
-            {displayHeightMm != null ? formatLength(displayHeightMm) : "—"}
+            {segment.height_mm != null ? formatLength(segment.height_mm) : "—"}
           </div>
         </div>
 
         {(selected || saving) && (
-          <div className="mt-2 space-y-2 border-t pt-2">
-            <div className="grid grid-cols-3 gap-2">
-              <RlField
-                label="Top RL"
-                value={topRl}
-                disabled={locked}
-                onChange={setTopRl}
-                onCommit={commitRls}
-              />
-              <RlField
-                label="Bottom RL"
-                value={bottomRl}
-                disabled={locked}
-                onChange={setBottomRl}
-                onCommit={commitRls}
-              />
-              <div className="grid gap-1">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Thick (m)
-                </span>
-                <LengthCell
-                  value={thickness}
-                  disabled={locked}
-                  onChange={setThickness}
-                  onCommit={() => {
-                    const v = parseLength(thickness);
-                    if (v !== segment.thickness_mm) {
-                      commit({ thickness_mm: v });
-                      setThickness(formatLength(v));
-                    }
-                  }}
-                />
-              </div>
-            </div>
-            <p className="px-1 text-[11px] text-muted-foreground">
-              Height = Top RL − Bottom RL ={" "}
-              <span className="font-medium text-foreground">
-                {computedHeightMm != null
-                  ? formatLength(computedHeightMm)
-                  : "enter both RLs"}
+          <div className="mt-2 space-y-3 border-t pt-2">
+            <RlPairEditor
+              value={segment.rl_pairs}
+              disabled={locked}
+              onChange={commitRlPairs}
+            />
+
+            <div className="grid w-36 gap-1">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Thickness (m)
               </span>
-            </p>
+              <LengthCell
+                value={thickness}
+                disabled={locked}
+                onChange={setThickness}
+                onCommit={() => {
+                  const v = parseLength(thickness);
+                  if (v !== segment.thickness_mm) {
+                    commit({ thickness_mm: v });
+                    setThickness(formatLength(v));
+                  }
+                }}
+              />
+            </div>
+
             <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
               {segment.user_added && (
                 <Badge variant="secondary">User added</Badge>
@@ -399,37 +392,122 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
   },
 );
 
-function RlField({
-  label,
+/** Editor for a wall's RL pairs — two rows by default (the wall's two ends),
+ *  with the option to add more where the slope changes mid-wall. Each pair
+ *  shows its own height; the average becomes the wall's height. */
+function RlPairEditor({
   value,
   disabled,
   onChange,
-  onCommit,
 }: {
-  label: string;
-  value: string;
+  value: RlPair[] | undefined;
   disabled?: boolean;
-  onChange: (v: string) => void;
-  onCommit: () => void;
+  onChange: (pairs: RlPair[]) => void;
 }) {
+  // Initialised once per mount — the editor mounts fresh each time a wall is
+  // selected, so it must not reset on its own saves (that clobbers typing).
+  const [rows, setRows] = useState<RlRow[]>(() => rlPairsToRows(value));
+
+  function update(i: number, key: "top" | "bottom", v: string) {
+    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
+  }
+  function addRow() {
+    setRows((rs) => [...rs, { top: "", bottom: "" }]);
+  }
+  function removeRow(i: number) {
+    const next = rows.filter((_, j) => j !== i);
+    setRows(next);
+    onChange(rowsToPairs(next));
+  }
+
+  const pairs = rowsToPairs(rows);
+  const avg = averageHeightMm(pairs);
+
   return (
-    <div className="grid gap-1">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
-      <Input
-        inputMode="decimal"
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onCommit}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        }}
-        placeholder="e.g. 67.90"
-        className="h-8 text-right tabular-nums"
-      />
+    <div className="space-y-1.5">
+      <div className="grid grid-cols-[1fr_1fr_56px_22px] gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span>Top RL</span>
+        <span>Bottom RL</span>
+        <span className="text-right">Height</span>
+        <span />
+      </div>
+      {rows.map((r, i) => {
+        const t = parseFloat(r.top);
+        const b = parseFloat(r.bottom);
+        const heightMm =
+          Number.isFinite(t) && Number.isFinite(b)
+            ? Math.round((t - b) * 1000)
+            : null;
+        return (
+          <div
+            key={i}
+            className="grid grid-cols-[1fr_1fr_56px_22px] items-center gap-1.5"
+          >
+            <Input
+              inputMode="decimal"
+              value={r.top}
+              disabled={disabled}
+              onChange={(e) => update(i, "top", e.target.value)}
+              onBlur={() => onChange(rowsToPairs(rows))}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="e.g. 66.70"
+              className="h-8 text-right tabular-nums"
+            />
+            <Input
+              inputMode="decimal"
+              value={r.bottom}
+              disabled={disabled}
+              onChange={(e) => update(i, "bottom", e.target.value)}
+              onBlur={() => onChange(rowsToPairs(rows))}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="e.g. 65.40"
+              className="h-8 text-right tabular-nums"
+            />
+            <span className="text-right text-xs tabular-nums">
+              {heightMm != null ? formatLength(heightMm) : "—"}
+            </span>
+            {rows.length > 2 && !disabled ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeRow(i);
+                }}
+                title="Remove this RL pair"
+                className="flex h-8 w-full items-center justify-center text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <span />
+            )}
+          </div>
+        );
+      })}
+      {!disabled && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            addRow();
+          }}
+          className="text-[11px] text-primary underline-offset-2 hover:underline"
+        >
+          + Add RL pair
+        </button>
+      )}
+      <p className="pt-0.5 text-[11px] text-muted-foreground">
+        Average height{" "}
+        <span className="font-medium text-foreground">
+          {avg != null ? formatLength(avg) : "enter both RLs"}
+        </span>
+      </p>
     </div>
   );
 }

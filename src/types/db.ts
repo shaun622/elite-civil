@@ -70,6 +70,10 @@ export type Units = "mm" | "m" | "ft" | "in" | "unknown";
 export type Bbox = [number, number, number, number];
 export type Point = [number, number];
 
+/** A reduced-level station on a wall: top-of-wall and bottom-of-wall RLs in
+ *  metres. A wall's height is the average of (top - bottom) over its pairs. */
+export type RlPair = { top: number; bottom: number };
+
 export interface Extraction {
   id: string;
   drawing_page_id: string;
@@ -110,8 +114,7 @@ export interface WallSegment {
   length_mm: number | null;
   height_mm: number | null;
   thickness_mm: number | null;
-  top_rl: number | null;
-  bottom_rl: number | null;
+  rl_pairs: RlPair[];
   polyline: Point[];
   label_bbox: Bbox | null;
   source_dimension_ids: string[];
@@ -131,8 +134,7 @@ export type WallSegmentUpdate = Partial<{
   thickness_mm: number | null;
   notes: string | null;
   polyline: Point[];
-  top_rl: number | null;
-  bottom_rl: number | null;
+  rl_pairs: RlPair[];
 }>;
 
 export interface ExtractionBundle {
