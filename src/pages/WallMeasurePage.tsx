@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, MousePointerClick, Sparkles, X } from "lucide-react";
 import { Header } from "@/components/layout/Header";
@@ -68,6 +68,37 @@ export function WallMeasurePage() {
   const [aiLots, setAiLots] = useState<AnalyzeLot[]>([]);
   const [aiRls, setAiRls] = useState<AnalyzeRl[]>([]);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+  // Distinct stroke colours present on the page, most common first — the
+  // palette the user picks wall colours from.
+  const palette = useMemo(() => {
+    if (!vectors) return [] as { color: string; count: number }[];
+    const counts = new Map<string, number>();
+    for (const p of vectors.paths) {
+      const c = p.color.toLowerCase();
+      counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .filter(([c]) => c !== "#ffffff")
+      .map(([color, count]) => ({ color, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [vectors]);
+
+  function addWallColor(color: string) {
+    setWallTypes((prev) =>
+      prev.some((w) => w.color === color)
+        ? prev
+        : [...prev, { color, typeLabel: `Wall type ${prev.length + 1}` }],
+    );
+  }
+
+  function toggleWallColor(color: string) {
+    setWallTypes((prev) =>
+      prev.some((w) => w.color === color)
+        ? prev.filter((w) => w.color !== color)
+        : [...prev, { color, typeLabel: `Wall type ${prev.length + 1}` }],
+    );
+  }
 
   // Load the page's PDF from storage.
   useEffect(() => {
@@ -141,14 +172,15 @@ export function WallMeasurePage() {
   useEffect(() => {
     if (!vectors) return;
     const highlight = new Set(wallTypes.map((w) => w.color));
-    setDisplayScale(redraw(vectors, calibPoints, highlight));
+    setDisplayScale(redraw(vectors, calibPoints, highlight, picking));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vectors, calibPoints, wallTypes]);
+  }, [vectors, calibPoints, wallTypes, picking]);
 
   function redraw(
     v: PageVectors,
     points: [number, number][],
     highlight: Set<string>,
+    picking: boolean,
   ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
@@ -162,24 +194,36 @@ export function WallMeasurePage() {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    // With wall types chosen, fade everything else and draw the matching
-    // linework bold on top so the picked walls stand out.
+    const drawPath = (
+      path: PageVectors["paths"][number],
+      color: string,
+      width: number,
+    ) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      const p = path.points;
+      ctx.moveTo(p[0] * ds, p[1] * ds);
+      for (let k = 2; k + 1 < p.length; k += 2) {
+        ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+      }
+      ctx.stroke();
+    };
+
+    // Picked wall colours draw bold. While picking, the rest keeps its true
+    // colour so every wall is visible to aim at; once picking is off, the
+    // rest fades so the chosen walls can be verified at a glance.
     const hasHi = highlight.size > 0;
-    for (const pass of [0, 1]) {
+    const fade = hasHi && !picking;
+    for (const path of v.paths) {
+      if (hasHi && highlight.has(path.color.toLowerCase())) continue;
+      drawPath(path, fade ? "#e6e6e6" : path.color, 0.7);
+    }
+    if (hasHi) {
       for (const path of v.paths) {
-        const match = hasHi && highlight.has(path.color.toLowerCase());
-        if (hasHi && pass === 0 && match) continue;
-        if (hasHi && pass === 1 && !match) continue;
-        if (!hasHi && pass === 1) continue;
-        ctx.strokeStyle = hasHi && !match ? "#e6e6e6" : path.color;
-        ctx.lineWidth = match ? 2.5 : 0.7;
-        ctx.beginPath();
-        const p = path.points;
-        ctx.moveTo(p[0] * ds, p[1] * ds);
-        for (let k = 2; k + 1 < p.length; k += 2) {
-          ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+        if (highlight.has(path.color.toLowerCase())) {
+          drawPath(path, path.color, 2.5);
         }
-        ctx.stroke();
       }
     }
     // Calibration markers: a dashed line between the two points, with a
@@ -224,14 +268,7 @@ export function WallMeasurePage() {
     if (picking) {
       // Sample the colour of the wall line nearest the click.
       const hit = nearestPath(vectors.paths, cx, cy, 12 / displayScale);
-      if (hit) {
-        const color = hit.color.toLowerCase();
-        setWallTypes((prev) =>
-          prev.some((w) => w.color === color)
-            ? prev
-            : [...prev, { color, typeLabel: `Wall type ${prev.length + 1}` }],
-        );
-      }
+      if (hit) addWallColor(hit.color.toLowerCase());
       return;
     }
 
@@ -529,9 +566,40 @@ export function WallMeasurePage() {
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">2 · Wall types</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Click a retaining wall on the drawing to add its colour as
-                  a wall type. Auto-detect pre-fills these from the legend.
+                  Pick the colours your retaining walls are drawn in. Each one
+                  is highlighted on the drawing so you can confirm it before
+                  measuring.
                 </p>
+
+                {palette.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Colours on this drawing
+                    </p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {palette.map((c) => {
+                        const picked = wallTypes.some(
+                          (w) => w.color === c.color,
+                        );
+                        return (
+                          <button
+                            key={c.color}
+                            type="button"
+                            title={`${c.color} · ${c.count} lines`}
+                            onClick={() => toggleWallColor(c.color)}
+                            className={`h-7 w-7 rounded border ${
+                              picked
+                                ? "ring-2 ring-foreground ring-offset-1"
+                                : "border-border"
+                            }`}
+                            style={{ background: c.color }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <Button
                   size="sm"
                   variant={picking ? "default" : "outline"}
@@ -540,15 +608,11 @@ export function WallMeasurePage() {
                 >
                   <MousePointerClick className="h-3.5 w-3.5" />
                   {picking
-                    ? "Click a wall on the drawing…"
-                    : "Pick wall by clicking"}
+                    ? "Clicking the drawing…"
+                    : "Or click a wall on the drawing"}
                 </Button>
 
-                {wallTypes.length === 0 ? (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    No wall types yet — pick one above, or run Auto-detect.
-                  </p>
-                ) : (
+                {wallTypes.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {wallTypes.map((wt, i) => (
                       <div key={wt.color} className="flex items-center gap-2">
