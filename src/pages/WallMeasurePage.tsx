@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, MousePointerClick, Sparkles, X } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import {
   extractPageVectors,
+  nearestPath,
   nearestVertex,
   type PageVectors,
 } from "@/lib/pdfVectors";
@@ -60,9 +60,8 @@ export function WallMeasurePage() {
   const [mmPerPx, setMmPerPx] = useState<number | null>(null);
   const [snap, setSnap] = useState(true);
 
-  const [colorText, setColorText] = useState(
-    "#dd6e00 Type 1\n#ff00bf Type 2\n#b80000 Type 3",
-  );
+  const [wallTypes, setWallTypes] = useState<WallColorSpec[]>([]);
+  const [picking, setPicking] = useState(false);
   const [scaleText, setScaleText] = useState("");
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -141,11 +140,16 @@ export function WallMeasurePage() {
   // Draw the linework once the canvas has mounted (i.e. vectors are ready).
   useEffect(() => {
     if (!vectors) return;
-    setDisplayScale(redraw(vectors, calibPoints));
+    const highlight = new Set(wallTypes.map((w) => w.color));
+    setDisplayScale(redraw(vectors, calibPoints, highlight));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vectors]);
+  }, [vectors, calibPoints, wallTypes]);
 
-  function redraw(v: PageVectors, points: [number, number][]): number {
+  function redraw(
+    v: PageVectors,
+    points: [number, number][],
+    highlight: Set<string>,
+  ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
     const ds = Math.min(1, 1400 / v.width);
@@ -157,16 +161,26 @@ export function WallMeasurePage() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    for (const path of v.paths) {
-      ctx.strokeStyle = path.color;
-      ctx.lineWidth = 0.7;
-      ctx.beginPath();
-      const p = path.points;
-      ctx.moveTo(p[0] * ds, p[1] * ds);
-      for (let k = 2; k + 1 < p.length; k += 2) {
-        ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+
+    // With wall types chosen, fade everything else and draw the matching
+    // linework bold on top so the picked walls stand out.
+    const hasHi = highlight.size > 0;
+    for (const pass of [0, 1]) {
+      for (const path of v.paths) {
+        const match = hasHi && highlight.has(path.color.toLowerCase());
+        if (hasHi && pass === 0 && match) continue;
+        if (hasHi && pass === 1 && !match) continue;
+        if (!hasHi && pass === 1) continue;
+        ctx.strokeStyle = hasHi && !match ? "#e6e6e6" : path.color;
+        ctx.lineWidth = match ? 2.5 : 0.7;
+        ctx.beginPath();
+        const p = path.points;
+        ctx.moveTo(p[0] * ds, p[1] * ds);
+        for (let k = 2; k + 1 < p.length; k += 2) {
+          ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     }
     // Calibration markers: a dashed line between the two points, with a
     // white-haloed violet vertical tick at each so it lines up precisely
@@ -204,11 +218,28 @@ export function WallMeasurePage() {
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!vectors) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    let x = (e.clientX - rect.left) / displayScale;
-    let y = (e.clientY - rect.top) / displayScale;
+    const cx = (e.clientX - rect.left) / displayScale;
+    const cy = (e.clientY - rect.top) / displayScale;
+
+    if (picking) {
+      // Sample the colour of the wall line nearest the click.
+      const hit = nearestPath(vectors.paths, cx, cy, 12 / displayScale);
+      if (hit) {
+        const color = hit.color.toLowerCase();
+        setWallTypes((prev) =>
+          prev.some((w) => w.color === color)
+            ? prev
+            : [...prev, { color, typeLabel: `Wall type ${prev.length + 1}` }],
+        );
+      }
+      return;
+    }
+
+    // Calibration click — snap onto exact drawing geometry (scale-bar
+    // ticks, wall corners) so the distance is precise, not freehand.
+    let x = cx;
+    let y = cy;
     if (snap) {
-      // Snap onto exact drawing geometry (scale-bar ticks, wall corners)
-      // so the calibration distance is precise, not freehand.
       const v = nearestVertex(vectors.paths, x, y, 14 / displayScale);
       if (v) {
         x = v[0];
@@ -219,7 +250,6 @@ export function WallMeasurePage() {
       calibPoints.length >= 2 ? [[x, y]] : [...calibPoints, [x, y]];
     setCalibPoints(next);
     setMmPerPx(null);
-    redraw(vectors, next);
   }
 
   function setCalibration() {
@@ -265,11 +295,9 @@ export function WallMeasurePage() {
       if (sb.found && sb.p0 && sb.p1 && sb.length_m && sb.length_m > 0) {
         const px = Math.hypot(sb.p0[0] - sb.p1[0], sb.p0[1] - sb.p1[1]);
         if (px >= 1) {
-          const pts: [number, number][] = [sb.p0, sb.p1];
-          setCalibPoints(pts);
+          setCalibPoints([sb.p0, sb.p1]);
           setKnownDist(String(sb.length_m));
           setMmPerPx((sb.length_m * 1000) / px);
-          redraw(vectors, pts);
         }
       }
 
@@ -277,11 +305,14 @@ export function WallMeasurePage() {
 
       if (ai.wall_colors.length > 0) {
         const palette = distinctVectorColors(vectors.paths);
-        const lines = ai.wall_colors.map((c) => {
+        const detected: WallColorSpec[] = [];
+        for (const c of ai.wall_colors) {
           const snapped = snapHexToColors(c.hex, palette);
-          return `${snapped ?? c.hex.toLowerCase()} ${c.type_label}`;
-        });
-        setColorText(lines.join("\n"));
+          if (snapped && !detected.some((d) => d.color === snapped)) {
+            detected.push({ color: snapped, typeLabel: c.type_label });
+          }
+        }
+        if (detected.length > 0) setWallTypes(detected);
       }
 
       setAiLots(ai.lots);
@@ -299,24 +330,14 @@ export function WallMeasurePage() {
     }
   }
 
-  function parseColorSpecs(): WallColorSpec[] {
-    const specs: WallColorSpec[] = [];
-    for (const line of colorText.split("\n")) {
-      const m = line.trim().match(/^(#[0-9a-fA-F]{6})\s+(.+)$/);
-      if (m) specs.push({ color: m[1].toLowerCase(), typeLabel: m[2].trim() });
-    }
-    return specs;
-  }
-
   async function measureAndSave() {
     if (!pdfBuffer || !user || !pageId || !projectId) return;
     if (mmPerPx === null) {
       setError("Calibrate the scale first.");
       return;
     }
-    const wallColors = parseColorSpecs();
-    if (wallColors.length === 0) {
-      setError("Add at least one wall colour line (e.g. '#dd6e00 Type 1').");
+    if (wallTypes.length === 0) {
+      setError("Add at least one wall type — click a wall on the drawing.");
       return;
     }
     setError(null);
@@ -325,7 +346,7 @@ export function WallMeasurePage() {
       const measured = await extractWallsFromPdfPage(
         pdfBuffer.slice(0),
         pageNumber,
-        { wallColors, mmPerPx },
+        { wallColors: wallTypes, mmPerPx },
       );
       if (measured.length === 0) {
         throw new Error(
@@ -365,9 +386,8 @@ export function WallMeasurePage() {
           Measure walls from PDF
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Calibrate the scale by clicking two points a known distance apart
-          (the scale bar is ideal), confirm the wall colours, then measure.
-          Lengths come straight from the drawing's vector geometry.
+          Calibrate the scale, click a retaining wall to pick its type, then
+          measure. Lengths come straight from the drawing's vector geometry.
         </p>
 
         {error && (
@@ -385,12 +405,20 @@ export function WallMeasurePage() {
 
         {!loading && vectors && (
           <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]">
-            <div className="overflow-auto rounded-lg border bg-white">
-              <canvas
-                ref={canvasRef}
-                onClick={onCanvasClick}
-                className="block cursor-crosshair"
-              />
+            <div>
+              {picking && (
+                <div className="mb-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-900">
+                  Click any retaining wall to add its colour as a wall type.
+                  Toggle "Pick wall by clicking" off when you're done.
+                </div>
+              )}
+              <div className="overflow-auto rounded-lg border bg-white">
+                <canvas
+                  ref={canvasRef}
+                  onClick={onCanvasClick}
+                  className="block cursor-crosshair"
+                />
+              </div>
             </div>
 
             <div className="space-y-5">
@@ -499,17 +527,67 @@ export function WallMeasurePage() {
               </section>
 
               <section className="rounded-lg border bg-card p-4">
-                <h2 className="text-sm font-semibold">2 · Wall colours</h2>
+                <h2 className="text-sm font-semibold">2 · Wall types</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  One per line: hex colour, then the type label.
+                  Click a retaining wall on the drawing to add its colour as
+                  a wall type. Auto-detect pre-fills these from the legend.
                 </p>
-                <Textarea
-                  value={colorText}
-                  onChange={(e) => setColorText(e.target.value)}
-                  rows={4}
-                  className="mt-2 font-mono text-xs"
-                />
-                <div className="mt-3 grid gap-1.5">
+                <Button
+                  size="sm"
+                  variant={picking ? "default" : "outline"}
+                  className="mt-3 gap-1.5"
+                  onClick={() => setPicking((p) => !p)}
+                >
+                  <MousePointerClick className="h-3.5 w-3.5" />
+                  {picking
+                    ? "Click a wall on the drawing…"
+                    : "Pick wall by clicking"}
+                </Button>
+
+                {wallTypes.length === 0 ? (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    No wall types yet — pick one above, or run Auto-detect.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {wallTypes.map((wt, i) => (
+                      <div key={wt.color} className="flex items-center gap-2">
+                        <span
+                          className="h-6 w-6 shrink-0 rounded border"
+                          style={{ background: wt.color }}
+                          title={wt.color}
+                        />
+                        <Input
+                          value={wt.typeLabel}
+                          onChange={(e) =>
+                            setWallTypes((prev) =>
+                              prev.map((w, j) =>
+                                j === i
+                                  ? { ...w, typeLabel: e.target.value }
+                                  : w,
+                              ),
+                            )
+                          }
+                          className="h-8"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWallTypes((prev) =>
+                              prev.filter((_, j) => j !== i),
+                            )
+                          }
+                          title="Remove this wall type"
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-4 grid gap-1.5">
                   <Label htmlFor="scaleText" className="text-xs">
                     Scale note (optional)
                   </Label>

@@ -2,8 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { loadPdf } from "@/lib/pdfRender";
 import {
   extractPageVectors,
-  measureWallRuns,
-  pathOBB,
+  measureWalls,
   type VectorPath,
 } from "@/lib/pdfVectors";
 import type { AnalyzeLot, AnalyzeRl } from "@/lib/api/analyzeDrawing";
@@ -54,9 +53,6 @@ export type ExtractWallsOptions = {
   wallColors: WallColorSpec[];
   /** Millimetres of real-world distance per device pixel (at VECTOR_SCALE). */
   mmPerPx: number;
-  minPieceLengthM?: number;
-  minThicknessM?: number;
-  maxGapM?: number;
 };
 
 /** Extract + measure retaining walls from one PDF page's vector geometry. */
@@ -71,43 +67,28 @@ export async function extractWallsFromPdfPage(
   const vectors = await extractPageVectors(pdf, pageNumber, VECTOR_SCALE);
 
   const { mmPerPx } = opts;
-  const minLenPx = ((opts.minPieceLengthM ?? 1.5) * 1000) / mmPerPx;
-  const minThickPx = ((opts.minThicknessM ?? 0.1) * 1000) / mmPerPx;
-  const maxGapPx = ((opts.maxGapM ?? 5) * 1000) / mmPerPx;
-
   const typeByColor = new Map(
     opts.wallColors.map((w) => [w.color.toLowerCase(), w.typeLabel]),
   );
   const colors = new Set(typeByColor.keys());
 
-  const runs = measureWallRuns(
-    vectors.paths,
-    colors,
-    minLenPx,
-    minThickPx,
-    maxGapPx,
-  );
+  const runs = measureWalls(vectors.paths, colors);
 
-  return runs.map((run) => {
-    // Centreline = the run's whole-chain OBB long axis as a 2-point line.
-    const allPoints: number[] = [];
-    for (const p of run.paths) allPoints.push(...p.points);
-    const obb = pathOBB(allPoints);
-    const ux = Math.cos(obb.angle);
-    const uy = Math.sin(obb.angle);
-    const hl = obb.length / 2;
-    // Two [x,y] pairs — the shape the review overlay + exports expect.
-    const polyline: [number, number][] = [
-      [obb.cx - ux * hl, obb.cy - uy * hl],
-      [obb.cx + ux * hl, obb.cy + uy * hl],
-    ];
-    return {
-      color: run.color.toLowerCase(),
-      typeLabel: typeByColor.get(run.color.toLowerCase()) ?? "Wall",
-      polyline,
-      lengthMm: run.lengthPx * mmPerPx,
-    };
-  });
+  return runs.map((run) => ({
+    color: run.color.toLowerCase(),
+    typeLabel: typeByColor.get(run.color.toLowerCase()) ?? "Wall",
+    polyline: flatToPairs(run.polyline),
+    lengthMm: run.lengthPx * mmPerPx,
+  }));
+}
+
+/** Flat [x0,y0,x1,y1,...] → [x,y] pairs. */
+function flatToPairs(flat: number[]): [number, number][] {
+  const pairs: [number, number][] = [];
+  for (let k = 0; k + 1 < flat.length; k += 2) {
+    pairs.push([flat[k], flat[k + 1]]);
+  }
+  return pairs;
 }
 
 export type SaveVectorWallsResult = {

@@ -451,8 +451,11 @@ export function polylineLength(points: number[]): number {
 
 export type WallRun = {
   color: string;
+  /** Source vector paths that make up this run. */
   paths: VectorPath[];
-  /** Total length of all segments in this run, in device pixels. */
+  /** Reconstructed centreline as a flat [x0,y0,x1,y1,...] polyline (px). */
+  polyline: number[];
+  /** True wall length measured along the centreline, in device pixels. */
   lengthPx: number;
 };
 
@@ -496,94 +499,10 @@ export function bucketPaths(
   return [...buckets.values()].sort((a, b) => b.lengthPx - a.lengthPx);
 }
 
-/**
- * Group stroked paths into wall runs. Only paths whose colour is in
- * `colors` are considered; same-colour paths whose endpoints touch
- * (within `tolerancePx`) are merged into one run via union-find.
- */
-export function groupIntoRuns(
-  paths: VectorPath[],
-  colors: Set<string>,
-  tolerancePx = 3,
-): WallRun[] {
-  const subset = paths.filter((p) => colors.has(p.color.toLowerCase()));
-  const n = subset.length;
-  if (n === 0) return [];
-
-  const parent = subset.map((_, i) => i);
-  const find = (i: number): number => {
-    let r = i;
-    while (parent[r] !== r) r = parent[r];
-    while (parent[i] !== r) {
-      const next = parent[i];
-      parent[i] = r;
-      i = next;
-    }
-    return r;
-  };
-  const union = (a: number, b: number) => {
-    parent[find(a)] = find(b);
-  };
-
-  const ends = subset.map((p) => {
-    const len = p.points.length;
-    return [
-      [p.points[0], p.points[1]],
-      [p.points[len - 2], p.points[len - 1]],
-    ];
-  });
-  const t2 = tolerancePx * tolerancePx;
-
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      if (subset[i].color.toLowerCase() !== subset[j].color.toLowerCase()) {
-        continue;
-      }
-      let connected = false;
-      for (const ei of ends[i]) {
-        for (const ej of ends[j]) {
-          const dx = ei[0] - ej[0];
-          const dy = ei[1] - ej[1];
-          if (dx * dx + dy * dy <= t2) {
-            connected = true;
-            break;
-          }
-        }
-        if (connected) break;
-      }
-      if (connected) union(i, j);
-    }
-  }
-
-  const groups = new Map<number, number[]>();
-  for (let i = 0; i < n; i++) {
-    const root = find(i);
-    const arr = groups.get(root);
-    if (arr) arr.push(i);
-    else groups.set(root, [i]);
-  }
-
-  const runs: WallRun[] = [];
-  for (const idxs of groups.values()) {
-    const runPaths = idxs.map((i) => subset[i]);
-    const lengthPx = runPaths.reduce(
-      (sum, p) => sum + polylineLength(p.points),
-      0,
-    );
-    runs.push({ color: runPaths[0].color, paths: runPaths, lengthPx });
-  }
-  return runs.sort((a, b) => b.lengthPx - a.lengthPx);
-}
-
 /* ============================================================
- * OBB-based wall measurement.
- *
- * Walls on this drawing are filled closed polygons (closeFillStroke),
- * so a polyline length measures the *perimeter*. Instead, each path's
- * length is its oriented-bounding-box long axis. Short shapes (batter
- * ticks) are dropped, surviving wall pieces are clustered by bounding-box
- * proximity, and a wall's length is the SUM of its pieces' long axes
- * (which stays correct around corners).
+ * Oriented bounding box — used to measure a filled-polygon wall by its
+ * long axis (a filled shape's polyline length is its perimeter, not its
+ * run length).
  * ============================================================ */
 
 export type Obb = {
@@ -660,101 +579,318 @@ export function pathDimensions(
     });
 }
 
+/* ============================================================
+ * Wall measurement — group wall-coloured linework into measured runs.
+ *
+ * Retaining walls are colour-coded linework. They may be drawn as thin
+ * stroked lines (often a dashed / dash-dot linetype exploded into many
+ * short segments) or, on some drawings, as filled blocks. This:
+ *   1. Reduces every wall-coloured path to a measurable centreline piece.
+ *   2. Chains pieces whose ends meet — bridging dash gaps, following
+ *      corners — into one run per physical wall, without merging walls
+ *      that merely cross or run parallel.
+ *   3. Reconstructs each run's centreline and measures its true length.
+ * ============================================================ */
+
+/** A wall-coloured path reduced to a measurable centreline piece. */
+type WallPiece = {
+  path: VectorPath;
+  /** Ordered centreline points (flat) — the stroked path itself, or the
+   *  long axis of the oriented bounding box for a filled shape. */
+  pts: number[];
+  /** The two endpoints of `pts`. */
+  a: [number, number];
+  b: [number, number];
+  /** Centreline length of this piece, device px. */
+  length: number;
+};
+
+function toWallPiece(path: VectorPath): WallPiece {
+  if (/fill/i.test(path.paintOp)) {
+    // Filled block — its outline's polyline length is a perimeter, so
+    // measure the long axis of its oriented bounding box instead.
+    const obb = pathOBB(path.points);
+    const ux = Math.cos(obb.angle);
+    const uy = Math.sin(obb.angle);
+    const hl = obb.length / 2;
+    const a: [number, number] = [obb.cx - ux * hl, obb.cy - uy * hl];
+    const b: [number, number] = [obb.cx + ux * hl, obb.cy + uy * hl];
+    return { path, pts: [a[0], a[1], b[0], b[1]], a, b, length: obb.length };
+  }
+  const p = path.points;
+  const a: [number, number] = [p[0], p[1]];
+  const b: [number, number] = [p[p.length - 2], p[p.length - 1]];
+  return { path, pts: p, a, b, length: polylineLength(p) };
+}
+
+/** Shortest distance from a point to a segment, device px. */
+function pointSegDist(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
 /**
- * Measure walls. The retaining walls are drawn as thick *dashed* lines, so
- * each dash is a separate filled rectangle. This:
- *   1. Keeps only pieces that look like wall dashes (length / width above
- *      the given minimums — drops batter ticks and height-label glyphs).
- *   2. Clusters dashes that are collinear and sequential along the same
- *      line into one wall run (bridging the dash gaps).
- *   3. Measures each run by the bounding box of the whole dash chain — so
- *      the gaps between dashes are counted, giving the true wall length.
+ * Gap tolerance for chaining the pieces of one wall, derived from the
+ * linework itself: most piece endpoints sit one linetype-gap from their
+ * neighbour, so the bulk of nearest-neighbour distances *is* that gap.
  */
-export function measureWallRuns(
-  paths: VectorPath[],
-  colors: Set<string>,
-  minPieceLengthPx: number,
-  minPieceWidthPx: number,
-  maxGapPx: number,
-): WallRun[] {
-  const pieces = paths
-    .filter((p) => colors.has(p.color.toLowerCase()))
-    .map((p) => ({ path: p, obb: pathOBB(p.points) }))
-    .filter(
-      (x) =>
-        x.obb.length >= minPieceLengthPx && x.obb.width >= minPieceWidthPx,
-    );
+function autoGapPx(pieces: WallPiece[]): number {
+  const FALLBACK = 10;
+  if (pieces.length < 4) return FALLBACK;
+  const eps: { x: number; y: number; pi: number }[] = [];
+  pieces.forEach((p, i) => {
+    eps.push({ x: p.a[0], y: p.a[1], pi: i });
+    eps.push({ x: p.b[0], y: p.b[1], pi: i });
+  });
+  const nn: number[] = [];
+  for (const e of eps) {
+    let best = Infinity;
+    for (const f of eps) {
+      if (f.pi === e.pi) continue;
+      const d = Math.hypot(e.x - f.x, e.y - f.y);
+      if (d < best) best = d;
+    }
+    if (Number.isFinite(best)) nn.push(best);
+  }
+  if (nn.length === 0) return FALLBACK;
+  nn.sort((a, b) => a - b);
+  const p75 = nn[Math.min(nn.length - 1, Math.floor(nn.length * 0.75))];
+  return Math.min(Math.max(p75 * 1.6, 5), 80);
+}
 
+/** Closest endpoint pairing between two pieces. */
+function bestEndpointLink(
+  pi: WallPiece,
+  pj: WallPiece,
+): { d: number; iEnd: number; jEnd: number } {
+  const ei: [number, number][] = [pi.a, pi.b];
+  const ej: [number, number][] = [pj.a, pj.b];
+  let bd = Infinity;
+  let bi = 0;
+  let bj = 0;
+  for (let x = 0; x < 2; x++) {
+    for (let y = 0; y < 2; y++) {
+      const d = Math.hypot(ei[x][0] - ej[y][0], ei[x][1] - ej[y][1]);
+      if (d < bd) {
+        bd = d;
+        bi = x;
+        bj = y;
+      }
+    }
+  }
+  return { d: bd, iEnd: bi, jEnd: bj };
+}
+
+/** Unit heading at one end of a piece — toward the join (`into`) or away. */
+function heading(
+  p: WallPiece,
+  endIdx: number,
+  into: boolean,
+): [number, number] {
+  const ep = endIdx === 0 ? p.a : p.b;
+  const fp = endIdx === 0 ? p.b : p.a;
+  const dx = into ? ep[0] - fp[0] : fp[0] - ep[0];
+  const dy = into ? ep[1] - fp[1] : fp[1] - ep[1];
+  const m = Math.hypot(dx, dy) || 1;
+  return [dx / m, dy / m];
+}
+
+/** Chain pieces of one colour into runs (returns arrays of piece indices). */
+function connectPieces(pieces: WallPiece[], gapPx: number): number[][] {
   const n = pieces.length;
-  if (n === 0) return [];
-
   const parent = pieces.map((_, i) => i);
-  const find = (i: number): number => {
+  function find(i: number): number {
     let r = i;
     while (parent[r] !== r) r = parent[r];
     while (parent[i] !== r) {
-      const next = parent[i];
+      const nx = parent[i];
       parent[i] = r;
-      i = next;
+      i = nx;
     }
     return r;
-  };
-  const union = (a: number, b: number) => {
-    parent[find(a)] = find(b);
-  };
+  }
 
-  const MAX_ANGLE = (14 * Math.PI) / 180;
-  // Perpendicular tolerance: dashes of one wall sit on a shared centreline.
-  // Keep it tight so a parallel neighbouring wall doesn't merge in.
-  const maxPerpPx = Math.max(minPieceWidthPx * 1.5, 4);
+  const WELD = 2.5;
+  const ANGLE_TOL = Math.cos((52 * Math.PI) / 180);
+  const shortLimit = gapPx * 1.5;
 
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const pi = pieces[i];
-      const pj = pieces[j];
-      if (pi.path.color.toLowerCase() !== pj.path.color.toLowerCase()) {
-        continue;
+      if (find(i) === find(j)) continue;
+      const link = bestEndpointLink(pieces[i], pieces[j]);
+      if (link.d > gapPx) continue;
+      let join = link.d <= WELD;
+      if (!join) {
+        const dotLike =
+          pieces[i].length < shortLimit || pieces[j].length < shortLimit;
+        if (dotLike) {
+          // A dot is too short to have a reliable direction — chain it on
+          // proximity alone; it sits between two dashes of its own wall.
+          join = true;
+        } else {
+          // Two real dashes only chain if one continues the other's line,
+          // so a wall that merely crosses or runs parallel is not merged.
+          const di = heading(pieces[i], link.iEnd, true);
+          const dj = heading(pieces[j], link.jEnd, false);
+          join = di[0] * dj[0] + di[1] * dj[1] >= ANGLE_TOL;
+        }
       }
-      // Collinear?
-      let da = Math.abs(pi.obb.angle - pj.obb.angle) % Math.PI;
-      if (da > Math.PI / 2) da = Math.PI - da;
-      if (da > MAX_ANGLE) continue;
-
-      const ux = Math.cos(pi.obb.angle);
-      const uy = Math.sin(pi.obb.angle);
-      const dx = pj.obb.cx - pi.obb.cx;
-      const dy = pj.obb.cy - pi.obb.cy;
-      const perp = Math.abs(-dx * uy + dy * ux);
-      if (perp > maxPerpPx) continue;
-
-      const along = Math.abs(dx * ux + dy * uy);
-      const gap = along - pi.obb.length / 2 - pj.obb.length / 2;
-      if (gap > maxGapPx) continue;
-
-      union(i, j);
+      if (join) parent[find(i)] = find(j);
     }
   }
 
   const groups = new Map<number, number[]>();
   for (let i = 0; i < n; i++) {
-    const root = find(i);
-    const arr = groups.get(root);
+    const r = find(i);
+    const arr = groups.get(r);
     if (arr) arr.push(i);
-    else groups.set(root, [i]);
+    else groups.set(r, [i]);
+  }
+  return [...groups.values()];
+}
+
+/** Walk a run's pieces end to end, returning the centreline as a flat
+ *  polyline — piece lengths plus the bridged gaps between them. */
+function traceRun(pieces: WallPiece[]): number[] {
+  if (pieces.length === 1) return pieces[0].pts.slice();
+
+  // The two endpoints furthest apart are the wall's ends — start at one.
+  const ends: [number, number][] = [];
+  for (const p of pieces) {
+    ends.push(p.a);
+    ends.push(p.b);
+  }
+  let sx = ends[0][0];
+  let sy = ends[0][1];
+  let far = -1;
+  for (let i = 0; i < ends.length; i++) {
+    for (let j = i + 1; j < ends.length; j++) {
+      const d = Math.hypot(ends[i][0] - ends[j][0], ends[i][1] - ends[j][1]);
+      if (d > far) {
+        far = d;
+        sx = ends[i][0];
+        sy = ends[i][1];
+      }
+    }
+  }
+
+  const used = new Array(pieces.length).fill(false);
+  const out: number[] = [sx, sy];
+  let cx = sx;
+  let cy = sy;
+  for (let step = 0; step < pieces.length; step++) {
+    let bi = -1;
+    let bend = 0;
+    let bd = Infinity;
+    for (let i = 0; i < pieces.length; i++) {
+      if (used[i]) continue;
+      const da = Math.hypot(pieces[i].a[0] - cx, pieces[i].a[1] - cy);
+      const db = Math.hypot(pieces[i].b[0] - cx, pieces[i].b[1] - cy);
+      if (da < bd) {
+        bd = da;
+        bi = i;
+        bend = 0;
+      }
+      if (db < bd) {
+        bd = db;
+        bi = i;
+        bend = 1;
+      }
+    }
+    if (bi < 0) break;
+    used[bi] = true;
+    const pts = pieces[bi].pts;
+    if (bend === 0) {
+      for (let k = 0; k + 1 < pts.length; k += 2) out.push(pts[k], pts[k + 1]);
+      cx = pieces[bi].b[0];
+      cy = pieces[bi].b[1];
+    } else {
+      for (let k = pts.length - 2; k >= 0; k -= 2) out.push(pts[k], pts[k + 1]);
+      cx = pieces[bi].a[0];
+      cy = pieces[bi].a[1];
+    }
+  }
+  return out;
+}
+
+/** Drop near-collinear interior vertices so the stored centreline keeps
+ *  only the wall's real corners (its length is preserved). */
+function simplifyFlat(flat: number[], epsPx: number): number[] {
+  const n = flat.length / 2;
+  if (n <= 2) return flat.slice();
+  const out: number[] = [flat[0], flat[1]];
+  for (let i = 1; i < n - 1; i++) {
+    const ax = out[out.length - 2];
+    const ay = out[out.length - 1];
+    const bx = flat[i * 2];
+    const by = flat[i * 2 + 1];
+    const cx = flat[(i + 1) * 2];
+    const cy = flat[(i + 1) * 2 + 1];
+    if (pointSegDist(bx, by, ax, ay, cx, cy) > epsPx) out.push(bx, by);
+  }
+  out.push(flat[(n - 1) * 2], flat[(n - 1) * 2 + 1]);
+  return out;
+}
+
+export type MeasureWallsOptions = {
+  /** Override the auto-derived gap tolerance (device px). */
+  gapPx?: number;
+  /** Drop runs shorter than this (device px). Default 0 — keep all. */
+  minRunLengthPx?: number;
+};
+
+/**
+ * Group a page's wall-coloured linework into measured wall runs. Each run
+ * is one physical wall: a chain of connected same-colour pieces, with its
+ * centreline reconstructed and its true length measured along it.
+ */
+export function measureWalls(
+  paths: VectorPath[],
+  colors: Set<string>,
+  opts: MeasureWallsOptions = {},
+): WallRun[] {
+  const wallPaths = paths.filter(
+    (p) => p.points.length >= 4 && colors.has(p.color.toLowerCase()),
+  );
+  if (wallPaths.length === 0) return [];
+
+  const allPieces = wallPaths.map(toWallPiece);
+  const gapPx = opts.gapPx ?? autoGapPx(allPieces);
+  const minRun = opts.minRunLengthPx ?? 0;
+
+  const byColor = new Map<string, WallPiece[]>();
+  for (const piece of allPieces) {
+    const c = piece.path.color.toLowerCase();
+    const arr = byColor.get(c);
+    if (arr) arr.push(piece);
+    else byColor.set(c, [piece]);
   }
 
   const runs: WallRun[] = [];
-  for (const idxs of groups.values()) {
-    const members = idxs.map((i) => pieces[i]);
-    // Length = long axis of the whole dash chain (spans the gaps).
-    const allPoints: number[] = [];
-    for (const m of members) allPoints.push(...m.path.points);
-    const lengthPx = pathOBB(allPoints).length;
-    runs.push({
-      color: members[0].path.color,
-      paths: members.map((m) => m.path),
-      lengthPx,
-    });
+  for (const [color, pieces] of byColor) {
+    for (const idxs of connectPieces(pieces, gapPx)) {
+      const traced = traceRun(idxs.map((i) => pieces[i]));
+      const polyline = simplifyFlat(traced, 1.5);
+      const lengthPx = polylineLength(polyline);
+      if (lengthPx < minRun) continue;
+      runs.push({
+        color,
+        paths: idxs.map((i) => pieces[i].path),
+        polyline,
+        lengthPx,
+      });
+    }
   }
   return runs.sort((a, b) => b.lengthPx - a.lengthPx);
 }
@@ -787,6 +923,32 @@ export function nearestVertex(
       if (d2 <= bestD2) {
         bestD2 = d2;
         best = [pts[k], pts[k + 1]];
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * The stroked path passing nearest to (x,y) within `maxDistPx`, by
+ * perpendicular distance to its segments — used for click-to-identify, so
+ * a click on a wall samples that wall's exact colour. Null if none is near.
+ */
+export function nearestPath(
+  paths: VectorPath[],
+  x: number,
+  y: number,
+  maxDistPx: number,
+): VectorPath | null {
+  let best: VectorPath | null = null;
+  let bestD = maxDistPx;
+  for (const p of paths) {
+    const pts = p.points;
+    for (let k = 0; k + 3 < pts.length; k += 2) {
+      const d = pointSegDist(x, y, pts[k], pts[k + 1], pts[k + 2], pts[k + 3]);
+      if (d < bestD) {
+        bestD = d;
+        best = p;
       }
     }
   }
