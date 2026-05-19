@@ -2,8 +2,6 @@ import { z } from "https://esm.sh/zod@3.23.8";
 
 const point = z.tuple([z.number(), z.number()]);
 
-// Two ticks on the graphic scale bar plus their real-world distance — used
-// to calibrate mm-per-pixel for the client-side vector measurement.
 export const ScaleBarSchema = z.object({
   found: z.boolean(),
   p0: point.nullable(),
@@ -11,21 +9,26 @@ export const ScaleBarSchema = z.object({
   length_m: z.number().nullable(),
 });
 
-// A retaining-wall type from the legend. `hex` is the model's best guess at
-// the legend swatch colour; the client snaps it to the PDF's real colours.
 export const WallColorSchema = z.object({
   type_label: z.string(),
   hex: z.string(),
 });
 
-// A lot number + the approximate pixel centre of that lot's area.
 export const LotSchema = z.object({
   name: z.string(),
   x: z.number(),
   y: z.number(),
 });
 
-export const AnalyzeResultSchema = z.object({
+/** A ground reduced level (spot height) and its pixel position. */
+export const RlSchema = z.object({
+  value: z.number(),
+  x: z.number(),
+  y: z.number(),
+});
+
+/** Whole-page pass: scale bar, legend colours and lot numbers. */
+export const PageResultSchema = z.object({
   scale_bar: ScaleBarSchema,
   scale_text: z.string().nullable(),
   wall_colors: z.array(WallColorSchema),
@@ -33,4 +36,11 @@ export const AnalyzeResultSchema = z.object({
   warnings: z.array(z.string()),
 });
 
-export type AnalyzeResult = z.infer<typeof AnalyzeResultSchema>;
+/** Per-tile pass: RL spot levels read at full resolution. */
+export const TileResultSchema = z.object({
+  rls: z.array(RlSchema),
+  warnings: z.array(z.string()),
+});
+
+export type PageResult = z.infer<typeof PageResultSchema>;
+export type TileResult = z.infer<typeof TileResultSchema>;

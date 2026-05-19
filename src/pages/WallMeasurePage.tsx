@@ -28,6 +28,7 @@ import {
 import {
   analyzeDrawingPage,
   type AnalyzeLot,
+  type AnalyzeRl,
 } from "@/lib/api/analyzeDrawing";
 import { parseScaleRatio } from "@/lib/api/review";
 
@@ -66,6 +67,7 @@ export function WallMeasurePage() {
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [aiLots, setAiLots] = useState<AnalyzeLot[]>([]);
+  const [aiRls, setAiRls] = useState<AnalyzeRl[]>([]);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
   // Load the page's PDF from storage.
@@ -249,11 +251,15 @@ export function WallMeasurePage() {
   }
 
   async function autoDetect() {
-    if (!pageId || !vectors) return;
+    if (!pageId || !pdfBuffer || !vectors) return;
     setError(null);
     setAnalyzing(true);
     try {
-      const ai = await analyzeDrawingPage(pageId);
+      const ai = await analyzeDrawingPage(
+        pageId,
+        pdfBuffer.slice(0),
+        pageNumber,
+      );
 
       const sb = ai.scale_bar;
       if (sb.found && sb.p0 && sb.p1 && sb.length_m && sb.length_m > 0) {
@@ -279,10 +285,12 @@ export function WallMeasurePage() {
       }
 
       setAiLots(ai.lots);
+      setAiRls(ai.rls);
       setAiSummary(
         `Detected: ${sb.found ? "scale bar" : "no scale bar"}, ` +
           `${ai.wall_colors.length} wall colour${ai.wall_colors.length === 1 ? "" : "s"}, ` +
-          `${ai.lots.length} lot${ai.lots.length === 1 ? "" : "s"}.`,
+          `${ai.lots.length} lot${ai.lots.length === 1 ? "" : "s"}, ` +
+          `${ai.rls.length} RL${ai.rls.length === 1 ? "" : "s"}.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Auto-detect failed.");
@@ -324,7 +332,7 @@ export function WallMeasurePage() {
           "No walls measured. Check the wall colours and calibration.",
         );
       }
-      const walls = fuseWallSemantics(measured, aiLots);
+      const walls = fuseWallSemantics(measured, aiLots, aiRls);
       await saveVectorWalls({
         drawingPageId: pageId,
         userId: user.id,
@@ -404,9 +412,9 @@ export function WallMeasurePage() {
                   </Button>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Reads the scale bar, legend colours and lot numbers off the
-                  drawing and fills in the steps below — then review and
-                  measure.
+                  Reads the scale bar, legend colours, lot numbers and the
+                  ground RLs off the drawing. Calibration and colours fill in
+                  below; the RLs are paired to each wall when you measure.
                 </p>
                 {aiSummary && (
                   <p className="mt-2 text-xs text-emerald-700">{aiSummary}</p>

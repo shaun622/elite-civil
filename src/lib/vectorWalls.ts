@@ -6,7 +6,8 @@ import {
   pathOBB,
   type VectorPath,
 } from "@/lib/pdfVectors";
-import type { AnalyzeLot } from "@/lib/api/analyzeDrawing";
+import type { AnalyzeLot, AnalyzeRl } from "@/lib/api/analyzeDrawing";
+import type { RlPair } from "@/types/db";
 
 /**
  * Stage I of the vector pipeline: turn a PDF page's vector linework into
@@ -45,6 +46,8 @@ export type MeasuredWall = {
   lengthMm: number;
   /** Lot the wall sits on, fused from the AI lot labels — Stage II. */
   lotName?: string | null;
+  /** RL pairs fused from the AI-read RLs — one per wall end. Stage II. */
+  rlPairs?: RlPair[];
 };
 
 export type ExtractWallsOptions = {
@@ -112,6 +115,13 @@ export type SaveVectorWallsResult = {
   wallCount: number;
 };
 
+/** Average wall height (mm) from RL pairs — null when there are none. */
+function rlPairsAvgHeightMm(pairs: RlPair[] | undefined): number | null {
+  if (!pairs || pairs.length === 0) return null;
+  const sum = pairs.reduce((s, p) => s + (p.top - p.bottom), 0);
+  return Math.round((sum / pairs.length) * 1000);
+}
+
 /**
  * Persist measured walls for a page: replaces any existing extraction with
  * a fresh `extractions` row + one `wall_segments` row per wall. Lengths come
@@ -127,9 +137,15 @@ export async function saveVectorWalls(opts: {
 }): Promise<SaveVectorWallsResult> {
   const { drawingPageId, userId, walls, scaleText, mmPerPx } = opts;
 
-  const warnings = [
-    "Lengths measured from PDF vector geometry. Enter Top RL and Bottom RL for each wall to set its height.",
-  ];
+  const withRls = walls.filter((w) => (w.rlPairs?.length ?? 0) > 0).length;
+  const warnings =
+    withRls > 0
+      ? [
+          `Lengths measured from PDF vector geometry. Top/Bottom RLs were auto-read from the drawing for ${withRls} of ${walls.length} walls — verify each wall's RLs before quoting.`,
+        ]
+      : [
+          "Lengths measured from PDF vector geometry. Enter Top RL and Bottom RL for each wall to set its height.",
+        ];
 
   // Clear any prior extraction (cascade removes its wall_segments / dims).
   const { error: delErr } = await supabase
@@ -173,8 +189,9 @@ export async function saveVectorWalls(opts: {
         ? `Lot ${wall.lotName} — ${wall.typeLabel}`
         : `${wall.typeLabel} wall ${n}`,
       length_mm: Math.round(wall.lengthMm),
-      height_mm: null,
+      height_mm: rlPairsAvgHeightMm(wall.rlPairs),
       thickness_mm: null,
+      rl_pairs: wall.rlPairs ?? [],
       polyline: wall.polyline,
       label_bbox: null,
       source_dimension_ids: [],
@@ -254,25 +271,51 @@ function wallMidpoint(polyline: [number, number][]): [number, number] {
 }
 
 /**
- * Name each measured wall by its nearest lot. Best-effort — a no-op when
- * `lots` is empty (walls keep their default type label).
+ * Attach AI-read semantics to measured walls: name each wall by its nearest
+ * lot, and pair the two RLs flanking each wall end into the wall's RL pairs
+ * (top = the higher level, bottom = the lower). Best-effort — walls with
+ * nothing nearby keep their default label and no RL pairs.
  */
 export function fuseWallSemantics(
   walls: MeasuredWall[],
   lots: AnalyzeLot[],
+  rls: AnalyzeRl[],
 ): MeasuredWall[] {
-  if (lots.length === 0) return walls;
+  // Max px from a wall end for an RL to count as belonging to that end.
+  const MAX_RL_DIST = 320;
   return walls.map((wall) => {
-    const [mx, my] = wallMidpoint(wall.polyline);
     let lotName: string | null = null;
-    let bestD = Infinity;
-    for (const lot of lots) {
-      const d = (lot.x - mx) ** 2 + (lot.y - my) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        lotName = lot.name;
+    if (lots.length > 0) {
+      const [mx, my] = wallMidpoint(wall.polyline);
+      let bestD = Infinity;
+      for (const lot of lots) {
+        const d = (lot.x - mx) ** 2 + (lot.y - my) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          lotName = lot.name;
+        }
       }
     }
-    return { ...wall, lotName };
+
+    const rlPairs: RlPair[] = [];
+    if (rls.length > 0 && wall.polyline.length >= 2) {
+      const ends = [
+        wall.polyline[0],
+        wall.polyline[wall.polyline.length - 1],
+      ];
+      for (const [ex, ey] of ends) {
+        const near = rls
+          .map((r) => ({ r, d: Math.hypot(r.x - ex, r.y - ey) }))
+          .filter((o) => o.d <= MAX_RL_DIST)
+          .sort((a, b) => a.d - b.d);
+        if (near.length >= 2) {
+          const v1 = near[0].r.value;
+          const v2 = near[1].r.value;
+          rlPairs.push({ top: Math.max(v1, v2), bottom: Math.min(v1, v2) });
+        }
+      }
+    }
+
+    return { ...wall, lotName, rlPairs };
   });
 }
