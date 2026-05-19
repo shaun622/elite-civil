@@ -50,6 +50,22 @@ export function ReviewPage() {
     setCalibPoints([]);
   }
 
+  // Add a wall by hand: drop a short placeholder line at the page centre,
+  // selected, for the user to drag onto the real wall (double-click the
+  // line to add a corner, double-click a handle to remove one).
+  async function addWall() {
+    if (!review.bundle) return;
+    const w = review.bundle.page.image_width;
+    const h = review.bundle.page.image_height;
+    const half = Math.max(40, w * 0.06);
+    const polyline: [number, number][] = [
+      [w / 2 - half, h / 2],
+      [w / 2 + half, h / 2],
+    ];
+    const created = await review.addSegment({ label: "New wall", polyline });
+    if (created) setSelectedSegmentId(created.id);
+  }
+
   if (!projectId || !pageId) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -223,7 +239,7 @@ export function ReviewPage() {
                   onSelect={setSelectedSegmentId}
                   onHover={setHoveredSegmentId}
                   onSave={review.saveSegment}
-                  onAdd={review.addSegment}
+                  onAdd={addWall}
                   onDelete={review.removeSegment}
                 />
                 <HeightBandSummary

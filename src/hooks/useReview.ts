@@ -93,8 +93,8 @@ export function useReview(drawingPageId: string | undefined) {
   );
 
   const addSegment = useCallback(
-    async (patch: WallSegmentUpdate) => {
-      if (!state.bundle || !user) return;
+    async (patch: WallSegmentUpdate): Promise<WallSegment | undefined> => {
+      if (!state.bundle || !user) return undefined;
       setActionError(null);
       try {
         const created = await addWallSegment(
@@ -103,10 +103,12 @@ export function useReview(drawingPageId: string | undefined) {
           patch,
         );
         applySegment(created);
+        return created;
       } catch (err) {
         setActionError(
           err instanceof Error ? err.message : "Add segment failed.",
         );
+        return undefined;
       }
     },
     [state.bundle, user],

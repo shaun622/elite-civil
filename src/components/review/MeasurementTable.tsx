@@ -17,7 +17,7 @@ type Props = {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   onSave: (segment: WallSegment, patch: WallSegmentUpdate) => Promise<void>;
-  onAdd: (patch: WallSegmentUpdate) => Promise<void>;
+  onAdd: () => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
@@ -97,8 +97,6 @@ export function MeasurementTable({
   onAdd,
   onDelete,
 }: Props) {
-  const [adding, setAdding] = useState(false);
-
   // Refs per row so the selected row can be scrolled into view when the user
   // clicks the corresponding polyline in the viewer.
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -108,7 +106,7 @@ export function MeasurementTable({
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedSegmentId]);
 
-  if (segments.length === 0 && !adding) {
+  if (segments.length === 0) {
     return (
       <div className="rounded-md border border-dashed bg-card p-8 text-center">
         <p className="text-sm text-muted-foreground">
@@ -120,10 +118,10 @@ export function MeasurementTable({
             variant="outline"
             size="sm"
             className="mt-4 gap-2"
-            onClick={() => setAdding(true)}
+            onClick={() => void onAdd()}
           >
             <Plus className="h-4 w-4" />
-            Add wall segment manually
+            Add a wall
           </Button>
         )}
       </div>
@@ -169,27 +167,18 @@ export function MeasurementTable({
           />
         ))}
 
-        {adding && (
-          <NewSegmentRow
-            onCancel={() => setAdding(false)}
-            onSave={async (patch) => {
-              await onAdd(patch);
-              setAdding(false);
-            }}
-          />
-        )}
       </div>
 
-      {!locked && !adding && (
+      {!locked && (
         <Button
           type="button"
           variant="ghost"
           size="sm"
           className="mt-2 w-full gap-2 border border-dashed"
-          onClick={() => setAdding(true)}
+          onClick={() => void onAdd()}
         >
           <Plus className="h-4 w-4" />
-          Add wall segment
+          Add a wall
         </Button>
       )}
     </div>
@@ -508,67 +497,6 @@ function RlPairEditor({
           {avg != null ? formatLength(avg) : "enter both RLs"}
         </span>
       </p>
-    </div>
-  );
-}
-
-function NewSegmentRow({
-  onCancel,
-  onSave,
-}: {
-  onCancel: () => void;
-  onSave: (patch: WallSegmentUpdate) => Promise<void>;
-}) {
-  const [label, setLabel] = useState("");
-  const [length, setLength] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submit() {
-    setSubmitting(true);
-    try {
-      await onSave({
-        label: label.trim() || null,
-        length_mm: parseLength(length),
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="rounded-md border border-dashed border-purple-300 bg-purple-50/40 p-2">
-      <div className="grid grid-cols-[24px_1fr_96px] items-center gap-2">
-        <span className="flex items-center">
-          <span className="inline-block h-2 w-2 rounded-full bg-purple-500" />
-        </span>
-        <Input
-          autoFocus
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="Label (e.g. Wall D)"
-          className="h-8"
-        />
-        <LengthCell value={length} onChange={setLength} onCommit={() => {}} />
-      </div>
-      <div className="mt-2 flex justify-end gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={submitting}
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={submitting || !label.trim()}
-          onClick={submit}
-        >
-          {submitting ? "Adding…" : "Add"}
-        </Button>
-      </div>
     </div>
   );
 }

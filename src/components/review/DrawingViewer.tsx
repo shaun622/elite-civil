@@ -499,6 +499,42 @@ function flatToPairs(flat: number[]): [number, number][] {
   return out;
 }
 
+/** Insert a vertex on the polyline at the point on it nearest (px,py). */
+function insertPointInPolyline(
+  flat: number[],
+  px: number,
+  py: number,
+): number[] {
+  if (flat.length < 4) return flat.slice();
+  let bestAfter = 0;
+  let bestD = Infinity;
+  let bestX = px;
+  let bestY = py;
+  for (let k = 0; k + 3 < flat.length; k += 2) {
+    const ax = flat[k];
+    const ay = flat[k + 1];
+    const bx = flat[k + 2];
+    const by = flat[k + 3];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    const d = Math.hypot(px - cx, py - cy);
+    if (d < bestD) {
+      bestD = d;
+      bestAfter = k / 2;
+      bestX = cx;
+      bestY = cy;
+    }
+  }
+  const out = flat.slice();
+  out.splice((bestAfter + 1) * 2, 0, bestX, bestY);
+  return out;
+}
+
 /** The vector pipeline records mm-per-pixel on the extraction, so a dragged
  *  wall's length can be recomputed exactly from its new geometry. */
 function readMmPerPx(raw: unknown): number | null {
@@ -599,12 +635,8 @@ function SegmentOverlay({
     : Math.max(minEdge / 620, 2.2);
   const handleRadius = 7 / zoom;
 
-  function commitDrag(index: number, x: number, y: number) {
-    const next = [...polylinePx];
-    next[index * 2] = clampNum(x, imageWidth);
-    next[index * 2 + 1] = clampNum(y, imageHeight);
+  function commitGeometry(next: number[]) {
     setDrag(next);
-
     const newPxLen = flatPolylineLength(next);
     let lengthMm: number | null;
     if (mmPerPx != null) {
@@ -619,6 +651,32 @@ function SegmentOverlay({
       lengthMm = null;
     }
     onSaveGeometry(flatToPairs(next), lengthMm);
+  }
+
+  function commitDrag(index: number, x: number, y: number) {
+    const next = [...polylinePx];
+    next[index * 2] = clampNum(x, imageWidth);
+    next[index * 2 + 1] = clampNum(y, imageHeight);
+    commitGeometry(next);
+  }
+
+  /** Double-click the wall line to add a vertex there. */
+  function insertVertex(px: number, py: number) {
+    commitGeometry(
+      insertPointInPolyline(
+        polylinePx,
+        clampNum(px, imageWidth),
+        clampNum(py, imageHeight),
+      ),
+    );
+  }
+
+  /** Double-click a handle to remove that vertex (a wall keeps ≥ 2). */
+  function deleteVertex(index: number) {
+    if (polylinePx.length <= 4) return;
+    const next = polylinePx.slice();
+    next.splice(index * 2, 2);
+    commitGeometry(next);
   }
 
   // When editable, fade the line toward its ends so the wall underneath
@@ -679,6 +737,11 @@ function SegmentOverlay({
             lineJoin="round"
             onClick={onClick}
             onTap={onClick}
+            onDblClick={(e) => {
+              if (!editable) return;
+              const p = e.target.getRelativePointerPosition();
+              if (p) insertVertex(p.x, p.y);
+            }}
             onMouseEnter={onHoverEnter}
             onMouseLeave={onHoverLeave}
             hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
@@ -697,6 +760,10 @@ function SegmentOverlay({
                 draggable
                 onMouseDown={(e) => {
                   e.cancelBubble = true;
+                }}
+                onDblClick={(e) => {
+                  e.cancelBubble = true;
+                  deleteVertex(i);
                 }}
                 onDragStart={() => setDraggingIndex(i)}
                 onDragMove={(e) => {
