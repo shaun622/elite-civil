@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DrawingViewer } from "@/components/review/DrawingViewer";
 import { MeasurementTable } from "@/components/review/MeasurementTable";
+import { HeightBandSummary } from "@/components/review/HeightBandSummary";
 import { ExtractionMeta } from "@/components/review/ExtractionMeta";
 import { WarningsPanel } from "@/components/review/WarningsPanel";
 import { useReview } from "@/hooks/useReview";
@@ -224,6 +225,10 @@ export function ReviewPage() {
                   onSave={review.saveSegment}
                   onAdd={review.addSegment}
                   onDelete={review.removeSegment}
+                />
+                <HeightBandSummary
+                  segments={review.bundle.segments}
+                  projectId={projectId}
                 />
               </div>
             </div>
