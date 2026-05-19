@@ -21,6 +21,9 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 
+// dot · label · length · height
+const GRID = "grid-cols-[24px_1fr_96px_84px]";
+
 function confidenceTone(c: number): "good" | "amber" | "red" {
   if (c >= 0.85) return "good";
   if (c >= 0.6) return "amber";
@@ -43,6 +46,11 @@ function ConfidenceDot({ value }: { value: number }) {
   );
 }
 
+/** RL values are levels in metres (e.g. 67.90) — plain numbers, no unit. */
+function rlToInput(n: number | null): string {
+  return n == null ? "" : String(n);
+}
+
 export function MeasurementTable({
   segments,
   selectedSegmentId,
@@ -57,22 +65,20 @@ export function MeasurementTable({
 }: Props) {
   const [adding, setAdding] = useState(false);
 
-  // Refs per row so we can scroll the selected row into view when the user
-  // clicks on the corresponding polyline in the viewer.
+  // Refs per row so the selected row can be scrolled into view when the user
+  // clicks the corresponding polyline in the viewer.
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   useEffect(() => {
     if (!selectedSegmentId) return;
     const el = rowRefs.current.get(selectedSegmentId);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedSegmentId]);
 
   if (segments.length === 0 && !adding) {
     return (
       <div className="rounded-md border border-dashed bg-card p-8 text-center">
         <p className="text-sm text-muted-foreground">
-          Claude didn't find any retaining wall segments on this page.
+          No retaining wall segments on this page yet.
         </p>
         {!locked && (
           <Button
@@ -93,15 +99,19 @@ export function MeasurementTable({
   return (
     <div className="space-y-2">
       <p className="px-2 text-[11px] text-muted-foreground">
-        Tip: click any length, height or thickness to edit it.
+        Tip: click a wall to edit it — enter Top RL and Bottom RL and the
+        height is calculated for you.
       </p>
-      <div className="grid grid-cols-[24px_1fr_110px_110px_90px_28px] items-center gap-2 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <div
+        className={cn(
+          "grid items-center gap-2 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground",
+          GRID,
+        )}
+      >
         <span></span>
         <span>Label</span>
         <span className="text-right">Length (m)</span>
         <span className="text-right">Height (m)</span>
-        <span className="text-right">Thick (m)</span>
-        <span></span>
       </div>
 
       <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
@@ -165,24 +175,26 @@ type SegmentRowProps = {
   onDelete: () => Promise<void>;
 };
 
-const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(function SegmentRow(
-  {
-    segment,
-    selected,
-    hovered,
-    saving,
-    locked,
-    onSelect,
-    onHoverEnter,
-    onHoverLeave,
-    onSave,
-    onDelete,
-  },
-  ref,
-) {
+const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
+  function SegmentRow(
+    {
+      segment,
+      selected,
+      hovered,
+      saving,
+      locked,
+      onSelect,
+      onHoverEnter,
+      onHoverLeave,
+      onSave,
+      onDelete,
+    },
+    ref,
+  ) {
     const [label, setLabel] = useState(segment.label ?? "");
     const [length, setLength] = useState(formatLength(segment.length_mm));
-    const [height, setHeight] = useState(formatLength(segment.height_mm));
+    const [topRl, setTopRl] = useState(rlToInput(segment.top_rl));
+    const [bottomRl, setBottomRl] = useState(rlToInput(segment.bottom_rl));
     const [thickness, setThickness] = useState(
       formatLength(segment.thickness_mm),
     );
@@ -192,13 +204,39 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(function SegmentR
     useEffect(() => {
       setLabel(segment.label ?? "");
       setLength(formatLength(segment.length_mm));
-      setHeight(formatLength(segment.height_mm));
+      setTopRl(rlToInput(segment.top_rl));
+      setBottomRl(rlToInput(segment.bottom_rl));
       setThickness(formatLength(segment.thickness_mm));
       setNotes(segment.notes ?? "");
     }, [segment]);
 
     async function commit(patch: WallSegmentUpdate) {
       await onSave(patch);
+    }
+
+    const topNum = parseFloat(topRl);
+    const botNum = parseFloat(bottomRl);
+    const computedHeightMm =
+      Number.isFinite(topNum) && Number.isFinite(botNum)
+        ? Math.round((topNum - botNum) * 1000)
+        : null;
+    // Show the RL-derived height; fall back to any stored height otherwise.
+    const displayHeightMm = computedHeightMm ?? segment.height_mm;
+
+    function commitRls() {
+      const top = Number.isFinite(topNum) ? topNum : null;
+      const bottom = Number.isFinite(botNum) ? botNum : null;
+      const heightMm =
+        top != null && bottom != null
+          ? Math.round((top - bottom) * 1000)
+          : null;
+      if (
+        top !== segment.top_rl ||
+        bottom !== segment.bottom_rl ||
+        heightMm !== segment.height_mm
+      ) {
+        void commit({ top_rl: top, bottom_rl: bottom, height_mm: heightMm });
+      }
     }
 
     return (
@@ -217,7 +255,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(function SegmentR
           segment.user_added && "bg-purple-50/40",
         )}
       >
-        <div className="grid grid-cols-[24px_1fr_110px_110px_90px_28px] items-center gap-2">
+        <div className={cn("grid items-center gap-2", GRID)}>
           <span className="flex items-center">
             <ConfidenceDot value={segment.confidence} />
           </span>
@@ -225,9 +263,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(function SegmentR
             value={label}
             disabled={locked}
             onChange={(e) => setLabel(e.target.value)}
-            onBlur={() =>
-              (segment.label ?? "") !== label && commit({ label })
-            }
+            onBlur={() => (segment.label ?? "") !== label && commit({ label })}
             placeholder="(no label)"
             className="h-8"
           />
@@ -243,108 +279,160 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(function SegmentR
               }
             }}
           />
-          <LengthCell
-            value={height}
-            disabled={locked}
-            onChange={setHeight}
-            onCommit={() => {
-              const v = parseLength(height);
-              if (v !== segment.height_mm) {
-                commit({ height_mm: v });
-                setHeight(formatLength(v));
-              }
-            }}
-          />
-          <LengthCell
-            value={thickness}
-            disabled={locked}
-            onChange={setThickness}
-            onCommit={() => {
-              const v = parseLength(thickness);
-              if (v !== segment.thickness_mm) {
-                commit({ thickness_mm: v });
-                setThickness(formatLength(v));
-              }
-            }}
-          />
-          <div className="flex justify-end">
-            {!locked && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-destructive hover:text-destructive"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (
-                    confirm(
-                      `Delete segment "${segment.label ?? "(unlabeled)"}"?`,
-                    )
-                  ) {
-                    void onDelete();
-                  }
-                }}
-                title="Delete"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
+          <div
+            className="text-right text-sm tabular-nums text-muted-foreground"
+            title="Computed from Top RL − Bottom RL"
+          >
+            {displayHeightMm != null ? formatLength(displayHeightMm) : "—"}
           </div>
         </div>
 
         {(selected || saving) && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
-            {segment.user_added && <Badge variant="secondary">User added</Badge>}
-            {!segment.user_added && segment.user_edited && (
-              <Badge variant="secondary">Edited</Badge>
-            )}
-            {!segment.user_added && segment.confidence < 0.6 && (
-              <Badge variant="muted" title="Scaled or low-confidence value">
-                Estimated
-              </Badge>
-            )}
-            {saving && (
-              <span className="inline-flex items-center gap-1 text-[11px]">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Saving…
+          <div className="mt-2 space-y-2 border-t pt-2">
+            <div className="grid grid-cols-3 gap-2">
+              <RlField
+                label="Top RL"
+                value={topRl}
+                disabled={locked}
+                onChange={setTopRl}
+                onCommit={commitRls}
+              />
+              <RlField
+                label="Bottom RL"
+                value={bottomRl}
+                disabled={locked}
+                onChange={setBottomRl}
+                onCommit={commitRls}
+              />
+              <div className="grid gap-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Thick (m)
+                </span>
+                <LengthCell
+                  value={thickness}
+                  disabled={locked}
+                  onChange={setThickness}
+                  onCommit={() => {
+                    const v = parseLength(thickness);
+                    if (v !== segment.thickness_mm) {
+                      commit({ thickness_mm: v });
+                      setThickness(formatLength(v));
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <p className="px-1 text-[11px] text-muted-foreground">
+              Height = Top RL − Bottom RL ={" "}
+              <span className="font-medium text-foreground">
+                {computedHeightMm != null
+                  ? formatLength(computedHeightMm)
+                  : "enter both RLs"}
               </span>
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
+              {segment.user_added && (
+                <Badge variant="secondary">User added</Badge>
+              )}
+              {!segment.user_added && segment.user_edited && (
+                <Badge variant="secondary">Edited</Badge>
+              )}
+              {saving && (
+                <span className="inline-flex items-center gap-1 text-[11px]">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Saving…
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNotesOpen((v) => !v);
+                }}
+                className="ml-auto text-[11px] underline-offset-2 hover:underline"
+              >
+                {notesOpen
+                  ? "Hide notes"
+                  : segment.notes
+                    ? "Notes"
+                    : "Add notes"}
+              </button>
+              {!locked && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-destructive hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (
+                      confirm(
+                        `Delete segment "${segment.label ?? "(unlabeled)"}"?`,
+                      )
+                    ) {
+                      void onDelete();
+                    }
+                  }}
+                  title="Delete segment"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+            {notesOpen && (
+              <Textarea
+                rows={2}
+                value={notes}
+                disabled={locked}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={() =>
+                  (segment.notes ?? "") !== notes && commit({ notes })
+                }
+                placeholder="Notes about this segment"
+                className="text-xs"
+              />
             )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setNotesOpen((v) => !v);
-              }}
-              className="ml-auto text-[11px] underline-offset-2 hover:underline"
-            >
-              {notesOpen
-                ? "Hide notes"
-                : segment.notes
-                  ? "Notes"
-                  : "Add notes"}
-            </button>
-          </div>
-        )}
-
-        {selected && notesOpen && (
-          <div className="mt-2 px-1">
-            <Textarea
-              rows={2}
-              value={notes}
-              disabled={locked}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={() =>
-                (segment.notes ?? "") !== notes && commit({ notes })
-              }
-              placeholder="Notes about this segment"
-              className="text-xs"
-            />
           </div>
         )}
       </div>
     );
   },
 );
+
+function RlField({
+  label,
+  value,
+  disabled,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <div className="grid gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <Input
+        inputMode="decimal"
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onCommit}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        placeholder="e.g. 67.90"
+        className="h-8 text-right tabular-nums"
+      />
+    </div>
+  );
+}
 
 function NewSegmentRow({
   onCancel,
@@ -355,8 +443,6 @@ function NewSegmentRow({
 }) {
   const [label, setLabel] = useState("");
   const [length, setLength] = useState("");
-  const [height, setHeight] = useState("");
-  const [thickness, setThickness] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function submit() {
@@ -365,8 +451,6 @@ function NewSegmentRow({
       await onSave({
         label: label.trim() || null,
         length_mm: parseLength(length),
-        height_mm: parseLength(height),
-        thickness_mm: parseLength(thickness),
       });
     } finally {
       setSubmitting(false);
@@ -375,7 +459,7 @@ function NewSegmentRow({
 
   return (
     <div className="rounded-md border border-dashed border-purple-300 bg-purple-50/40 p-2">
-      <div className="grid grid-cols-[24px_1fr_110px_110px_90px_28px] items-center gap-2">
+      <div className="grid grid-cols-[24px_1fr_96px] items-center gap-2">
         <span className="flex items-center">
           <span className="inline-block h-2 w-2 rounded-full bg-purple-500" />
         </span>
@@ -386,22 +470,7 @@ function NewSegmentRow({
           placeholder="Label (e.g. Wall D)"
           className="h-8"
         />
-        <LengthCell
-          value={length}
-          onChange={setLength}
-          onCommit={() => {}}
-        />
-        <LengthCell
-          value={height}
-          onChange={setHeight}
-          onCommit={() => {}}
-        />
-        <LengthCell
-          value={thickness}
-          onChange={setThickness}
-          onCommit={() => {}}
-        />
-        <span />
+        <LengthCell value={length} onChange={setLength} onCommit={() => {}} />
       </div>
       <div className="mt-2 flex justify-end gap-2">
         <Button

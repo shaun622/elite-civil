@@ -18,13 +18,6 @@ export const WallColorSchema = z.object({
   hex: z.string(),
 });
 
-// An average-wall-height annotation (a small coloured number) + its position.
-export const HeightLabelSchema = z.object({
-  value_m: z.number(),
-  x: z.number(),
-  y: z.number(),
-});
-
 // A lot number + the approximate pixel centre of that lot's area.
 export const LotSchema = z.object({
   name: z.string(),
@@ -36,7 +29,6 @@ export const AnalyzeResultSchema = z.object({
   scale_bar: ScaleBarSchema,
   scale_text: z.string().nullable(),
   wall_colors: z.array(WallColorSchema),
-  height_labels: z.array(HeightLabelSchema),
   lots: z.array(LotSchema),
   warnings: z.array(z.string()),
 });

@@ -1,5 +1,4 @@
 import { supabase } from "@/lib/supabase";
-import { renderPageTiles } from "@/lib/pdfTiles";
 
 /** Two scale-bar ticks + their real distance, for auto-calibration. */
 export type AnalyzeScaleBar = {
@@ -10,7 +9,6 @@ export type AnalyzeScaleBar = {
 };
 
 export type AnalyzeWallColor = { type_label: string; hex: string };
-export type AnalyzeHeightLabel = { value_m: number; x: number; y: number };
 export type AnalyzeLot = { name: string; x: number; y: number };
 
 export type AnalyzeDrawingResult = {
@@ -18,31 +16,22 @@ export type AnalyzeDrawingResult = {
   scale_bar: AnalyzeScaleBar;
   scale_text: string | null;
   wall_colors: AnalyzeWallColor[];
-  height_labels: AnalyzeHeightLabel[];
   lots: AnalyzeLot[];
   warnings: string[];
 };
 
 /**
- * Stage II semantic pass. Renders the PDF page into full-resolution tiles
- * (so small wall-height numbers survive), sends them to the analyze-drawing
- * edge function, and returns the merged scale bar / legend colours / height
- * labels / lot numbers in full-page pixel coordinates. The result is fused
+ * Stage II semantic pass: asks the analyze-drawing edge function to read the
+ * scale bar, legend colours and lot numbers off a page. The result is fused
  * client-side onto the vector-measured walls.
  */
 export async function analyzeDrawingPage(
-  file: ArrayBuffer,
-  pageNumber: number,
+  drawingPageId: string,
 ): Promise<AnalyzeDrawingResult> {
-  const { pageWidth, pageHeight, tiles } = await renderPageTiles(
-    file,
-    pageNumber,
-  );
-
   const { data, error } = await supabase.functions.invoke<
     AnalyzeDrawingResult | { error: string }
   >("analyze-drawing", {
-    body: { page_width: pageWidth, page_height: pageHeight, tiles },
+    body: { drawing_page_id: drawingPageId },
   });
   if (error) {
     // supabase-js FunctionsHttpError stores the raw Response as `context`.

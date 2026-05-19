@@ -110,6 +110,8 @@ export interface WallSegment {
   length_mm: number | null;
   height_mm: number | null;
   thickness_mm: number | null;
+  top_rl: number | null;
+  bottom_rl: number | null;
   polyline: Point[];
   label_bbox: Bbox | null;
   source_dimension_ids: string[];
@@ -129,6 +131,8 @@ export type WallSegmentUpdate = Partial<{
   thickness_mm: number | null;
   notes: string | null;
   polyline: Point[];
+  top_rl: number | null;
+  bottom_rl: number | null;
 }>;
 
 export interface ExtractionBundle {

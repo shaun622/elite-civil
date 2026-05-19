@@ -6,10 +6,7 @@ import {
   pathOBB,
   type VectorPath,
 } from "@/lib/pdfVectors";
-import type {
-  AnalyzeHeightLabel,
-  AnalyzeLot,
-} from "@/lib/api/analyzeDrawing";
+import type { AnalyzeLot } from "@/lib/api/analyzeDrawing";
 
 /**
  * Stage I of the vector pipeline: turn a PDF page's vector linework into
@@ -46,8 +43,6 @@ export type MeasuredWall = {
   /** Centreline as [x,y] pixel pairs — [[x0,y0],[x1,y1]] in raster space. */
   polyline: [number, number][];
   lengthMm: number;
-  /** Average wall height (mm), fused from the AI height labels — Stage II. */
-  heightMm?: number | null;
   /** Lot the wall sits on, fused from the AI lot labels — Stage II. */
   lotName?: string | null;
 };
@@ -132,15 +127,9 @@ export async function saveVectorWalls(opts: {
 }): Promise<SaveVectorWallsResult> {
   const { drawingPageId, userId, walls, scaleText, mmPerPx } = opts;
 
-  const withHeights = walls.filter((w) => w.heightMm != null).length;
-  const warnings =
-    withHeights > 0
-      ? [
-          `Lengths measured from PDF vector geometry. Heights auto-assigned from the drawing's labels for ${withHeights} of ${walls.length} walls — verify before quoting and fill any blanks.`,
-        ]
-      : [
-          "Lengths measured from PDF vector geometry. Wall heights are not yet populated — add them from the drawing's height labels.",
-        ];
+  const warnings = [
+    "Lengths measured from PDF vector geometry. Enter Top RL and Bottom RL for each wall to set its height.",
+  ];
 
   // Clear any prior extraction (cascade removes its wall_segments / dims).
   const { error: delErr } = await supabase
@@ -184,7 +173,7 @@ export async function saveVectorWalls(opts: {
         ? `Lot ${wall.lotName} — ${wall.typeLabel}`
         : `${wall.typeLabel} wall ${n}`,
       length_mm: Math.round(wall.lengthMm),
-      height_mm: wall.heightMm ?? null,
+      height_mm: null,
       thickness_mm: null,
       polyline: wall.polyline,
       label_bbox: null,
@@ -257,43 +246,6 @@ export function snapHexToColors(
   return best && bestD <= 3 * 80 * 80 ? best : null;
 }
 
-function distToSegment(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-): number {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  let t = len2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-/** Shortest distance from a point to a wall's centreline polyline. */
-function pointToWallDist(
-  x: number,
-  y: number,
-  polyline: [number, number][],
-): number {
-  let best = Infinity;
-  for (let i = 0; i + 1 < polyline.length; i++) {
-    const d = distToSegment(
-      x,
-      y,
-      polyline[i][0],
-      polyline[i][1],
-      polyline[i + 1][0],
-      polyline[i + 1][1],
-    );
-    if (d < best) best = d;
-  }
-  return best;
-}
-
 function wallMidpoint(polyline: [number, number][]): [number, number] {
   if (polyline.length === 0) return [0, 0];
   const a = polyline[0];
@@ -302,54 +254,25 @@ function wallMidpoint(polyline: [number, number][]): [number, number] {
 }
 
 /**
- * Attach AI-read semantics to measured walls: assign each height label to
- * its nearest wall (averaging where several fall on one wall) and name each
- * wall by its nearest lot. Best-effort — walls with nothing nearby keep a
- * null height and the default type label. A no-op when both lists are empty.
+ * Name each measured wall by its nearest lot. Best-effort — a no-op when
+ * `lots` is empty (walls keep their default type label).
  */
 export function fuseWallSemantics(
   walls: MeasuredWall[],
-  heightLabels: AnalyzeHeightLabel[],
   lots: AnalyzeLot[],
-  /** Max px from a wall for a height label to count as belonging to it. */
-  maxHeightDistPx = 480,
 ): MeasuredWall[] {
-  const heightAcc = walls.map(() => ({ sum: 0, count: 0 }));
-
-  for (const h of heightLabels) {
-    let bestIdx = -1;
+  if (lots.length === 0) return walls;
+  return walls.map((wall) => {
+    const [mx, my] = wallMidpoint(wall.polyline);
+    let lotName: string | null = null;
     let bestD = Infinity;
-    walls.forEach((w, i) => {
-      const d = pointToWallDist(h.x, h.y, w.polyline);
+    for (const lot of lots) {
+      const d = (lot.x - mx) ** 2 + (lot.y - my) ** 2;
       if (d < bestD) {
         bestD = d;
-        bestIdx = i;
-      }
-    });
-    if (bestIdx >= 0 && bestD <= maxHeightDistPx) {
-      heightAcc[bestIdx].sum += h.value_m;
-      heightAcc[bestIdx].count += 1;
-    }
-  }
-
-  return walls.map((wall, i) => {
-    const acc = heightAcc[i];
-    const heightMm =
-      acc.count > 0 ? Math.round((acc.sum / acc.count) * 1000) : null;
-
-    let lotName: string | null = null;
-    if (lots.length > 0) {
-      const [mx, my] = wallMidpoint(wall.polyline);
-      let bestD = Infinity;
-      for (const lot of lots) {
-        const d = (lot.x - mx) ** 2 + (lot.y - my) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          lotName = lot.name;
-        }
+        lotName = lot.name;
       }
     }
-
-    return { ...wall, heightMm, lotName };
+    return { ...wall, lotName };
   });
 }

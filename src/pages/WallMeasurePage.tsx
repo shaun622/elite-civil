@@ -27,7 +27,6 @@ import {
 } from "@/lib/vectorWalls";
 import {
   analyzeDrawingPage,
-  type AnalyzeHeightLabel,
   type AnalyzeLot,
 } from "@/lib/api/analyzeDrawing";
 import { parseScaleRatio } from "@/lib/api/review";
@@ -66,7 +65,6 @@ export function WallMeasurePage() {
   const [scaleText, setScaleText] = useState("");
   const [saving, setSaving] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [aiHeights, setAiHeights] = useState<AnalyzeHeightLabel[]>([]);
   const [aiLots, setAiLots] = useState<AnalyzeLot[]>([]);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
@@ -245,11 +243,11 @@ export function WallMeasurePage() {
   }
 
   async function autoDetect() {
-    if (!pdfBuffer || !vectors) return;
+    if (!pageId || !vectors) return;
     setError(null);
     setAnalyzing(true);
     try {
-      const ai = await analyzeDrawingPage(pdfBuffer.slice(0), pageNumber);
+      const ai = await analyzeDrawingPage(pageId);
 
       const sb = ai.scale_bar;
       if (sb.found && sb.p0 && sb.p1 && sb.length_m && sb.length_m > 0) {
@@ -274,12 +272,10 @@ export function WallMeasurePage() {
         setColorText(lines.join("\n"));
       }
 
-      setAiHeights(ai.height_labels);
       setAiLots(ai.lots);
       setAiSummary(
         `Detected: ${sb.found ? "scale bar" : "no scale bar"}, ` +
           `${ai.wall_colors.length} wall colour${ai.wall_colors.length === 1 ? "" : "s"}, ` +
-          `${ai.height_labels.length} height label${ai.height_labels.length === 1 ? "" : "s"}, ` +
           `${ai.lots.length} lot${ai.lots.length === 1 ? "" : "s"}.`,
       );
     } catch (err) {
@@ -322,7 +318,7 @@ export function WallMeasurePage() {
           "No walls measured. Check the wall colours and calibration.",
         );
       }
-      const walls = fuseWallSemantics(measured, aiHeights, aiLots);
+      const walls = fuseWallSemantics(measured, aiLots);
       await saveVectorWalls({
         drawingPageId: pageId,
         userId: user.id,
@@ -402,9 +398,9 @@ export function WallMeasurePage() {
                   </Button>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Reads the scale bar, legend colours, wall heights and lot
-                  numbers off the drawing and fills in the steps below — then
-                  review and measure.
+                  Reads the scale bar, legend colours and lot numbers off the
+                  drawing and fills in the steps below — then review and
+                  measure.
                 </p>
                 {aiSummary && (
                   <p className="mt-2 text-xs text-emerald-700">{aiSummary}</p>
