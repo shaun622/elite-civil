@@ -509,6 +509,46 @@ function readMmPerPx(raw: unknown): number | null {
   return null;
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** A thin sighting crosshair drawn at a wall endpoint while it is dragged —
+ *  an open centre so the exact target pixel stays visible. */
+function Crosshair({ x, y, zoom }: { x: number; y: number; zoom: number }) {
+  const gap = 3 / zoom;
+  const arm = 15 / zoom;
+  const segs = [
+    [x - gap - arm, y, x - gap, y],
+    [x + gap, y, x + gap + arm, y],
+    [x, y - gap - arm, x, y - gap],
+    [x, y + gap, x, y + gap + arm],
+  ];
+  return (
+    <>
+      {segs.map((pts, i) => (
+        <Line
+          key={`h${i}`}
+          points={pts}
+          stroke="#ffffff"
+          strokeWidth={4 / zoom}
+          listening={false}
+        />
+      ))}
+      {segs.map((pts, i) => (
+        <Line
+          key={`c${i}`}
+          points={pts}
+          stroke="#7c3aed"
+          strokeWidth={1.5 / zoom}
+          listening={false}
+        />
+      ))}
+    </>
+  );
+}
+
 function SegmentOverlay({
   segment,
   polylinePx,
@@ -547,6 +587,7 @@ function SegmentOverlay({
   // While an endpoint is dragged we preview the new polyline locally; once
   // the saved geometry round-trips back via `segment.polyline` we drop it.
   const [drag, setDrag] = useState<number[] | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   useEffect(() => {
     setDrag(null);
   }, [segment.polyline]);
@@ -580,6 +621,36 @@ function SegmentOverlay({
     onSaveGeometry(flatToPairs(next), lengthMm);
   }
 
+  // When editable, fade the line toward its ends so the wall underneath
+  // stays visible where the handles are; solid through the middle.
+  const gradStart = { x: livePx[0], y: livePx[1] };
+  const gradEnd = {
+    x: livePx[livePx.length - 2],
+    y: livePx[livePx.length - 1],
+  };
+  const [cr, cg, cb] = hexToRgb(color);
+  const coloredStops = editable
+    ? [
+        0, `rgba(${cr},${cg},${cb},0.1)`,
+        0.22, `rgba(${cr},${cg},${cb},1)`,
+        0.78, `rgba(${cr},${cg},${cb},1)`,
+        1, `rgba(${cr},${cg},${cb},0.1)`,
+      ]
+    : undefined;
+  const haloStops = editable
+    ? [
+        0, "rgba(255,255,255,0)",
+        0.22, "rgba(255,255,255,0.9)",
+        0.78, "rgba(255,255,255,0.9)",
+        1, "rgba(255,255,255,0)",
+      ]
+    : undefined;
+
+  const dragPoint =
+    draggingIndex != null && livePx.length >= (draggingIndex + 1) * 2
+      ? { x: livePx[draggingIndex * 2], y: livePx[draggingIndex * 2 + 1] }
+      : null;
+
   return (
     <>
       {livePx.length >= 4 && (
@@ -587,18 +658,24 @@ function SegmentOverlay({
           <Line
             points={livePx}
             stroke="#ffffff"
+            opacity={editable ? 1 : emphasized ? 0.95 : 0.6}
+            strokeLinearGradientStartPoint={editable ? gradStart : undefined}
+            strokeLinearGradientEndPoint={editable ? gradEnd : undefined}
+            strokeLinearGradientColorStops={haloStops}
             strokeWidth={strokeWidth + (emphasized ? 5 : 3)}
-            opacity={emphasized ? 0.95 : 0.6}
-            lineCap="round"
+            lineCap="butt"
             lineJoin="round"
             listening={false}
           />
           <Line
             points={livePx}
             stroke={color}
+            opacity={editable ? 1 : emphasized ? 1 : 0.9}
+            strokeLinearGradientStartPoint={editable ? gradStart : undefined}
+            strokeLinearGradientEndPoint={editable ? gradEnd : undefined}
+            strokeLinearGradientColorStops={coloredStops}
             strokeWidth={strokeWidth}
-            opacity={emphasized ? 1 : 0.9}
-            lineCap="round"
+            lineCap="butt"
             lineJoin="round"
             onClick={onClick}
             onTap={onClick}
@@ -616,19 +693,27 @@ function SegmentOverlay({
                 fill="#ffffff"
                 stroke={color}
                 strokeWidth={2 / zoom}
+                opacity={draggingIndex === i ? 0.55 : 1}
                 draggable
                 onMouseDown={(e) => {
                   e.cancelBubble = true;
                 }}
+                onDragStart={() => setDraggingIndex(i)}
                 onDragMove={(e) => {
                   const next = [...livePx];
                   next[i * 2] = e.target.x();
                   next[i * 2 + 1] = e.target.y();
                   setDrag(next);
                 }}
-                onDragEnd={(e) => commitDrag(i, e.target.x(), e.target.y())}
+                onDragEnd={(e) => {
+                  commitDrag(i, e.target.x(), e.target.y());
+                  setDraggingIndex(null);
+                }}
               />
             ))}
+          {dragPoint && (
+            <Crosshair x={dragPoint.x} y={dragPoint.y} zoom={zoom} />
+          )}
         </>
       )}
       {segment.label_bbox && (
