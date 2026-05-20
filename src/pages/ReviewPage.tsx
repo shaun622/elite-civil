@@ -68,9 +68,23 @@ export function ReviewPage() {
     const p0 = wallPoints[0];
     setDrawingWall(false);
     setWallPoints([]);
+
+    // Compute the length at placement time from the calibrated mm/px so the
+    // new wall arrives with a real length, not a placeholder dash.
+    const lengthPx = Math.hypot(p[0] - p0[0], p[1] - p0[1]);
+    const raw = review.bundle?.extraction.raw_response;
+    let lengthMm: number | null = null;
+    if (raw && typeof raw === "object" && "mm_per_px" in raw) {
+      const mm = (raw as Record<string, unknown>).mm_per_px;
+      if (typeof mm === "number" && mm > 0) {
+        lengthMm = Math.round(lengthPx * mm);
+      }
+    }
+
     const created = await review.addSegment({
       label: "New wall",
       polyline: [p0, p],
+      length_mm: lengthMm,
     });
     if (created) setSelectedSegmentId(created.id);
   }
