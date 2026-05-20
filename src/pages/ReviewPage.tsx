@@ -28,6 +28,8 @@ export function ReviewPage() {
   const [calibrating, setCalibrating] = useState(false);
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [calibDistance, setCalibDistance] = useState("");
+  const [drawingWall, setDrawingWall] = useState(false);
+  const [wallPoints, setWallPoints] = useState<[number, number][]>([]);
 
   function startCalibration() {
     setCalibPoints([]);
@@ -50,19 +52,26 @@ export function ReviewPage() {
     setCalibPoints([]);
   }
 
-  // Add a wall by hand: drop a short placeholder line at the page centre,
-  // selected, for the user to drag onto the real wall (double-click the
-  // line to add a corner, double-click a handle to remove one).
-  async function addWall() {
-    if (!review.bundle) return;
-    const w = review.bundle.page.image_width;
-    const h = review.bundle.page.image_height;
-    const half = Math.max(40, w * 0.06);
-    const polyline: [number, number][] = [
-      [w / 2 - half, h / 2],
-      [w / 2 + half, h / 2],
-    ];
-    const created = await review.addSegment({ label: "New wall", polyline });
+  // Add a wall by hand — click two points on the drawing to place it.
+  // Corners and refinements come afterwards via the vertex tools
+  // (double-click the line to insert one, a handle to remove it).
+  async function toggleAddWall() {
+    setDrawingWall((d) => !d);
+    setWallPoints([]);
+  }
+
+  async function addWallPoint(p: [number, number]) {
+    if (wallPoints.length === 0) {
+      setWallPoints([p]);
+      return;
+    }
+    const p0 = wallPoints[0];
+    setDrawingWall(false);
+    setWallPoints([]);
+    const created = await review.addSegment({
+      label: "New wall",
+      polyline: [p0, p],
+    });
     if (created) setSelectedSegmentId(created.id);
   }
 
@@ -191,6 +200,24 @@ export function ReviewPage() {
                     </Button>
                   </div>
                 )}
+                {drawingWall && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-purple-300 bg-purple-50 p-3 text-xs text-purple-900">
+                    <span className="font-medium">
+                      {wallPoints.length === 0
+                        ? "Click the start of the wall on the drawing."
+                        : "Now click the end of the wall."}
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-8"
+                      onClick={() => void toggleAddWall()}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
                 <div className="h-[70vh] min-h-[420px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
@@ -208,6 +235,9 @@ export function ReviewPage() {
                     onHoverSegment={setHoveredSegmentId}
                     onSaveSegment={review.saveSegment}
                     onCalibrateClick={addCalibPoint}
+                    drawingWall={drawingWall}
+                    wallPoints={wallPoints}
+                    onWallPointClick={addWallPoint}
                   />
                 </div>
               </div>
@@ -239,7 +269,8 @@ export function ReviewPage() {
                   onSelect={setSelectedSegmentId}
                   onHover={setHoveredSegmentId}
                   onSave={review.saveSegment}
-                  onAdd={addWall}
+                  onAdd={toggleAddWall}
+                  drawingWall={drawingWall}
                   onDelete={review.removeSegment}
                 />
                 <HeightBandSummary

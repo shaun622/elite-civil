@@ -336,11 +336,18 @@ export function WallMeasurePage() {
         if (px >= 1) {
           setCalibPoints([sb.p0, sb.p1]);
           setKnownDist(String(sb.length_m));
-          setMmPerPx((sb.length_m * 1000) / px);
+          // Don't auto-commit the scale here — the user must hit Set on the
+          // ratio or distance below, so a wrong scale-bar read never ships.
         }
       }
 
-      if (ai.scale_text) setScaleText(ai.scale_text);
+      if (ai.scale_text) {
+        setScaleText(ai.scale_text);
+        // Pre-fill the Scale ratio field from the AI's reading so the user
+        // can just confirm it with Set.
+        const m = ai.scale_text.match(/1\s*[:=]\s*(\d+)/);
+        if (m) setScaleRatio(`1:${m[1]}`);
+      }
 
       if (ai.wall_colors.length > 0) {
         const palette = distinctVectorColors(vectors.paths);

@@ -18,6 +18,7 @@ type Props = {
   onHover: (id: string | null) => void;
   onSave: (segment: WallSegment, patch: WallSegmentUpdate) => Promise<void>;
   onAdd: () => Promise<void>;
+  drawingWall?: boolean;
   onDelete: (id: string) => Promise<void>;
 };
 
@@ -95,6 +96,7 @@ export function MeasurementTable({
   onHover,
   onSave,
   onAdd,
+  drawingWall,
   onDelete,
 }: Props) {
   // Refs per row so the selected row can be scrolled into view when the user
@@ -121,7 +123,7 @@ export function MeasurementTable({
             onClick={() => void onAdd()}
           >
             <Plus className="h-4 w-4" />
-            Add a wall
+            {drawingWall ? "Cancel adding wall" : "Add a wall"}
           </Button>
         )}
       </div>
@@ -178,7 +180,7 @@ export function MeasurementTable({
           onClick={() => void onAdd()}
         >
           <Plus className="h-4 w-4" />
-          Add a wall
+          {drawingWall ? "Cancel adding wall" : "Add a wall"}
         </Button>
       )}
     </div>

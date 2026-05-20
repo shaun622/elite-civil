@@ -52,6 +52,9 @@ type Props = {
     patch: WallSegmentUpdate,
   ) => Promise<void>;
   onCalibrateClick: (point: [number, number]) => void;
+  drawingWall: boolean;
+  wallPoints: [number, number][];
+  onWallPointClick: (point: [number, number]) => void;
 };
 
 export function DrawingViewer({
@@ -70,6 +73,9 @@ export function DrawingViewer({
   onHoverSegment,
   onSaveSegment,
   onCalibrateClick,
+  drawingWall,
+  wallPoints,
+  onWallPointClick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -82,6 +88,9 @@ export function DrawingViewer({
     walls: true,
     scale: true,
   });
+  // Preview of where the second draw-wall click would land, so the user
+  // sees the wall they're about to place rather than aiming blind.
+  const [previewEnd, setPreviewEnd] = useState<[number, number] | null>(null);
 
   useEffect(() => {
     if (!imageUrl) {
@@ -216,20 +225,35 @@ export function DrawingViewer({
         onDragEnd={onDragEnd}
         style={{
           background: "#1f2937",
-          cursor: calibrating ? "crosshair" : undefined,
+          cursor: calibrating || drawingWall ? "crosshair" : undefined,
         }}
         onMouseDown={(e) => {
           if (e.target === stageRef.current) onSelectSegment(null);
         }}
         onClick={() => {
-          if (!calibrating) return;
+          if (!calibrating && !drawingWall) return;
           const pointer = stageRef.current?.getPointerPosition();
           if (!pointer) return;
-          onCalibrateClick([
+          const p: [number, number] = [
+            (pointer.x - origin.x) / zoom,
+            (pointer.y - origin.y) / zoom,
+          ];
+          if (calibrating) onCalibrateClick(p);
+          else onWallPointClick(p);
+        }}
+        onMouseMove={() => {
+          if (!drawingWall || wallPoints.length !== 1) {
+            if (previewEnd !== null) setPreviewEnd(null);
+            return;
+          }
+          const pointer = stageRef.current?.getPointerPosition();
+          if (!pointer) return;
+          setPreviewEnd([
             (pointer.x - origin.x) / zoom,
             (pointer.y - origin.y) / zoom,
           ]);
         }}
+        onMouseLeave={() => setPreviewEnd(null)}
       >
         <Layer listening={false}>
           {image && (
@@ -280,11 +304,11 @@ export function DrawingViewer({
                   color={color}
                   selected={selected}
                   hovered={hovered}
-                  editable={selected && !locked && !calibrating}
+                  editable={selected && !locked && !calibrating && !drawingWall}
                   zoom={zoom}
                   mmPerPx={mmPerPx}
                   onClick={() => {
-                    if (!calibrating) onSelectSegment(seg.id);
+                    if (!calibrating && !drawingWall) onSelectSegment(seg.id);
                   }}
                   onHoverEnter={() => onHoverSegment(seg.id)}
                   onHoverLeave={() => onHoverSegment(null)}
@@ -332,6 +356,34 @@ export function DrawingViewer({
                 </Group>
               );
             })}
+
+          {drawingWall &&
+            wallPoints.map(([px, py], i) => (
+              <Circle
+                key={`wp-${i}`}
+                x={px}
+                y={py}
+                radius={6 / zoom}
+                fill={COLOR_USER}
+                stroke="#ffffff"
+                strokeWidth={2 / zoom}
+                listening={false}
+              />
+            ))}
+          {drawingWall && wallPoints.length === 1 && previewEnd && (
+            <Line
+              points={[
+                wallPoints[0][0],
+                wallPoints[0][1],
+                previewEnd[0],
+                previewEnd[1],
+              ]}
+              stroke={COLOR_USER}
+              strokeWidth={2 / zoom}
+              dash={[8 / zoom, 6 / zoom]}
+              listening={false}
+            />
+          )}
         </Layer>
       </Stage>
 
