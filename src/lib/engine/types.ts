@@ -1,0 +1,143 @@
+/* ============================================================
+ * Engine compute types — derived from wall + config, not stored on
+ * a DB row. Mirrors the calculation outputs in BE Landscapes'
+ * `app/src/types/index.ts`.
+ * ============================================================ */
+
+import type {
+  WallType,
+  WallDesign,
+  WallPosition,
+} from "@/types/db";
+
+/**
+ * A wall the way the BE engine wants to see it — units in metres, classified.
+ * In this app it's adapted from `WallSegment` at the engine boundary.
+ */
+export interface WallEntry {
+  id: string;
+  lot: string;
+  type: WallType;
+  wallDesign: WallDesign;
+  position: WallPosition;
+  /** Linear metres along the wall. */
+  lengthLM: number;
+  /** Wall height in metres (un-rounded; engine rounds up to 0.2 m). */
+  height: number;
+}
+
+/** A WallEntry with every derived quantity the engine produces. */
+export interface WallCalculated extends WallEntry {
+  concreteM3: number;
+  gravelM3: number;
+  m2: number;
+  numberOfHoles: number;
+  timeToBuildHrs: number;
+  drillTimeHrs: number;
+  pfcLength: number;
+  pfcQty: number;
+  ucLength: number;
+  ucQty: number;
+  sleeperQty: number;
+  superSupports: number;
+  wedges: number;
+  fenceBrackets: number;
+  baySize: number;
+  bays: number;
+  postSize: string;
+  holeDepth: number;
+}
+
+export interface CostBreakdown {
+  drilling: { labour: number; machine: number; total: number };
+  posting: {
+    labour: number;
+    concrete: number;
+    steel: number;
+    total: number;
+  };
+  wallBuilding: {
+    labour: number;
+    concreteSleepers: number;
+    superSleepers: number;
+    total: number;
+  };
+  backfill: {
+    geofab: number;
+    agLine: number;
+    gravel: number;
+    labourAndMachine: number;
+    total: number;
+  };
+  engineering: { form15: number; form12: number; total: number };
+  misc: number;
+  costTotal: number;
+  markup: number;
+  marginAmount: number;
+  totalExGST: number;
+  totalWithGST: number;
+  projectedProfit: number;
+  totalM2: number;
+  pricePerM2: number;
+  costPerM2: number;
+}
+
+export interface QuotationLineItem {
+  description: string;
+  qty: number;
+  unit: string;
+  rate: number;
+  total: number;
+}
+
+export type MaterialCategory =
+  | "Concrete"
+  | "Steel"
+  | "Fence Brackets"
+  | "Sleepers"
+  | "Geofabric"
+  | "Ag Line"
+  | "Gravel";
+
+export interface MaterialOrderLine {
+  category: MaterialCategory;
+  description: string;
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  total: number;
+}
+
+export interface MaterialsOrder {
+  lines: MaterialOrderLine[];
+  grandTotal: number;
+}
+
+export type CostCategory =
+  | "Drilling"
+  | "Posting"
+  | "Wall Building"
+  | "Backfill & Gravel"
+  | "Engineering"
+  | "Other";
+
+export interface CostDetailLine {
+  id: string;
+  category: CostCategory;
+  description: string;
+  qtyEstimated: number;
+  qtyOverride?: number;
+  unit: string;
+  rate: number;
+  total: number;
+}
+
+export interface CostBreakdownDetail {
+  lines: CostDetailLine[];
+  categoryTotals: Record<string, number>;
+  grandTotal: number;
+}
+
+/** Per-project manual overrides for cost-breakdown line quantities,
+ *  keyed by `CostDetailLine.id`. */
+export type CostOverrides = Record<string, number>;
