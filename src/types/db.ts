@@ -262,7 +262,12 @@ export type WallPosition = "Left" | "Right" | "Rear" | "Front";
 
 export interface WallSegment {
   id: string;
-  extraction_id: string;
+  /** The extraction this wall was measured from. Nullable: walls added
+   *  manually on the Take Off page (no PDF source) carry only project_id. */
+  extraction_id: string | null;
+  /** The owning project. Always set: backfilled from the extraction chain
+   *  for legacy rows, set directly for manual rows. */
+  project_id: string | null;
   user_id: string;
   source_id: string;
   label: string | null;

@@ -97,6 +97,9 @@ export async function loadExportBundle(
       .order("created_at", { ascending: true });
     if (segErr) throw segErr;
     for (const s of (segments ?? []) as WallSegment[]) {
+      // Skip manual walls (no extraction_id) — exports only show
+      // PDF-measured walls grouped by their source page.
+      if (!s.extraction_id) continue;
       const list = segmentsByExtraction.get(s.extraction_id) ?? [];
       list.push(s);
       segmentsByExtraction.set(s.extraction_id, list);

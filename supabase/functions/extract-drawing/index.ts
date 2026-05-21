@@ -113,6 +113,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return errorResponse(404, "Drawing page not found", { detail: pageErr?.message });
   }
 
+  // Look up the owning project so newly-inserted wall_segments rows carry
+  // project_id alongside extraction_id (project_id powers the Take Off
+  // page's project-wide wall list).
+  const { data: drawing, error: drawingErr } = await supabase
+    .from("drawings")
+    .select("project_id")
+    .eq("id", page.drawing_id)
+    .single();
+  if (drawingErr || !drawing) {
+    return errorResponse(404, "Owning drawing not found", { detail: drawingErr?.message });
+  }
+  const projectId: string = drawing.project_id;
+
   if (page.extraction_status === "extracting") {
     return errorResponse(409, "Extraction already in progress for this page");
   }
@@ -337,6 +350,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // resolve dimension_labels.applies_to_segment_id afterwards.
     const segmentInserts = result.wall_segments.map((seg) => ({
       extraction_id: extraction.id,
+      project_id: projectId,
       user_id: userId,
       source_id: seg.id,
       label: seg.label,

@@ -97,16 +97,35 @@ export async function updateWallSegment(
   return data as WallSegment;
 }
 
+/** Walk back from an extraction to find the owning project, so newly
+ *  added PDF-flow walls carry project_id alongside extraction_id (the
+ *  Take Off page query is keyed by project_id). */
+async function projectIdForExtraction(
+  extractionId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("extractions")
+    .select("drawing_page_id, drawing_pages!inner(drawing_id, drawings!inner(project_id))")
+    .eq("id", extractionId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const dp = (data as { drawing_pages?: { drawings?: { project_id?: string } } })
+    .drawing_pages;
+  return dp?.drawings?.project_id ?? null;
+}
+
 export async function addWallSegment(
   extractionId: string,
   userId: string,
   input: WallSegmentUpdate,
 ): Promise<WallSegment> {
   const sourceId = `manual_${crypto.randomUUID().slice(0, 8)}`;
+  const projectId = await projectIdForExtraction(extractionId);
   const { data, error } = await supabase
     .from("wall_segments")
     .insert({
       extraction_id: extractionId,
+      project_id: projectId,
       user_id: userId,
       source_id: sourceId,
       ...normalizeUpdate(input),

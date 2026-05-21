@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { Project, ProjectInsert, ProjectUpdate } from "@/types/db";
+import { defaultConfig, DEFAULT_PROJECT_DESCRIPTION } from "@/lib/engine/defaults";
 
 const TABLE = "projects";
 
@@ -39,7 +40,16 @@ export async function createProject(
   userId: string,
   input: ProjectInsert,
 ): Promise<Project> {
-  const payload = { ...normalize(input), user_id: userId };
+  // Seed a fresh project with the BE Landscapes baseline config + T&Cs
+  // unless the caller explicitly passed their own. Saves the user from
+  // having to clone an existing project just to set up rates / margins.
+  const normalized = normalize(input);
+  const payload = {
+    ...normalized,
+    user_id: userId,
+    config: normalized.config ?? defaultConfig,
+    description: normalized.description ?? DEFAULT_PROJECT_DESCRIPTION,
+  };
   const { data, error } = await supabase
     .from(TABLE)
     .insert(payload)
