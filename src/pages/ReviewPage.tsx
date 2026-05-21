@@ -89,15 +89,13 @@ export function ReviewPage() {
     if (created) setSelectedSegmentId(created.id);
   }
 
-  // Delete / Backspace on the selected wall — same confirm + remove as the
-  // trash icon, just keyboard. Ignored while typing into an input/textarea
-  // and while another mode is active.
+  // Keyboard shortcuts. Ignored while typing in a field, on a locked page,
+  // or with a Ctrl/Cmd/Alt modifier held (so the browser's own shortcuts
+  // still work normally).
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (!selectedSegmentId) return;
       if (!review.bundle || review.bundle.extraction.reviewed) return;
-      if (calibrating || drawingWall) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (
         t &&
@@ -107,14 +105,29 @@ export function ReviewPage() {
       ) {
         return;
       }
-      const seg = review.bundle.segments.find(
-        (s) => s.id === selectedSegmentId,
-      );
-      if (!seg) return;
-      e.preventDefault();
-      if (confirm(`Delete segment "${seg.label ?? "(unlabeled)"}"?`)) {
-        void review.removeSegment(selectedSegmentId);
-        setSelectedSegmentId(null);
+
+      // N — toggle add-a-wall draw mode.
+      if (e.key === "n" || e.key === "N") {
+        if (calibrating) return;
+        e.preventDefault();
+        setDrawingWall((d) => !d);
+        setWallPoints([]);
+        return;
+      }
+
+      // Delete / Backspace — same confirm + remove as the trash icon.
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (!selectedSegmentId) return;
+        if (calibrating || drawingWall) return;
+        const seg = review.bundle.segments.find(
+          (s) => s.id === selectedSegmentId,
+        );
+        if (!seg) return;
+        e.preventDefault();
+        if (confirm(`Delete segment "${seg.label ?? "(unlabeled)"}"?`)) {
+          void review.removeSegment(selectedSegmentId);
+          setSelectedSegmentId(null);
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);

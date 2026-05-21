@@ -123,7 +123,7 @@ export function MeasurementTable({
             onClick={() => void onAdd()}
           >
             <Plus className="h-4 w-4" />
-            {drawingWall ? "Cancel adding wall" : "Add a wall"}
+            {drawingWall ? "Cancel adding wall" : "Add a wall (N)"}
           </Button>
         )}
       </div>
@@ -180,7 +180,7 @@ export function MeasurementTable({
           onClick={() => void onAdd()}
         >
           <Plus className="h-4 w-4" />
-          {drawingWall ? "Cancel adding wall" : "Add a wall"}
+          {drawingWall ? "Cancel adding wall" : "Add a wall (N)"}
         </Button>
       )}
     </div>
