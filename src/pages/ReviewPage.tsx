@@ -145,13 +145,21 @@ export function ReviewPage() {
 
   return (
     <main className="flex flex-1 flex-col px-6 py-6">
-        <Link
-          to={`/projects/${projectId}`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Project
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            to={`/projects/${projectId}/drawings`}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Drawings
+          </Link>
+          <Link
+            to={`/projects/${projectId}/takeoff`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+          >
+            Done — back to Take Off →
+          </Link>
+        </div>
 
         {review.loading && (
           <div className="mt-6 h-[60vh] animate-pulse rounded-lg border bg-card" />

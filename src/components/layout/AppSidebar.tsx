@@ -177,10 +177,18 @@ export function AppSidebar() {
 
 function isActiveRoute(pathname: string, to: string): boolean {
   if (to === pathname) return true;
-  // For nested routes (e.g., /drawings -> /pages/:pageId), keep the parent
-  // nav item active while a child is visited.
-  if (to.endsWith("/drawings") && /\/pages\//.test(pathname)) {
-    return pathname.startsWith(to);
+  // The "Measure from PDF" item should also light up while the user is on
+  // the per-page Review or Measure routes (which live under the same
+  // project but use the older /pages/:pageId URL shape).
+  if (to.endsWith("/drawings")) {
+    const projectPath = to.replace(/\/drawings$/, "");
+    if (
+      pathname.startsWith(`${projectPath}/pages/`) ||
+      pathname === to ||
+      pathname.startsWith(`${to}/`)
+    ) {
+      return true;
+    }
   }
   return false;
 }

@@ -67,13 +67,21 @@ export function ProjectPage() {
 
   return (
     <main className="container py-8">
-        <Link
-          to="/dashboard"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Dashboard
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link
+            to={`/projects/${id}`}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Project dashboard
+          </Link>
+          <Link
+            to={`/projects/${id}/takeoff`}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+          >
+            Done — back to Take Off →
+          </Link>
+        </div>
 
         {loading && (
           <div className="mt-6 h-40 animate-pulse rounded-lg border bg-card" />
