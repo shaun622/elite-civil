@@ -742,6 +742,81 @@ function connectPieces(pieces: WallPiece[], gapPx: number): number[][] {
     return r;
   }
 
+  // ===== Junction detection =====
+  // Cluster all piece endpoints by tight proximity. A cluster where three
+  // or more distinct pieces converge is a junction (a T- or +-intersection).
+  // At a junction only the pair(s) whose headings into the cluster are
+  // roughly opposite — i.e., one wall passing straight through — are
+  // allowed to chain. The cross arms branch off as their own runs instead
+  // of fusing into one giant tangled run. A two-piece cluster is just a
+  // corner of one wall and is left untouched, so L-walls stay intact.
+  const JUNCTION_TOL = 2.5;
+  const THROUGH_TOL = Math.cos((52 * Math.PI) / 180);
+  const numEp = n * 2;
+  const epX: number[] = new Array(numEp);
+  const epY: number[] = new Array(numEp);
+  for (let i = 0; i < n; i++) {
+    epX[i * 2] = pieces[i].a[0];
+    epY[i * 2] = pieces[i].a[1];
+    epX[i * 2 + 1] = pieces[i].b[0];
+    epY[i * 2 + 1] = pieces[i].b[1];
+  }
+  const epParent = Array.from({ length: numEp }, (_, i) => i);
+  function epFind(i: number): number {
+    let r = i;
+    while (epParent[r] !== r) r = epParent[r];
+    while (epParent[i] !== r) {
+      const nx = epParent[i];
+      epParent[i] = r;
+      i = nx;
+    }
+    return r;
+  }
+  const tol2 = JUNCTION_TOL * JUNCTION_TOL;
+  for (let i = 0; i < numEp; i++) {
+    for (let j = i + 1; j < numEp; j++) {
+      const dx = epX[i] - epX[j];
+      const dy = epY[i] - epY[j];
+      if (dx * dx + dy * dy <= tol2) {
+        epParent[epFind(i)] = epFind(j);
+      }
+    }
+  }
+  const clusterEps = new Map<number, number[]>();
+  for (let i = 0; i < numEp; i++) {
+    const r = epFind(i);
+    const arr = clusterEps.get(r);
+    if (arr) arr.push(i);
+    else clusterEps.set(r, [i]);
+  }
+  const epJunction = new Map<number, number>();
+  const allowedAt = new Map<number, Set<string>>();
+  for (const [root, epIdxs] of clusterEps) {
+    const pieceSet = new Set(epIdxs.map((ep) => ep >> 1));
+    if (pieceSet.size < 3) continue;
+    for (const ep of epIdxs) epJunction.set(ep, root);
+    const headings: { pi: number; dx: number; dy: number }[] = [];
+    for (const pi of pieceSet) {
+      const endIdx = epFind(pi * 2) === root ? 0 : 1;
+      const h = heading(pieces[pi], endIdx, true);
+      headings.push({ pi, dx: h[0], dy: h[1] });
+    }
+    const allowed = new Set<string>();
+    for (let i = 0; i < headings.length; i++) {
+      for (let j = i + 1; j < headings.length; j++) {
+        const dot =
+          headings[i].dx * headings[j].dx + headings[i].dy * headings[j].dy;
+        if (dot <= -THROUGH_TOL) {
+          const lo = Math.min(headings[i].pi, headings[j].pi);
+          const hi = Math.max(headings[i].pi, headings[j].pi);
+          allowed.add(`${lo},${hi}`);
+        }
+      }
+    }
+    if (allowed.size > 0) allowedAt.set(root, allowed);
+  }
+
+  // ===== Pairwise union-find with junction guard =====
   const WELD = 2.5;
   const ANGLE_TOL = Math.cos((52 * Math.PI) / 180);
   const shortLimit = gapPx * 1.5;
@@ -754,6 +829,21 @@ function connectPieces(pieces: WallPiece[], gapPx: number): number[][] {
       if (find(i) === find(j)) continue;
       const link = bestEndpointLink(pieces[i], pieces[j]);
       if (link.d > gapPx) continue;
+
+      // Junction guard — if either joining endpoint sits in a junction
+      // cluster, only let this pair chain when it is one of the through-
+      // pairs precomputed for that junction.
+      const iEp = i * 2 + link.iEnd;
+      const jEp = j * 2 + link.jEnd;
+      const junc = epJunction.get(iEp) ?? epJunction.get(jEp);
+      if (junc !== undefined) {
+        const allowed = allowedAt.get(junc);
+        if (!allowed) continue;
+        const lo = Math.min(i, j);
+        const hi = Math.max(i, j);
+        if (!allowed.has(`${lo},${hi}`)) continue;
+      }
+
       let join = link.d <= WELD;
       if (!join) {
         if (reliable[i] && reliable[j]) {
