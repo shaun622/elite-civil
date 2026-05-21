@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, MousePointerClick, Sparkles, X } from "lucide-react";
-import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -417,9 +416,7 @@ export function WallMeasurePage() {
   if (!projectId || !pageId) return <Navigate to="/dashboard" replace />;
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <Header />
-      <main className="container py-8">
+    <main className="container py-8">
         <Link
           to={`/projects/${projectId}/pages/${pageId}`}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -697,7 +694,6 @@ export function WallMeasurePage() {
             </div>
           </div>
         )}
-      </main>
-    </div>
+    </main>
   );
 }

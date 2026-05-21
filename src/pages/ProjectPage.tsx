@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { Archive, ArrowLeft, Download, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -67,10 +66,7 @@ export function ProjectPage() {
   }
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <Header />
-
-      <main className="container py-8">
+    <main className="container py-8">
         <Link
           to="/dashboard"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -226,7 +222,6 @@ export function ProjectPage() {
             )}
           </>
         )}
-      </main>
-    </div>
+    </main>
   );
 }

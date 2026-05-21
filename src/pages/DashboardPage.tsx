@@ -1,5 +1,4 @@
 import { Plus } from "lucide-react";
-import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -11,10 +10,7 @@ export function DashboardPage() {
   const hasProjects = (projects?.length ?? 0) > 0;
 
   return (
-    <div className="min-h-screen bg-muted/20">
-      <Header />
-
-      <main className="container py-10">
+    <main className="container py-10">
         <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
@@ -77,7 +73,6 @@ export function DashboardPage() {
             ))}
           </div>
         )}
-      </main>
-    </div>
+    </main>
   );
 }

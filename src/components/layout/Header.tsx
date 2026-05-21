@@ -20,9 +20,11 @@ export function Header() {
       <div className="container flex h-14 items-center justify-between">
         <Link to={user ? "/dashboard" : "/"} className="flex items-baseline gap-2">
           <span className="text-sm font-semibold tracking-tight">
-            Elite Civil
+            BE Landscapes
           </span>
-          <span className="text-xs text-muted-foreground">— TakeoffMate</span>
+          <span className="text-xs text-muted-foreground">
+            — Retaining Wall Estimator
+          </span>
         </Link>
 
         <div className="flex items-center gap-3 text-sm">

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Lock, Unlock } from "lucide-react";
-import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -145,10 +144,7 @@ export function ReviewPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-muted/20">
-      <Header />
-
-      <main className="flex flex-1 flex-col px-6 py-6">
+    <main className="flex flex-1 flex-col px-6 py-6">
         <Link
           to={`/projects/${projectId}`}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -346,7 +342,6 @@ export function ReviewPage() {
             </div>
           </>
         )}
-      </main>
-    </div>
+    </main>
   );
 }
