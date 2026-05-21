@@ -63,7 +63,7 @@ function drawCoverPage(
   const top = A4_HEIGHT - MARGIN;
   let y = top;
 
-  page.drawText("Elite Civil — TakeoffMate", {
+  page.drawText("BE Landscapes — Retaining Wall Estimator", {
     x: MARGIN,
     y: y - 14,
     size: 11,

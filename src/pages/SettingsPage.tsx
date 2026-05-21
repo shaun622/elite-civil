@@ -268,7 +268,7 @@ function CompanyTab({ userId }: { userId: string }) {
             id="company-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Elite Civil"
+            placeholder="e.g. BE Landscape Construction"
           />
         </div>
         <div className="grid gap-2">

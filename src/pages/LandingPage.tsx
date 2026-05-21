@@ -10,15 +10,15 @@ export function LandingPage() {
       <main className="container py-24">
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Elite Civil
+            BE Landscapes
           </p>
           <h1 className="mt-4 text-balance text-5xl font-semibold tracking-tight sm:text-6xl">
-            TakeoffMate
+            Retaining Wall Estimator
           </h1>
           <p className="mt-6 text-balance text-lg text-muted-foreground sm:text-xl">
-            Upload a drawing, get accurate retaining wall measurements in 30
-            seconds — with a visual audit trail showing exactly what the AI
-            read.
+            Take off retaining walls straight from a PDF, price them with
+            your own rates, and produce client-ready quotes — all in one
+            place.
           </p>
 
           <div className="mt-10 flex items-center justify-center gap-3">
@@ -65,7 +65,7 @@ export function LandingPage() {
 
       <footer className="border-t">
         <div className="container flex h-14 items-center justify-between text-xs text-muted-foreground">
-          <span>© Elite Civil</span>
+          <span>© BE Landscape Construction</span>
           <span>Australia &amp; New Zealand</span>
         </div>
       </footer>
