@@ -72,7 +72,12 @@ export async function extractWallsFromPdfPage(
   );
   const colors = new Set(typeByColor.keys());
 
-  const runs = measureWalls(vectors.paths, colors);
+  // Drop runs shorter than half a metre — real retaining walls are always
+  // much longer, and small same-colour features (orange height brackets,
+  // arrowheads near RLs) produce dot-like junk runs otherwise.
+  const runs = measureWalls(vectors.paths, colors, {
+    minRunLengthPx: 500 / mmPerPx,
+  });
 
   return runs.map((run) => ({
     color: run.color.toLowerCase(),
