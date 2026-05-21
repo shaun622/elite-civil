@@ -22,8 +22,8 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 
-// dot · label · length · height
-const GRID = "grid-cols-[24px_1fr_96px_84px]";
+// dot · label · length · height · confirm
+const GRID = "grid-cols-[24px_1fr_96px_84px_24px]";
 
 function confidenceTone(c: number): "good" | "amber" | "red" {
   if (c >= 0.85) return "good";
@@ -146,6 +146,7 @@ export function MeasurementTable({
         <span>Label</span>
         <span className="text-right">Length (m)</span>
         <span className="text-right">Height (m)</span>
+        <span></span>
       </div>
 
       <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
@@ -281,11 +282,51 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             }}
           />
           <div
-            className="text-right text-sm tabular-nums text-muted-foreground"
-            title="Average of the per-pair RL heights"
+            className={cn(
+              "text-right text-sm tabular-nums",
+              segment.height_mm != null && !segment.confirmed
+                ? "rounded border border-purple-300 bg-purple-50/70 px-1.5 py-0.5 text-purple-800"
+                : "text-muted-foreground",
+            )}
+            title={
+              segment.height_mm != null && !segment.confirmed
+                ? "Auto-derived from RLs — confirm the wall once you've verified"
+                : "Average of the per-pair RL heights"
+            }
           >
             {segment.height_mm != null ? formatLength(segment.height_mm) : "—"}
           </div>
+          {!locked ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void commit({ confirmed: !segment.confirmed });
+              }}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
+                segment.confirmed
+                  ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                  : "border border-muted-foreground/30 text-muted-foreground/30 hover:border-emerald-500 hover:text-emerald-600",
+              )}
+              title={
+                segment.confirmed
+                  ? "Un-confirm wall"
+                  : "Confirm wall — RLs verified"
+              }
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          ) : segment.confirmed ? (
+            <span
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white"
+              title="Confirmed"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <span />
+          )}
         </div>
 
         {(selected || saving) && (

@@ -224,6 +224,25 @@ export function HeightBandSummary({ segments, projectId }: Props) {
           — enter its Top/Bottom RLs to include it in the area total.
         </p>
       )}
+
+      {(() => {
+        const total = segments.length;
+        const confirmedCount = segments.filter((s) => s.confirmed).length;
+        if (confirmedCount === total) {
+          return (
+            <p className="mt-2 text-[11px] text-emerald-700">
+              All {total} {total === 1 ? "wall" : "walls"} confirmed.
+            </p>
+          );
+        }
+        const remaining = total - confirmedCount;
+        return (
+          <p className="mt-2 text-[11px] text-amber-700">
+            {remaining} {remaining === 1 ? "wall" : "walls"} not yet confirmed
+            — verify each before quoting.
+          </p>
+        );
+      })()}
     </div>
   );
 }
