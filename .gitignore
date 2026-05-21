@@ -39,3 +39,6 @@ supabase/.branches
 coverage
 .cache
 .git-commit-msg.tmp
+
+# Claude Code local config
+.claude/
