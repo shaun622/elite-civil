@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Lock, Unlock } from "lucide-react";
 import { Header } from "@/components/layout/Header";
@@ -88,6 +88,44 @@ export function ReviewPage() {
     });
     if (created) setSelectedSegmentId(created.id);
   }
+
+  // Delete / Backspace on the selected wall — same confirm + remove as the
+  // trash icon, just keyboard. Ignored while typing into an input/textarea
+  // and while another mode is active.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (!selectedSegmentId) return;
+      if (!review.bundle || review.bundle.extraction.reviewed) return;
+      if (calibrating || drawingWall) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      const seg = review.bundle.segments.find(
+        (s) => s.id === selectedSegmentId,
+      );
+      if (!seg) return;
+      e.preventDefault();
+      if (confirm(`Delete segment "${seg.label ?? "(unlabeled)"}"?`)) {
+        void review.removeSegment(selectedSegmentId);
+        setSelectedSegmentId(null);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    selectedSegmentId,
+    review.bundle,
+    review.removeSegment,
+    calibrating,
+    drawingWall,
+  ]);
 
   if (!projectId || !pageId) {
     return <Navigate to="/dashboard" replace />;
