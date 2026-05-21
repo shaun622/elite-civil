@@ -141,6 +141,46 @@ export function DrawingViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitZoom]);
 
+  // Click a wall row in the table -> pan the drawing to it, but only when
+  // the wall is currently off-screen (so a click on the drawing itself
+  // doesn't trigger an unwanted jump).
+  useEffect(() => {
+    if (!selectedSegmentId) return;
+    if (containerSize.width === 0 || containerSize.height === 0) return;
+    const seg = segments.find((s) => s.id === selectedSegmentId);
+    if (!seg) return;
+    const px = pointsToPixels(seg.polyline, imageWidth, imageHeight);
+    if (px.length < 2) return;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = 0; i + 1 < px.length; i += 2) {
+      if (px[i] < minX) minX = px[i];
+      if (px[i] > maxX) maxX = px[i];
+      if (px[i + 1] < minY) minY = px[i + 1];
+      if (px[i + 1] > maxY) maxY = px[i + 1];
+    }
+    const viewMinX = -origin.x / zoom;
+    const viewMinY = -origin.y / zoom;
+    const viewMaxX = (containerSize.width - origin.x) / zoom;
+    const viewMaxY = (containerSize.height - origin.y) / zoom;
+    const overlaps = !(
+      maxX < viewMinX ||
+      minX > viewMaxX ||
+      maxY < viewMinY ||
+      minY > viewMaxY
+    );
+    if (overlaps) return;
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    setOrigin({
+      x: containerSize.width / 2 - cx * zoom,
+      y: containerSize.height / 2 - cy * zoom,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSegmentId]);
+
   function fitToContainer() {
     setZoom(fitZoom);
     setOrigin({
