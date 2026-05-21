@@ -123,6 +123,7 @@ export interface WallSegment {
   user_edited: boolean;
   original_values: Record<string, unknown> | null;
   user_added: boolean;
+  confirmed: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -136,6 +137,7 @@ export type WallSegmentUpdate = Partial<{
   polyline: Point[];
   rl_pairs: RlPair[];
   user_added: boolean;
+  confirmed: boolean;
 }>;
 
 export interface ExtractionBundle {

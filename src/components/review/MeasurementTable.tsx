@@ -325,15 +325,53 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
                     e.stopPropagation();
                     void commit({ user_added: false });
                   }}
-                  title="Save wall — turns it from purple (in-progress) to blue (confirmed)"
+                  title="Save wall — turns it from purple (in-progress) to blue"
                 >
                   <Check className="h-3.5 w-3.5" />
                   Save wall
                 </Button>
               ) : segment.user_added ? (
                 <Badge variant="secondary">User added</Badge>
-              ) : segment.user_edited ? (
+              ) : segment.user_edited && !segment.confirmed ? (
                 <Badge variant="secondary">Edited</Badge>
+              ) : null}
+
+              {segment.confirmed ? (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 border-emerald-200 bg-emerald-100 text-emerald-800"
+                >
+                  <Check className="h-3 w-3" />
+                  Confirmed
+                  {!locked && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void commit({ confirmed: false });
+                      }}
+                      title="Un-confirm this wall"
+                      className="ml-0.5 rounded hover:bg-emerald-200/60"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </Badge>
+              ) : !locked ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void commit({ confirmed: true });
+                  }}
+                  title="Mark this wall as confirmed — RLs verified"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Confirm
+                </Button>
               ) : null}
               {saving && (
                 <span className="inline-flex items-center gap-1 text-[11px]">
