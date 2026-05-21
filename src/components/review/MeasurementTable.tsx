@@ -162,7 +162,9 @@ export function MeasurementTable({
             hovered={seg.id === hoveredSegmentId}
             saving={savingId === seg.id}
             locked={locked}
-            onSelect={() => onSelect(seg.id)}
+            onSelect={() =>
+              onSelect(seg.id === selectedSegmentId ? null : seg.id)
+            }
             onHoverEnter={() => onHover(seg.id)}
             onHoverLeave={() => onHover(null)}
             onSave={(patch) => onSave(seg, patch)}
@@ -244,7 +246,6 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
     return (
       <div
         ref={ref}
-        onClick={onSelect}
         onMouseEnter={onHoverEnter}
         onMouseLeave={onHoverLeave}
         className={cn(
@@ -257,7 +258,24 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
           segment.user_added && "bg-purple-50/40",
         )}
       >
-        <div className={cn("grid items-center gap-2", GRID)}>
+        <div
+          className={cn(
+            "grid cursor-pointer items-center gap-2",
+            GRID,
+          )}
+          onClick={(e) => {
+            // When already selected, clicks on the row's chrome collapse it,
+            // but clicks on an input / button (label, confirm icon) keep
+            // the row open so the user can keep editing.
+            if (selected) {
+              const tag = (e.target as HTMLElement).tagName;
+              if (tag === "INPUT" || tag === "BUTTON" || tag === "TEXTAREA") {
+                return;
+              }
+            }
+            onSelect();
+          }}
+        >
           <span className="flex items-center">
             <ConfidenceDot value={segment.confidence} />
           </span>
