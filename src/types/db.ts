@@ -135,6 +135,7 @@ export type WallSegmentUpdate = Partial<{
   notes: string | null;
   polyline: Point[];
   rl_pairs: RlPair[];
+  user_added: boolean;
 }>;
 
 export interface ExtractionBundle {

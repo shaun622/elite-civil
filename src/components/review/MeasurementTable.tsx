@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2, X } from "lucide-react";
+import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -315,12 +315,26 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
-              {segment.user_added && (
+              {segment.user_added && !locked ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void commit({ user_added: false });
+                  }}
+                  title="Save wall — turns it from purple (in-progress) to blue (confirmed)"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  Save wall
+                </Button>
+              ) : segment.user_added ? (
                 <Badge variant="secondary">User added</Badge>
-              )}
-              {!segment.user_added && segment.user_edited && (
+              ) : segment.user_edited ? (
                 <Badge variant="secondary">Edited</Badge>
-              )}
+              ) : null}
               {saving && (
                 <span className="inline-flex items-center gap-1 text-[11px]">
                   <Loader2 className="h-3 w-3 animate-spin" />
