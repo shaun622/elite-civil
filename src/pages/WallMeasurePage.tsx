@@ -82,30 +82,43 @@ export function WallMeasurePage() {
   const [aiRls, setAiRls] = useState<AnalyzeRl[]>([]);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
-  // Bounding box of all drawn vector content, in vector coordinates. The
-  // canvas is sized to this bbox rather than the full sheet so the empty
-  // paper margins (often most of the page) don't fill the viewport.
+  // Bounding box of the drawn content, in vector coordinates. Used to
+  // crop the canvas so the empty paper margins of an A1/A3 sheet don't
+  // dominate the viewport. Uses percentile-based bounds rather than the
+  // raw min/max so a couple of stray paths (scale-bar ticks at the page
+  // edge, title-block borders, a single-line page frame) can't single-
+  // handedly stretch the bbox to the full sheet — we crop to where the
+  // bulk of the linework actually lives.
   const contentBbox = useMemo(() => {
     if (!vectors) return null;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    const xs: number[] = [];
+    const ys: number[] = [];
     for (const path of vectors.paths) {
       const p = path.points;
       for (let i = 0; i + 1 < p.length; i += 2) {
-        if (p[i] < minX) minX = p[i];
-        if (p[i] > maxX) maxX = p[i];
-        if (p[i + 1] < minY) minY = p[i + 1];
-        if (p[i + 1] > maxY) maxY = p[i + 1];
+        xs.push(p[i]);
+        ys.push(p[i + 1]);
       }
     }
-    if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
-    const pad = 24;
-    const bMinX = Math.max(0, minX - pad);
-    const bMinY = Math.max(0, minY - pad);
-    const bMaxX = Math.min(vectors.width, maxX + pad);
-    const bMaxY = Math.min(vectors.height, maxY + pad);
+    if (xs.length < 4) return null;
+    xs.sort((a, b) => a - b);
+    ys.sort((a, b) => a - b);
+    // 1st / 99th percentile gives us a bbox containing ~98% of all
+    // vector points, dropping the worst outliers without trimming the
+    // drawing itself. The padding then extends back out a bit so any
+    // wall pieces just outside the percentile band aren't clipped.
+    const pct = (arr: number[], q: number) =>
+      arr[Math.min(arr.length - 1, Math.floor(arr.length * q))];
+    const lowX = pct(xs, 0.01);
+    const highX = pct(xs, 0.99);
+    const lowY = pct(ys, 0.01);
+    const highY = pct(ys, 0.99);
+    if (highX <= lowX || highY <= lowY) return null;
+    const pad = 48;
+    const bMinX = Math.max(0, lowX - pad);
+    const bMinY = Math.max(0, lowY - pad);
+    const bMaxX = Math.min(vectors.width, highX + pad);
+    const bMaxY = Math.min(vectors.height, highY + pad);
     return {
       minX: bMinX,
       minY: bMinY,
@@ -482,7 +495,15 @@ export function WallMeasurePage() {
   if (!projectId || !pageId) return <Navigate to="/dashboard" replace />;
 
   return (
-    <main className="container py-8">
+    <main
+      // Fill exactly the available height under the global Header (3.5rem
+      // tall) so the page never scrolls — the canvas + sidebar each
+      // handle their own internal scrolling. Without this constraint the
+      // 78vh canvas stacks on top of the title + page padding and pushes
+      // the bottom of the layout below the viewport.
+      className="flex h-[calc(100vh-3.5rem)] flex-col gap-3 px-6 py-3"
+    >
+      <div className="shrink-0 space-y-1">
         <Link
           to={`/projects/${projectId}/pages/${pageId}`}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -491,37 +512,38 @@ export function WallMeasurePage() {
           Back to review
         </Link>
 
-        <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight">
           Measure walls from PDF
         </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+        <p className="max-w-2xl text-xs text-muted-foreground">
           Calibrate the scale, click a retaining wall to pick its type, then
           measure. Lengths come straight from the drawing's vector geometry.
         </p>
+      </div>
 
-        {error && (
-          <Alert variant="destructive" className="mt-4">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+      {error && (
+        <Alert variant="destructive" className="shrink-0">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        {loading && (
-          <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading drawing…
-          </div>
-        )}
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading drawing…
+        </div>
+      )}
 
-        {!loading && vectors && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]">
-            <div>
+      {!loading && vectors && (
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="flex min-h-0 min-w-0 flex-col">
               {picking && (
-                <div className="mb-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-900">
+                <div className="mb-2 shrink-0 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-900">
                   Click any retaining wall to add its colour as a wall type.
                   Toggle "Pick wall by clicking" off when you're done.
                 </div>
               )}
-              <div className="relative">
+              <div className="relative flex min-h-0 flex-1 flex-col">
                 {/* Floating zoom toolbar — sits over the top-right of the
                     canvas so the drawing area stays free for clicks. */}
                 <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border bg-white/95 p-1 shadow-sm backdrop-blur-sm">
@@ -592,7 +614,7 @@ export function WallMeasurePage() {
                       Math.max(0.25, Math.min(8, +(z * delta).toFixed(3))),
                     );
                   }}
-                  className="max-h-[78vh] overflow-auto rounded-lg border bg-white"
+                  className="min-h-0 flex-1 overflow-auto rounded-lg border bg-white"
                 >
                   <canvas
                     ref={canvasRef}
@@ -603,7 +625,7 @@ export function WallMeasurePage() {
               </div>
             </div>
 
-            <div className="space-y-5">
+            <div className="min-h-0 space-y-5 overflow-y-auto pr-1">
               <section className="rounded-lg border bg-card p-4">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-semibold">Auto-detect</h2>
