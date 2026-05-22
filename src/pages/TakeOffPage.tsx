@@ -427,9 +427,12 @@ export function TakeOffPage() {
                         </Select>
                       </TableCell>
                       <TableCell className="text-right">
+                        {/* ml-auto pushes the flex Input box to the right
+                            edge of the cell — `text-right` on the cell
+                            alone doesn't move block-level flex children. */}
                         <Input
                           type="number"
-                          className="h-7 w-16 text-right text-xs"
+                          className="ml-auto h-7 w-16 text-right text-xs"
                           defaultValue={calc.lengthLM.toFixed(2)}
                           onBlur={(e) => {
                             const v = parseFloat(e.target.value);
@@ -446,7 +449,7 @@ export function TakeOffPage() {
                           key={`h-${segment.id}-${calc.height}`}
                           type="number"
                           step="0.2"
-                          className="h-7 w-16 text-right text-xs"
+                          className="ml-auto h-7 w-16 text-right text-xs"
                           defaultValue={calc.height}
                           onBlur={(e) => {
                             const raw = parseFloat(e.target.value);
