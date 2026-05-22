@@ -82,6 +82,40 @@ export function WallMeasurePage() {
   const [aiRls, setAiRls] = useState<AnalyzeRl[]>([]);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
+  // Bounding box of all drawn vector content, in vector coordinates. The
+  // canvas is sized to this bbox rather than the full sheet so the empty
+  // paper margins (often most of the page) don't fill the viewport.
+  const contentBbox = useMemo(() => {
+    if (!vectors) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const path of vectors.paths) {
+      const p = path.points;
+      for (let i = 0; i + 1 < p.length; i += 2) {
+        if (p[i] < minX) minX = p[i];
+        if (p[i] > maxX) maxX = p[i];
+        if (p[i + 1] < minY) minY = p[i + 1];
+        if (p[i + 1] > maxY) maxY = p[i + 1];
+      }
+    }
+    if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
+    const pad = 24;
+    const bMinX = Math.max(0, minX - pad);
+    const bMinY = Math.max(0, minY - pad);
+    const bMaxX = Math.min(vectors.width, maxX + pad);
+    const bMaxY = Math.min(vectors.height, maxY + pad);
+    return {
+      minX: bMinX,
+      minY: bMinY,
+      maxX: bMaxX,
+      maxY: bMaxY,
+      width: bMaxX - bMinX,
+      height: bMaxY - bMinY,
+    };
+  }, [vectors]);
+
   // Distinct stroke colours present on the page, most common first — the
   // palette the user picks wall colours from.
   const palette = useMemo(() => {
@@ -185,9 +219,11 @@ export function WallMeasurePage() {
   useEffect(() => {
     if (!vectors) return;
     const highlight = new Set(wallTypes.map((w) => w.color));
-    setDisplayScale(redraw(vectors, calibPoints, highlight, picking, zoom));
+    setDisplayScale(
+      redraw(vectors, calibPoints, highlight, picking, zoom, contentBbox),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vectors, calibPoints, wallTypes, picking, zoom]);
+  }, [vectors, calibPoints, wallTypes, picking, zoom, contentBbox]);
 
   function redraw(
     v: PageVectors,
@@ -195,15 +231,23 @@ export function WallMeasurePage() {
     highlight: Set<string>,
     picking: boolean,
     zoomFactor: number,
+    bbox: { minX: number; minY: number; width: number; height: number } | null,
   ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
-    // Base fit: shrink wide sheets to ~1400 px so they fit a default
+    // Render the content bbox rather than the full page so blank paper
+    // margins don't fill the viewport. Falls back to the full sheet if
+    // we couldn't compute a bbox (e.g. empty page).
+    const renderW = bbox ? bbox.width : v.width;
+    const renderH = bbox ? bbox.height : v.height;
+    const ox = bbox ? bbox.minX : 0;
+    const oy = bbox ? bbox.minY : 0;
+    // Base fit: shrink wide content to ~1400 px so it fits a default
     // viewport. Zoom is applied on top — the canvas itself grows so lines
     // stay crisp at any zoom level (no CSS upscaling blur).
-    const ds = Math.min(1, 1400 / v.width) * zoomFactor;
-    canvas.width = Math.round(v.width * ds);
-    canvas.height = Math.round(v.height * ds);
+    const ds = Math.min(1, 1400 / renderW) * zoomFactor;
+    canvas.width = Math.round(renderW * ds);
+    canvas.height = Math.round(renderH * ds);
     const ctx = canvas.getContext("2d");
     if (!ctx) return ds;
     ctx.fillStyle = "#ffffff";
@@ -220,9 +264,9 @@ export function WallMeasurePage() {
       ctx.lineWidth = width;
       ctx.beginPath();
       const p = path.points;
-      ctx.moveTo(p[0] * ds, p[1] * ds);
+      ctx.moveTo((p[0] - ox) * ds, (p[1] - oy) * ds);
       for (let k = 2; k + 1 < p.length; k += 2) {
-        ctx.lineTo(p[k] * ds, p[k + 1] * ds);
+        ctx.lineTo((p[k] - ox) * ds, (p[k + 1] - oy) * ds);
       }
       ctx.stroke();
     };
@@ -251,14 +295,14 @@ export function WallMeasurePage() {
       ctx.lineWidth = 1.5;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.moveTo(points[0][0] * ds, points[0][1] * ds);
-      ctx.lineTo(points[1][0] * ds, points[1][1] * ds);
+      ctx.moveTo((points[0][0] - ox) * ds, (points[0][1] - oy) * ds);
+      ctx.lineTo((points[1][0] - ox) * ds, (points[1][1] - oy) * ds);
       ctx.stroke();
       ctx.setLineDash([]);
     }
     points.forEach(([x, y]) => {
-      const px = x * ds;
-      const py = y * ds;
+      const px = (x - ox) * ds;
+      const py = (y - oy) * ds;
       const half = 30;
       ctx.beginPath();
       ctx.moveTo(px, py - half);
@@ -279,8 +323,13 @@ export function WallMeasurePage() {
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!vectors) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const cx = (e.clientX - rect.left) / displayScale;
-    const cy = (e.clientY - rect.top) / displayScale;
+    // Click in vector coords: undo the canvas display scale, then add
+    // back the bbox offset (the canvas content is translated so the
+    // bbox origin sits at canvas (0,0)).
+    const ox = contentBbox?.minX ?? 0;
+    const oy = contentBbox?.minY ?? 0;
+    const cx = (e.clientX - rect.left) / displayScale + ox;
+    const cy = (e.clientY - rect.top) / displayScale + oy;
 
     if (picking) {
       // Sample the colour of the wall line nearest the click.
