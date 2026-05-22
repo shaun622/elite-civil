@@ -10,7 +10,7 @@ import {
   Text,
 } from "react-konva";
 import type Konva from "konva";
-import { Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
+import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bboxToPixels, pointsToPixels } from "@/lib/coord";
 import type {
@@ -429,46 +429,45 @@ export function DrawingViewer({
 
       <div className="pointer-events-none absolute inset-0">
         <div className="pointer-events-auto absolute right-3 top-3 flex flex-col gap-2">
-          <div className="flex gap-1 rounded-md border bg-background/95 p-1 shadow-sm">
+          <div className="flex items-center gap-1 rounded-md border bg-background/95 p-1 shadow-sm backdrop-blur-sm">
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7"
               onClick={() => zoomBy(1 / 1.25)}
               title="Zoom out"
             >
-              <Minus className="h-4 w-4" />
+              <ZoomOut className="h-3.5 w-3.5" />
             </Button>
+            <button
+              type="button"
+              onClick={() => zoomTo(1)}
+              title="Reset to 100%"
+              className="min-w-[3rem] rounded px-1.5 text-xs font-medium tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              {Math.round(zoom * 100)}%
+            </button>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7"
               onClick={() => zoomBy(1.25)}
               title="Zoom in"
             >
-              <Plus className="h-4 w-4" />
+              <ZoomIn className="h-3.5 w-3.5" />
             </Button>
+            <span className="mx-1 h-4 w-px bg-border" />
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-7 w-7"
               onClick={fitToContainer}
-              title="Fit to view"
+              title="Fit drawing to viewport"
             >
-              <Maximize2 className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => zoomTo(1)}
-              title="Actual size (100%)"
-            >
-              <RefreshCw className="h-4 w-4" />
+              <Maximize2 className="h-3.5 w-3.5" />
             </Button>
           </div>
 

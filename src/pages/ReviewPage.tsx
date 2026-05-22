@@ -287,7 +287,7 @@ export function ReviewPage() {
                     </Button>
                   </div>
                 )}
-                <div className="h-[70vh] min-h-[420px] overflow-hidden rounded-lg border bg-[#1f2937]">
+                <div className="h-[78vh] min-h-[480px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
                     imageWidth={review.bundle.page.image_width}
