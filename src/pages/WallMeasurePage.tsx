@@ -66,6 +66,22 @@ export function WallMeasurePage() {
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Click-and-drag pan on the canvas wrapper. The drag state lives in a
+  // ref so the click handler sees the final "did the user actually
+  // drag?" value without us having to bounce through a state update.
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<
+    | {
+        startX: number;
+        startY: number;
+        scrollLeft: number;
+        scrollTop: number;
+        moved: boolean;
+      }
+    | null
+  >(null);
+  const suppressClickRef = useRef(false);
+
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [knownDist, setKnownDist] = useState("");
   const [scaleRatio, setScaleRatio] = useState("");
@@ -333,7 +349,61 @@ export function WallMeasurePage() {
     return ds;
   }
 
+  /** Pointer-down on the canvas wrapper starts a potential drag-pan. */
+  function onPanPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+      moved: false,
+    };
+    setDragging(true);
+  }
+
+  /** Update scroll position as the user drags. Treats moves under 3 px as
+   *  a still click — the threshold avoids hand-tremor turning every pick
+   *  click into a tiny accidental pan. */
+  function onPanPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.moved && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+      drag.moved = true;
+    }
+    if (drag.moved) {
+      el.scrollLeft = drag.scrollLeft - dx;
+      el.scrollTop = drag.scrollTop - dy;
+    }
+  }
+
+  /** Release the pointer and, if the user actually dragged, suppress the
+   *  follow-up click on the canvas so a pan past a wall doesn't pick it. */
+  function onPanPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (drag?.moved) suppressClickRef.current = true;
+    dragRef.current = null;
+    setDragging(false);
+    const el = scrollRef.current;
+    if (el && el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+  }
+
   function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (suppressClickRef.current) {
+      // The user just dragged — eat this click so they don't accidentally
+      // pick a wall colour or drop a calibration point.
+      suppressClickRef.current = false;
+      return;
+    }
     if (!vectors) return;
     const rect = e.currentTarget.getBoundingClientRect();
     // Click in vector coords: undo the canvas display scale, then add
@@ -614,12 +684,25 @@ export function WallMeasurePage() {
                       Math.max(0.25, Math.min(8, +(z * delta).toFixed(3))),
                     );
                   }}
-                  className="min-h-0 flex-1 overflow-auto rounded-lg border bg-white"
+                  onPointerDown={onPanPointerDown}
+                  onPointerMove={onPanPointerMove}
+                  onPointerUp={onPanPointerUp}
+                  onPointerCancel={onPanPointerUp}
+                  className={`min-h-0 flex-1 overflow-auto rounded-lg border bg-white ${
+                    dragging ? "cursor-grabbing" : "cursor-grab"
+                  }`}
                 >
                   <canvas
                     ref={canvasRef}
                     onClick={onCanvasClick}
-                    className="block cursor-crosshair"
+                    // Picking / calibration override the grab cursor so
+                    // the user can see they're meant to click. Plain
+                    // viewing keeps the wrapper's grab cursor.
+                    className={
+                      picking || showDistance
+                        ? "block cursor-crosshair"
+                        : "block"
+                    }
                   />
                 </div>
               </div>
