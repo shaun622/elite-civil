@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, MousePointerClick, Sparkles, X } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Maximize2,
+  MousePointerClick,
+  Sparkles,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +61,10 @@ export function WallMeasurePage() {
   const [pageNumber, setPageNumber] = useState(1);
   const [vectors, setVectors] = useState<PageVectors | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
+  // 1.0 = "fit page to viewport", anything > 1 enlarges the canvas so the
+  // user can pan around it via the scroll container.
+  const [zoom, setZoom] = useState(1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [knownDist, setKnownDist] = useState("");
@@ -172,19 +185,23 @@ export function WallMeasurePage() {
   useEffect(() => {
     if (!vectors) return;
     const highlight = new Set(wallTypes.map((w) => w.color));
-    setDisplayScale(redraw(vectors, calibPoints, highlight, picking));
+    setDisplayScale(redraw(vectors, calibPoints, highlight, picking, zoom));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vectors, calibPoints, wallTypes, picking]);
+  }, [vectors, calibPoints, wallTypes, picking, zoom]);
 
   function redraw(
     v: PageVectors,
     points: [number, number][],
     highlight: Set<string>,
     picking: boolean,
+    zoomFactor: number,
   ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
-    const ds = Math.min(1, 1400 / v.width);
+    // Base fit: shrink wide sheets to ~1400 px so they fit a default
+    // viewport. Zoom is applied on top — the canvas itself grows so lines
+    // stay crisp at any zoom level (no CSS upscaling blur).
+    const ds = Math.min(1, 1400 / v.width) * zoomFactor;
     canvas.width = Math.round(v.width * ds);
     canvas.height = Math.round(v.height * ds);
     const ctx = canvas.getContext("2d");
@@ -455,12 +472,85 @@ export function WallMeasurePage() {
                   Toggle "Pick wall by clicking" off when you're done.
                 </div>
               )}
-              <div className="overflow-auto rounded-lg border bg-white">
-                <canvas
-                  ref={canvasRef}
-                  onClick={onCanvasClick}
-                  className="block cursor-crosshair"
-                />
+              <div className="relative">
+                {/* Floating zoom toolbar — sits over the top-right of the
+                    canvas so the drawing area stays free for clicks. */}
+                <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border bg-white/95 p-1 shadow-sm backdrop-blur-sm">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Zoom out (—)"
+                    onClick={() =>
+                      setZoom((z) => Math.max(0.25, +(z / 1.25).toFixed(3)))
+                    }
+                  >
+                    <ZoomOut className="h-3.5 w-3.5" />
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setZoom(1)}
+                    title="Reset to 100%"
+                    className="min-w-[3rem] rounded px-1.5 text-xs font-medium tabular-nums text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    {Math.round(zoom * 100)}%
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Zoom in (+)"
+                    onClick={() =>
+                      setZoom((z) => Math.min(8, +(z * 1.25).toFixed(3)))
+                    }
+                  >
+                    <ZoomIn className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="mx-1 h-4 w-px bg-border" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title="Fit drawing to viewport (skips empty paper margins)"
+                    onClick={() => {
+                      const fit = computeFitZoom(vectors, scrollRef.current);
+                      if (fit) {
+                        setZoom(fit.zoom);
+                        // After the canvas grows, scroll the content
+                        // bbox into view so the user lands on the drawing,
+                        // not on the white margins above it.
+                        requestAnimationFrame(() => {
+                          const el = scrollRef.current;
+                          if (!el) return;
+                          el.scrollLeft = fit.scrollLeft;
+                          el.scrollTop = fit.scrollTop;
+                        });
+                      }
+                    }}
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                <div
+                  ref={scrollRef}
+                  onWheel={(e) => {
+                    // Ctrl + wheel zooms (matches PDF readers / browsers).
+                    if (!e.ctrlKey && !e.metaKey) return;
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? 1 / 1.15 : 1.15;
+                    setZoom((z) =>
+                      Math.max(0.25, Math.min(8, +(z * delta).toFixed(3))),
+                    );
+                  }}
+                  className="max-h-[78vh] overflow-auto rounded-lg border bg-white"
+                >
+                  <canvas
+                    ref={canvasRef}
+                    onClick={onCanvasClick}
+                    className="block cursor-crosshair"
+                  />
+                </div>
               </div>
             </div>
 
@@ -696,4 +786,61 @@ export function WallMeasurePage() {
         )}
     </main>
   );
+}
+
+/**
+ * Walk every path's points to find the bounding box of the actual drawn
+ * content (in vector coordinates), then work out a zoom factor + scroll
+ * offset that fits that box snugly inside the scroll container. Returns
+ * null if there's no content or no container yet.
+ */
+function computeFitZoom(
+  v: PageVectors | null,
+  container: HTMLDivElement | null,
+): { zoom: number; scrollLeft: number; scrollTop: number } | null {
+  if (!v || !container) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const path of v.paths) {
+    const p = path.points;
+    for (let i = 0; i + 1 < p.length; i += 2) {
+      const x = p[i];
+      const y = p[i + 1];
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
+
+  // Padding around the content so the user doesn't end up flush against
+  // the wall of the viewport.
+  const padX = (maxX - minX) * 0.05;
+  const padY = (maxY - minY) * 0.05;
+  const bboxW = maxX - minX + padX * 2;
+  const bboxH = maxY - minY + padY * 2;
+
+  const baseDs = Math.min(1, 1400 / v.width);
+  // viewport size in vector-pixel space (assuming the redraw applies
+  // baseDs * zoom). We want bbox to fill the viewport in vector pixels.
+  const viewportVecW = container.clientWidth / baseDs;
+  const viewportVecH = container.clientHeight / baseDs;
+  const zoom = Math.min(
+    8,
+    Math.max(1, Math.min(viewportVecW / bboxW, viewportVecH / bboxH)),
+  );
+
+  // Where to scroll so the content bbox is centred. Coordinates are in
+  // displayed-canvas pixels (vector * baseDs * zoom).
+  const scale = baseDs * zoom;
+  const cx = (minX - padX + bboxW / 2) * scale;
+  const cy = (minY - padY + bboxH / 2) * scale;
+  return {
+    zoom,
+    scrollLeft: Math.max(0, cx - container.clientWidth / 2),
+    scrollTop: Math.max(0, cy - container.clientHeight / 2),
+  };
 }
