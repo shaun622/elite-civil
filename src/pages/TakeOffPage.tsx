@@ -106,7 +106,15 @@ export function TakeOffPage() {
   }));
 
   const totalLM = rows.reduce((s, r) => s + r.calc.lengthLM, 0);
-  const totalM2 = rows.reduce((s, r) => s + r.calc.m2, 0);
+  const totalEngM2 = rows.reduce((s, r) => s + r.calc.m2, 0);
+  // Face m² uses the raw measured height (before 0.2 m rounding) — what
+  // the wall actually looks like. Engineering m² (calc.m2) uses the
+  // rounded height and is what BE prices off.
+  const totalFaceM2 = rows.reduce((s, r) => {
+    const lengthM = (r.segment.length_mm ?? 0) / 1000;
+    const heightM = (r.segment.height_mm ?? 0) / 1000;
+    return s + lengthM * heightM;
+  }, 0);
   const totalConcrete = rows.reduce((s, r) => s + r.calc.concreteM3, 0);
   const totalGravel = rows.reduce((s, r) => s + r.calc.gravelM3, 0);
   const totalHoles = rows.reduce((s, r) => s + r.calc.numberOfHoles, 0);
@@ -279,7 +287,7 @@ export function TakeOffPage() {
         <div className="flex flex-wrap gap-2">
           <Badge variant="secondary">{rows.length} segments</Badge>
           <Badge variant="secondary">{totalLM.toFixed(0)} LM total</Badge>
-          <Badge variant="secondary">{totalM2.toFixed(1)} m² total</Badge>
+          <Badge variant="secondary">{totalEngM2.toFixed(1)} m² total</Badge>
           <Badge variant="secondary">
             {bundle.uniqueLotCount} lot{bundle.uniqueLotCount === 1 ? "" : "s"}
           </Badge>
@@ -322,9 +330,17 @@ export function TakeOffPage() {
                     <TableHead>Type</TableHead>
                     <TableHead>Design</TableHead>
                     <TableHead>Position</TableHead>
-                    <TableHead className="text-right">LM</TableHead>
-                    <TableHead className="text-right">Height</TableHead>
-                    <TableHead className="text-right">m²</TableHead>
+                    {/* Right-pad on these two so the header label aligns
+                        with the right-aligned text inside the input below
+                        (the input has its own px-3 internal padding). */}
+                    <TableHead className="pr-5 text-right">LM</TableHead>
+                    <TableHead className="pr-5 text-right">Height</TableHead>
+                    <TableHead className="text-right" title="Wall face area — length × raw height">
+                      Face m²
+                    </TableHead>
+                    <TableHead className="text-right" title="Length × rounded height — what the engine prices off">
+                      Eng m²
+                    </TableHead>
                     <TableHead className="text-right">Concrete</TableHead>
                     <TableHead className="text-right">Gravel</TableHead>
                     <TableHead className="text-right">Holes</TableHead>
@@ -444,6 +460,12 @@ export function TakeOffPage() {
                           }}
                         />
                       </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        {(
+                          ((segment.length_mm ?? 0) / 1000) *
+                          ((segment.height_mm ?? 0) / 1000)
+                        ).toFixed(1)}
+                      </TableCell>
                       <TableCell className="text-right text-xs">
                         {calc.m2.toFixed(1)}
                       </TableCell>
@@ -487,12 +509,15 @@ export function TakeOffPage() {
                     <TableCell colSpan={4} className="text-xs uppercase tracking-wider text-muted-foreground">
                       Total ({rows.length} segment{rows.length === 1 ? "" : "s"})
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="pr-5 text-right tabular-nums">
                       {totalLM.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right" />
+                    <TableCell className="pr-5 text-right" />
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {totalFaceM2.toFixed(1)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {totalM2.toFixed(1)}
+                      {totalEngM2.toFixed(1)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {totalConcrete.toFixed(2)}
