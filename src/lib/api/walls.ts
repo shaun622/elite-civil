@@ -81,3 +81,51 @@ export async function deleteProjectWall(id: string): Promise<void> {
   const { error } = await supabase.from("wall_segments").delete().eq("id", id);
   if (error) throw error;
 }
+
+/**
+ * Self-heal for walls that were measured via the PDF path before
+ * `wall_segments.project_id` was wired up everywhere — those rows live
+ * under the project's drawings/extractions but have a null project_id,
+ * so the Take Off query (which filters by project_id) skips them.
+ *
+ * Walks the extraction chain to find orphan walls and updates them in
+ * place. Returns the count of rows backfilled. RLS ensures we can only
+ * touch our own rows.
+ */
+export async function backfillProjectWalls(projectId: string): Promise<number> {
+  const { data: drawings, error: dErr } = await supabase
+    .from("drawings")
+    .select("id")
+    .eq("project_id", projectId);
+  if (dErr || !drawings || drawings.length === 0) return 0;
+
+  const { data: pages, error: pErr } = await supabase
+    .from("drawing_pages")
+    .select("id")
+    .in(
+      "drawing_id",
+      drawings.map((d) => d.id as string),
+    );
+  if (pErr || !pages || pages.length === 0) return 0;
+
+  const { data: extractions, error: eErr } = await supabase
+    .from("extractions")
+    .select("id")
+    .in(
+      "drawing_page_id",
+      pages.map((p) => p.id as string),
+    );
+  if (eErr || !extractions || extractions.length === 0) return 0;
+
+  const { data, error } = await supabase
+    .from("wall_segments")
+    .update({ project_id: projectId })
+    .in(
+      "extraction_id",
+      extractions.map((e) => e.id as string),
+    )
+    .is("project_id", null)
+    .select("id");
+  if (error) return 0;
+  return data?.length ?? 0;
+}

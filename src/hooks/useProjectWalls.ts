@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addProjectWall,
+  backfillProjectWalls,
   deleteProjectWall,
   listProjectWalls,
   updateProjectWall,
@@ -29,10 +30,26 @@ export function useProjectWalls(projectId: string | undefined) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // We only self-heal orphan walls once per project per session — once
+  // they have project_id set the listProjectWalls query picks them up
+  // directly and there's nothing left to backfill.
+  const healed = useRef<Set<string>>(new Set());
+
   const refresh = useCallback(async () => {
     if (!projectId) return;
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
+      // First load: walk the extraction chain and stamp project_id onto
+      // any orphan walls (measured before the column existed). Failures
+      // here are non-fatal — the list query runs regardless.
+      if (!healed.current.has(projectId)) {
+        healed.current.add(projectId);
+        try {
+          await backfillProjectWalls(projectId);
+        } catch {
+          // ignore; the list query still works for non-orphan walls.
+        }
+      }
       const walls = await listProjectWalls(projectId);
       setState({ walls, loading: false, error: null });
     } catch (err) {

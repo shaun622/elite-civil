@@ -38,14 +38,14 @@ export function AppSidebar() {
           icon: LayoutDashboard,
         },
         {
-          title: "Take Off",
-          to: `/projects/${activeProjectId}/takeoff`,
-          icon: Ruler,
-        },
-        {
           title: "Measure from PDF",
           to: `/projects/${activeProjectId}/drawings`,
           icon: ScanLine,
+        },
+        {
+          title: "Take Off",
+          to: `/projects/${activeProjectId}/takeoff`,
+          icon: Ruler,
         },
         {
           title: "Pricing & Performance",

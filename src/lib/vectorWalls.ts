@@ -133,6 +133,21 @@ export async function saveVectorWalls(opts: {
           "Lengths measured from PDF vector geometry. Enter Top RL and Bottom RL for each wall to set its height.",
         ];
 
+  // Walk drawing_page -> drawing to find the owning project. New
+  // wall_segments rows carry `project_id` so the project-wide Take Off
+  // query picks them up alongside any manually-entered walls.
+  const { data: pageRow, error: pageErr } = await supabase
+    .from("drawing_pages")
+    .select("drawing_id, drawings!inner(project_id)")
+    .eq("id", drawingPageId)
+    .maybeSingle();
+  if (pageErr || !pageRow) {
+    throw new Error(pageErr?.message ?? "Owning drawing not found.");
+  }
+  const projectId =
+    (pageRow as { drawings?: { project_id?: string | null } }).drawings
+      ?.project_id ?? null;
+
   // Clear any prior extraction (cascade removes its wall_segments / dims).
   const { error: delErr } = await supabase
     .from("extractions")
@@ -169,6 +184,7 @@ export async function saveVectorWalls(opts: {
     perType.set(wall.typeLabel, n);
     return {
       extraction_id: extraction.id,
+      project_id: projectId,
       user_id: userId,
       source_id: `vec_${i + 1}`,
       label: wall.lotName
@@ -184,6 +200,11 @@ export async function saveVectorWalls(opts: {
       confidence: 0.9,
       notes: `${wall.typeLabel} — length measured from PDF vector geometry.`,
       user_added: false,
+      // Map the AI-read lot label onto the BE Landscapes `lot` column
+      // so it shows up immediately in the Take Off table. Wall type /
+      // design / position stay null — they take the engine's defaults
+      // until the user picks each per wall.
+      lot: wall.lotName ?? null,
     };
   });
 
