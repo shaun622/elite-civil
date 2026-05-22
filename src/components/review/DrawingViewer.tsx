@@ -174,10 +174,12 @@ export function DrawingViewer({
     if (overlaps) return;
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
-    setOrigin({
-      x: containerSize.width / 2 - cx * zoom,
-      y: containerSize.height / 2 - cy * zoom,
-    });
+    setOrigin(
+      clampOrigin({
+        x: containerSize.width / 2 - cx * zoom,
+        y: containerSize.height / 2 - cy * zoom,
+      }),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSegmentId]);
 
@@ -217,12 +219,41 @@ export function DrawingViewer({
     });
   }
 
+  /**
+   * Keep at least 80 px of image visible in every direction so the user
+   * can never accidentally fling the drawing completely off-screen and
+   * be left staring at the dark background with no way back.
+   */
+  function clampOrigin(o: { x: number; y: number }) {
+    const margin = 80;
+    const minX = containerSize.width - imageWidth * zoom - margin;
+    const maxX = margin;
+    const minY = containerSize.height - imageHeight * zoom - margin;
+    const maxY = margin;
+    // If the image is smaller than the viewport in this axis, lock to the
+    // viewport edges so it can't be dragged outside it.
+    return {
+      x:
+        imageWidth * zoom <= containerSize.width
+          ? Math.max(0, Math.min(maxX, o.x))
+          : Math.max(minX, Math.min(maxX, o.x)),
+      y:
+        imageHeight * zoom <= containerSize.height
+          ? Math.max(0, Math.min(maxY, o.y))
+          : Math.max(minY, Math.min(maxY, o.y)),
+    };
+  }
+
   function onDragEnd(e: Konva.KonvaEventObject<DragEvent>) {
     // Only the Stage's own pan moves the origin. Drag-end events bubble, so a
     // wall endpoint handle's drag also fires this — ignore those, or the
     // origin jumps to the handle's coords and flings the drawing off-screen.
     if (e.target !== stageRef.current) return;
-    setOrigin({ x: e.target.x(), y: e.target.y() });
+    const next = clampOrigin({ x: e.target.x(), y: e.target.y() });
+    // Snap the Konva stage to the clamped position so the on-screen view
+    // matches what we just stored in React state.
+    e.target.position(next);
+    setOrigin(next);
   }
 
   const mmPerPx = readMmPerPx(extraction.raw_response);
@@ -267,19 +298,26 @@ export function DrawingViewer({
           background: "#1f2937",
           cursor: calibrating || drawingWall ? "crosshair" : undefined,
         }}
-        onMouseDown={(e) => {
+        onClick={(e) => {
+          // Calibration / draw-wall clicks always do their own thing.
+          if (calibrating || drawingWall) {
+            const pointer = stageRef.current?.getPointerPosition();
+            if (!pointer) return;
+            const p: [number, number] = [
+              (pointer.x - origin.x) / zoom,
+              (pointer.y - origin.y) / zoom,
+            ];
+            if (calibrating) onCalibrateClick(p);
+            else onWallPointClick(p);
+            return;
+          }
+          // Plain click on empty drawing area deselects the open wall.
+          // Doing this on `onClick` (post-mouseup) rather than `onMouseDown`
+          // means a drag-pan doesn't race with the deselect's React render
+          // and leave the Konva stage stuck at a stale origin — which used
+          // to fling the drawing off-screen and show only the dark
+          // background.
           if (e.target === stageRef.current) onSelectSegment(null);
-        }}
-        onClick={() => {
-          if (!calibrating && !drawingWall) return;
-          const pointer = stageRef.current?.getPointerPosition();
-          if (!pointer) return;
-          const p: [number, number] = [
-            (pointer.x - origin.x) / zoom,
-            (pointer.y - origin.y) / zoom,
-          ];
-          if (calibrating) onCalibrateClick(p);
-          else onWallPointClick(p);
         }}
         onMouseMove={() => {
           if (!drawingWall || wallPoints.length !== 1) {
