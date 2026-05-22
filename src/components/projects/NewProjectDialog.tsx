@@ -52,9 +52,14 @@ export function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
       reset();
       navigate(`/projects/${project.id}`);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not create project.",
-      );
+      // Surface Supabase PostgrestError messages too — they aren't
+      // `instanceof Error`, they're plain objects with a `.message`.
+      const message =
+        err instanceof Error
+          ? err.message
+          : (err as { message?: string } | null)?.message ??
+            "Could not create project.";
+      setError(message);
       setSubmitting(false);
     }
   }

@@ -44,7 +44,7 @@ export async function createProject(
   // unless the caller explicitly passed their own. Saves the user from
   // having to clone an existing project just to set up rates / margins.
   const normalized = normalize(input);
-  const payload = {
+  const fullPayload = {
     ...normalized,
     user_id: userId,
     config: normalized.config ?? defaultConfig,
@@ -52,11 +52,30 @@ export async function createProject(
   };
   const { data, error } = await supabase
     .from(TABLE)
-    .insert(payload)
+    .insert(fullPayload)
     .select()
     .single();
-  if (error) throw error;
-  return data as Project;
+  if (!error) return data as Project;
+
+  // If the Phase-2 migration hasn't been applied yet, `config` /
+  // `description` don't exist on the projects row and the insert
+  // fails with Postgres code 42703 ("undefined column"). Retry with a
+  // legacy payload so project creation still works — Pricing &
+  // Performance and Quotation will fall back to defaultConfig until
+  // the migration lands.
+  const missingColumn =
+    (error as { code?: string }).code === "42703" ||
+    /column .* does not exist/i.test(error.message ?? "");
+  if (!missingColumn) throw error;
+
+  const legacyPayload = { ...normalized, user_id: userId };
+  const { data: legacyData, error: legacyError } = await supabase
+    .from(TABLE)
+    .insert(legacyPayload)
+    .select()
+    .single();
+  if (legacyError) throw legacyError;
+  return legacyData as Project;
 }
 
 export async function updateProject(
