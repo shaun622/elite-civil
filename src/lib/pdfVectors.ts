@@ -984,6 +984,139 @@ function runCentreline(pieces: WallPiece[]): number[] {
   return simplifyFlat(traceRun(pieces), 1.5);
 }
 
+/**
+ * Second-pass merge — re-fuse runs that the first-pass chainer split
+ * apart because the gap between pieces exceeded the per-piece gap
+ * tolerance, or because a junction guard refused to chain through.
+ *
+ * Operates on whole runs (not pieces), so each candidate has a reliable
+ * long-axis direction from its oriented bounding box. A pair fuses when:
+ *   1. Their long axes are nearly parallel (≤ ~10°),
+ *   2. Their nearest endpoints sit close enough together, AND
+ *   3. That endpoint pair really lies along the run's own axis — i.e.
+ *      the perpendicular offset from one run's centreline to the
+ *      other's endpoint is small. This kills any chance of merging
+ *      parallel walls that happen to lie near each other.
+ */
+function mergeCollinearRuns(
+  groups: number[][],
+  pieces: WallPiece[],
+  basePieceGapPx: number,
+): number[][] {
+  if (groups.length < 2) return groups;
+
+  type RunMeta = {
+    cx: number;
+    cy: number;
+    ux: number;
+    uy: number;
+    length: number;
+    width: number;
+    a: [number, number];
+    b: [number, number];
+  };
+
+  const meta: RunMeta[] = groups.map((g) => {
+    const all: number[] = [];
+    for (const i of g) {
+      const pts = pieces[i].pts;
+      for (let k = 0; k + 1 < pts.length; k += 2) {
+        all.push(pts[k], pts[k + 1]);
+      }
+    }
+    const obb = pathOBB(all);
+    const ux = Math.cos(obb.angle);
+    const uy = Math.sin(obb.angle);
+    const hl = obb.length / 2;
+    return {
+      cx: obb.cx,
+      cy: obb.cy,
+      ux,
+      uy,
+      length: obb.length,
+      width: obb.width,
+      a: [obb.cx - ux * hl, obb.cy - uy * hl],
+      b: [obb.cx + ux * hl, obb.cy + uy * hl],
+    };
+  });
+
+  // The second-pass gap tolerance is much more generous than the first
+  // pass — we're bridging X markers, SS labels and RL ticks that sit on
+  // the wall line. Capped so wholly separate walls never join.
+  const SECOND_GAP_PX = Math.max(basePieceGapPx * 4, 60);
+  // ~10° angular tolerance between the two long axes (orientation only —
+  // sign doesn't matter, so we take |dot|).
+  const AXIS_ALIGN_OK = Math.cos((10 * Math.PI) / 180);
+  // Perpendicular offset from one run's centreline to the other's joining
+  // endpoint, as a fraction of the joining gap.
+  const LATERAL_OK_FRAC = 0.2;
+  // Hard floor on lateral tolerance so very-short gaps still chain.
+  const LATERAL_MIN_PX = 3;
+
+  const parent = groups.map((_, i) => i);
+  function find(i: number): number {
+    let r = i;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[i] !== r) {
+      const nx = parent[i];
+      parent[i] = r;
+      i = nx;
+    }
+    return r;
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    for (let j = i + 1; j < groups.length; j++) {
+      if (find(i) === find(j)) continue;
+      const A = meta[i];
+      const B = meta[j];
+
+      // Axes parallel? Use |dot| because axis direction is unsigned.
+      const axisAlign = Math.abs(A.ux * B.ux + A.uy * B.uy);
+      if (axisAlign < AXIS_ALIGN_OK) continue;
+
+      // Closest endpoint pair across the two runs.
+      const candidates: [[number, number], [number, number]][] = [
+        [A.a, B.a],
+        [A.a, B.b],
+        [A.b, B.a],
+        [A.b, B.b],
+      ];
+      let bestD = Infinity;
+      let bestPair: [[number, number], [number, number]] | null = null;
+      for (const [pa, pb] of candidates) {
+        const d = Math.hypot(pa[0] - pb[0], pa[1] - pb[1]);
+        if (d < bestD) {
+          bestD = d;
+          bestPair = [pa, pb];
+        }
+      }
+      if (!bestPair || bestD > SECOND_GAP_PX) continue;
+
+      // Lateral check: how far off A's axis does B's joining endpoint
+      // sit, and vice versa? The perpendicular component must be a small
+      // fraction of the gap, or the pair is parallel-but-offset rather
+      // than end-to-end.
+      const [pa, pb] = bestPair;
+      const tol = Math.max(LATERAL_MIN_PX, bestD * LATERAL_OK_FRAC);
+      const perpAB = Math.abs((pb[0] - A.cx) * -A.uy + (pb[1] - A.cy) * A.ux);
+      const perpBA = Math.abs((pa[0] - B.cx) * -B.uy + (pa[1] - B.cy) * B.ux);
+      if (perpAB > tol || perpBA > tol) continue;
+
+      parent[find(i)] = find(j);
+    }
+  }
+
+  const merged = new Map<number, number[]>();
+  for (let i = 0; i < groups.length; i++) {
+    const r = find(i);
+    const arr = merged.get(r);
+    if (arr) arr.push(...groups[i]);
+    else merged.set(r, [...groups[i]]);
+  }
+  return [...merged.values()];
+}
+
 export type MeasureWallsOptions = {
   /** Override the auto-derived gap tolerance (device px). */
   gapPx?: number;
@@ -1020,7 +1153,16 @@ export function measureWalls(
 
   const runs: WallRun[] = [];
   for (const [color, pieces] of byColor) {
-    for (const idxs of connectPieces(pieces, gapPx)) {
+    // First pass: chain pieces by shared endpoints + junction-aware
+    // through-pair tests. Tight tolerance — bridges dashes, never glues
+    // separate walls together.
+    const firstPass = connectPieces(pieces, gapPx);
+    // Second pass: re-fuse runs that lie along the same line. Surveyors'
+    // X markers, SS labels and RL ticks sit on top of the wall and often
+    // break it into many short same-colour runs after the first pass;
+    // this stage stitches them back into one wall.
+    const merged = mergeCollinearRuns(firstPass, pieces, gapPx);
+    for (const idxs of merged) {
       const runPieces = idxs.map((i) => pieces[i]);
       const polyline = runCentreline(runPieces);
       const lengthPx = polylineLength(polyline);
