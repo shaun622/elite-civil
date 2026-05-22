@@ -107,6 +107,9 @@ export function TakeOffPage() {
 
   const totalLM = rows.reduce((s, r) => s + r.calc.lengthLM, 0);
   const totalM2 = rows.reduce((s, r) => s + r.calc.m2, 0);
+  const totalConcrete = rows.reduce((s, r) => s + r.calc.concreteM3, 0);
+  const totalGravel = rows.reduce((s, r) => s + r.calc.gravelM3, 0);
+  const totalHoles = rows.reduce((s, r) => s + r.calc.numberOfHoles, 0);
   const over4m = rows.filter((r) => r.calc.height > 4);
 
   function commitDraft() {
@@ -480,6 +483,30 @@ export function TakeOffPage() {
                       </TableCell>
                     </TableRow>
                   ))}
+                  <TableRow className="bg-muted/40 font-medium">
+                    <TableCell colSpan={4} className="text-xs uppercase tracking-wider text-muted-foreground">
+                      Total ({rows.length} segment{rows.length === 1 ? "" : "s"})
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {totalLM.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right" />
+                    <TableCell className="text-right tabular-nums">
+                      {totalM2.toFixed(1)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {totalConcrete.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {totalGravel.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {totalHoles.toFixed(0)}
+                    </TableCell>
+                    <TableCell />
+                    <TableCell />
+                    <TableCell />
+                  </TableRow>
                 </TableBody>
               </Table>
             </div>

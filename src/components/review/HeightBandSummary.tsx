@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { formatLength } from "@/lib/format";
+import { roundHeightUp } from "@/lib/engine/calculations";
 import type { WallSegment } from "@/types/db";
 
 type Props = {
@@ -89,7 +90,11 @@ export function HeightBandSummary({ segments, projectId }: Props) {
         noHeight.lengthMm += lengthMm;
         continue;
       }
-      const heightM = seg.height_mm / 1000;
+      // Round up to the nearest 0.2 m, matching the BE engine — the
+      // extra height is post embedment that's still paid for. Without
+      // this, the m² here disagreed with the engineering m² on Take
+      // Off / Cost Breakdown.
+      const heightM = roundHeightUp(seg.height_mm / 1000);
       const band = bands[bandIndex(heightM, edges)];
       band.count += 1;
       band.lengthMm += lengthMm;
@@ -122,8 +127,8 @@ export function HeightBandSummary({ segments, projectId }: Props) {
     <div className="rounded-lg border bg-card p-3">
       <h3 className="text-sm font-semibold">Summary by height band</h3>
       <p className="mt-0.5 text-[11px] text-muted-foreground">
-        Area = wall length × height (the wall face). A per-m² rate will later
-        apply to each band's area.
+        Area = wall length × height, with heights rounded up to the nearest
+        0.2 m (post embedment is paid for too). Matches the Take Off m².
       </p>
 
       {/* Adjustable band edges */}
