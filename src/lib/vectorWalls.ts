@@ -55,6 +55,42 @@ export type ExtractWallsOptions = {
   mmPerPx: number;
 };
 
+/**
+ * Measure walls from a specific set of paths the user has hand-picked
+ * on the canvas. Used by the "Pick walls one by one" mode on mono-
+ * colour drawings where the colour filter can't distinguish walls
+ * from contours / dimensions / boundaries.
+ *
+ * Each picked path's colour is treated as its own wall type; the
+ * junction-aware grouping inside measureWalls still kicks in, so a
+ * dashed wall the user picked one piece of (with run-expansion) comes
+ * back as a single measured run.
+ */
+export function measurePickedWalls(opts: {
+  vectors: import("@/lib/pdfVectors").PageVectors;
+  pickedIndices: Set<number>;
+  mmPerPx: number;
+  typeLabel?: string;
+}): MeasuredWall[] {
+  const { vectors, pickedIndices, mmPerPx } = opts;
+  if (pickedIndices.size === 0) return [];
+  const typeLabel = opts.typeLabel ?? "Manual selection";
+
+  const subset = vectors.paths.filter((_, i) => pickedIndices.has(i));
+  const colors = new Set(subset.map((p) => p.color.toLowerCase()));
+  // Lower min-length here than the colour-driven extractor because the
+  // user has explicitly chosen each path — they know it's a wall, no
+  // need to drop short ones as likely-noise.
+  const runs = measureWalls(subset, colors, { minRunLengthPx: 1 });
+
+  return runs.map((run) => ({
+    color: run.color.toLowerCase(),
+    typeLabel,
+    polyline: flatToPairs(run.polyline),
+    lengthMm: run.lengthPx * mmPerPx,
+  }));
+}
+
 /** Extract + measure retaining walls from one PDF page's vector geometry. */
 export async function extractWallsFromPdfPage(
   file: File | ArrayBuffer,

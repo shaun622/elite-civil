@@ -19,6 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   extractPageVectors,
   nearestPath,
+  nearestPathIndex,
   nearestVertex,
   type PageVectors,
 } from "@/lib/pdfVectors";
@@ -27,6 +28,7 @@ import {
   distinctVectorColors,
   extractWallsFromPdfPage,
   fuseWallSemantics,
+  measurePickedWalls,
   mmPerPxFromScaleRatio,
   saveVectorWalls,
   snapHexToColors,
@@ -98,6 +100,14 @@ export function WallMeasurePage() {
   const [aiRls, setAiRls] = useState<AnalyzeRl[]>([]);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
+  // "Pick walls one by one" mode — needed on mono-colour drawings
+  // where the colour-pick workflow can't tell walls apart from contours.
+  // pickingPaths: is the mode active? pickedPathIndices: the chosen paths.
+  const [pickingPaths, setPickingPaths] = useState(false);
+  const [pickedPathIndices, setPickedPathIndices] = useState<Set<number>>(
+    () => new Set(),
+  );
+
   // Bounding box of the drawn content, in vector coordinates. Used to
   // crop the canvas so the empty paper margins of an A1/A3 sheet don't
   // dominate the viewport. Uses percentile-based bounds rather than the
@@ -145,6 +155,101 @@ export function WallMeasurePage() {
     };
   }, [vectors]);
 
+  /**
+   * Pre-computed run-groups: for every path index, which connected run
+   * does it belong to? A click in pickingPaths mode looks up the run
+   * of the nearest path and picks every path in that run together,
+   * so a dashed wall the user clicks one dash of comes through as a
+   * single picked wall.
+   *
+   * Connectivity is per-colour endpoint clustering (within ~5 px) —
+   * same family used by the auto extractor. Quadratic in path count
+   * per colour, which is fine because the same-colour subset on a
+   * typical drawing is small.
+   */
+  const componentOfPath = useMemo<Map<number, number>>(() => {
+    const out = new Map<number, number>();
+    if (!vectors) return out;
+    const byColor = new Map<string, number[]>();
+    vectors.paths.forEach((p, i) => {
+      if (p.points.length < 4) return;
+      const c = p.color.toLowerCase();
+      const arr = byColor.get(c) ?? [];
+      arr.push(i);
+      byColor.set(c, arr);
+    });
+    const TOL_SQ = 6 * 6;
+    let nextKey = 1;
+    for (const [, indices] of byColor) {
+      const parent = indices.map((_, k) => k);
+      const find = (k: number): number => {
+        let r = k;
+        while (parent[r] !== r) r = parent[r];
+        while (parent[k] !== r) {
+          const nx = parent[k];
+          parent[k] = r;
+          k = nx;
+        }
+        return r;
+      };
+      // Cache endpoints once.
+      const ends: { ax: number; ay: number; bx: number; by: number }[] =
+        indices.map((idx) => {
+          const pts = vectors.paths[idx].points;
+          return {
+            ax: pts[0],
+            ay: pts[1],
+            bx: pts[pts.length - 2],
+            by: pts[pts.length - 1],
+          };
+        });
+      for (let a = 0; a < ends.length; a++) {
+        for (let b = a + 1; b < ends.length; b++) {
+          const ea = ends[a];
+          const eb = ends[b];
+          const d1 =
+            (ea.ax - eb.ax) * (ea.ax - eb.ax) +
+            (ea.ay - eb.ay) * (ea.ay - eb.ay);
+          if (d1 <= TOL_SQ) {
+            parent[find(a)] = find(b);
+            continue;
+          }
+          const d2 =
+            (ea.ax - eb.bx) * (ea.ax - eb.bx) +
+            (ea.ay - eb.by) * (ea.ay - eb.by);
+          if (d2 <= TOL_SQ) {
+            parent[find(a)] = find(b);
+            continue;
+          }
+          const d3 =
+            (ea.bx - eb.ax) * (ea.bx - eb.ax) +
+            (ea.by - eb.ay) * (ea.by - eb.ay);
+          if (d3 <= TOL_SQ) {
+            parent[find(a)] = find(b);
+            continue;
+          }
+          const d4 =
+            (ea.bx - eb.bx) * (ea.bx - eb.bx) +
+            (ea.by - eb.by) * (ea.by - eb.by);
+          if (d4 <= TOL_SQ) {
+            parent[find(a)] = find(b);
+          }
+        }
+      }
+      const rootMap = new Map<number, number>();
+      for (let k = 0; k < indices.length; k++) {
+        const r = find(k);
+        let key = rootMap.get(r);
+        if (key === undefined) {
+          key = nextKey++;
+          rootMap.set(r, key);
+        }
+        out.set(indices[k], key);
+      }
+    }
+    return out;
+  }, [vectors]);
+
   // Distinct stroke colours present on the page, most common first — the
   // palette the user picks wall colours from.
   const palette = useMemo(() => {
@@ -174,6 +279,41 @@ export function WallMeasurePage() {
         ? prev.filter((w) => w.color !== color)
         : [...prev, { color, typeLabel: `Wall type ${prev.length + 1}` }],
     );
+  }
+
+  /**
+   * Toggle a path's selection in pickingPaths mode. By default the
+   * whole connected run (same colour, endpoint-clustered) is added or
+   * removed in one go — that's what the user almost always wants on a
+   * dashed wall. `singleOnly` (Alt / Shift held) limits it to just the
+   * one clicked path, for the rare case where the auto-grouping has
+   * picked up a stray neighbour.
+   */
+  function togglePathPick(idx: number, singleOnly: boolean) {
+    setPickedPathIndices((prev) => {
+      const next = new Set(prev);
+      const indicesToToggle: number[] = [];
+      if (singleOnly) {
+        indicesToToggle.push(idx);
+      } else {
+        const comp = componentOfPath.get(idx);
+        if (comp === undefined) {
+          indicesToToggle.push(idx);
+        } else {
+          for (const [pathIdx, c] of componentOfPath) {
+            if (c === comp) indicesToToggle.push(pathIdx);
+          }
+        }
+      }
+      // If every one of these is already picked, unpick them; else pick.
+      const allPicked = indicesToToggle.every((i) => next.has(i));
+      if (allPicked) {
+        for (const i of indicesToToggle) next.delete(i);
+      } else {
+        for (const i of indicesToToggle) next.add(i);
+      }
+      return next;
+    });
   }
 
   // Load the page's PDF from storage.
@@ -249,10 +389,28 @@ export function WallMeasurePage() {
     if (!vectors) return;
     const highlight = new Set(wallTypes.map((w) => w.color));
     setDisplayScale(
-      redraw(vectors, calibPoints, highlight, picking, zoom, contentBbox),
+      redraw(
+        vectors,
+        calibPoints,
+        highlight,
+        picking,
+        zoom,
+        contentBbox,
+        pickedPathIndices,
+        pickingPaths,
+      ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vectors, calibPoints, wallTypes, picking, zoom, contentBbox]);
+  }, [
+    vectors,
+    calibPoints,
+    wallTypes,
+    picking,
+    zoom,
+    contentBbox,
+    pickedPathIndices,
+    pickingPaths,
+  ]);
 
   function redraw(
     v: PageVectors,
@@ -261,6 +419,8 @@ export function WallMeasurePage() {
     picking: boolean,
     zoomFactor: number,
     bbox: { minX: number; minY: number; width: number; height: number } | null,
+    pickedIndices: Set<number>,
+    pickingPaths: boolean,
   ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
@@ -300,20 +460,26 @@ export function WallMeasurePage() {
       ctx.stroke();
     };
 
-    // Picked wall colours draw bold. While picking, the rest keeps its true
-    // colour so every wall is visible to aim at; once picking is off, the
-    // rest fades so the chosen walls can be verified at a glance.
-    const hasHi = highlight.size > 0;
-    const fade = hasHi && !picking;
-    for (const path of v.paths) {
-      if (hasHi && highlight.has(path.color.toLowerCase())) continue;
+    // Picked wall colours OR individually picked paths draw bold. While
+    // either picker is active the rest keeps its true colour so every
+    // wall is visible to aim at; once both pickers are off, the rest
+    // fades so the chosen walls can be verified at a glance.
+    const hasHiColour = highlight.size > 0;
+    const hasHiPaths = pickedIndices.size > 0;
+    const hasHi = hasHiColour || hasHiPaths;
+    const fade = hasHi && !picking && !pickingPaths;
+    const isHi = (path: PageVectors["paths"][number], idx: number) =>
+      (hasHiColour && highlight.has(path.color.toLowerCase())) ||
+      (hasHiPaths && pickedIndices.has(idx));
+    for (let i = 0; i < v.paths.length; i++) {
+      const path = v.paths[i];
+      if (isHi(path, i)) continue;
       drawPath(path, fade ? "#e6e6e6" : path.color, 0.7);
     }
     if (hasHi) {
-      for (const path of v.paths) {
-        if (highlight.has(path.color.toLowerCase())) {
-          drawPath(path, path.color, 2.5);
-        }
+      for (let i = 0; i < v.paths.length; i++) {
+        const path = v.paths[i];
+        if (isHi(path, i)) drawPath(path, path.color, 2.5);
       }
     }
     // Calibration markers: a dashed line between the two points, with a
@@ -420,6 +586,20 @@ export function WallMeasurePage() {
       if (hit) addWallColor(hit.color.toLowerCase());
       return;
     }
+    if (pickingPaths) {
+      // Find the path nearest the click, then either pick the whole
+      // connected run (default) or just this single path (Alt / Shift).
+      const idx = nearestPathIndex(
+        vectors.paths,
+        cx,
+        cy,
+        12 / displayScale,
+      );
+      if (idx < 0) return;
+      const singleOnly = e.altKey || e.shiftKey;
+      togglePathPick(idx, singleOnly);
+      return;
+    }
     if (!showDistance) return;
 
     // Calibration click — snap onto exact drawing geometry (scale-bar
@@ -524,24 +704,67 @@ export function WallMeasurePage() {
     }
   }
 
-  async function measureAndSave() {
-    if (!pdfBuffer || !user || !pageId || !projectId) return;
+  /**
+   * Persist the calibration (mm-per-pixel) as an empty extraction and
+   * jump to Review. Used when the drawing is mono-colour and the auto
+   * extractor would either over- or under-collect — the user draws each
+   * wall manually in Review with two clicks, and each manual wall still
+   * gets a real length because the calibration is stored alongside the
+   * extraction.
+   */
+  async function skipAndOpenReview() {
+    if (!user || !pageId || !projectId) return;
     if (mmPerPx === null) {
       setError("Calibrate the scale first.");
-      return;
-    }
-    if (wallTypes.length === 0) {
-      setError("Add at least one wall type — click a wall on the drawing.");
       return;
     }
     setError(null);
     setSaving(true);
     try {
-      const measured = await extractWallsFromPdfPage(
-        pdfBuffer.slice(0),
-        pageNumber,
-        { wallColors: wallTypes, mmPerPx },
+      await saveVectorWalls({
+        drawingPageId: pageId,
+        userId: user.id,
+        walls: [],
+        scaleText: scaleText.trim() || null,
+        mmPerPx,
+      });
+      navigate(`/projects/${projectId}/pages/${pageId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save.");
+      setSaving(false);
+    }
+  }
+
+  async function measureAndSave() {
+    if (!pdfBuffer || !user || !pageId || !projectId || !vectors) return;
+    if (mmPerPx === null) {
+      setError("Calibrate the scale first.");
+      return;
+    }
+    const usingPicks = pickedPathIndices.size > 0;
+    if (!usingPicks && wallTypes.length === 0) {
+      setError(
+        "Add at least one wall type — pick a colour, click a wall on the drawing, or use the per-wall picker.",
       );
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      // Per-wall picking takes priority when the user has selected
+      // anything — those are explicit picks and shouldn't be diluted
+      // by a colour-based scan.
+      const measured = usingPicks
+        ? measurePickedWalls({
+            vectors,
+            pickedIndices: pickedPathIndices,
+            mmPerPx,
+            typeLabel: "Manual selection",
+          })
+        : await extractWallsFromPdfPage(pdfBuffer.slice(0), pageNumber, {
+            wallColors: wallTypes,
+            mmPerPx,
+          });
       if (measured.length === 0) {
         throw new Error(
           "No walls measured. Check the wall colours and calibration.",
@@ -867,13 +1090,51 @@ export function WallMeasurePage() {
                   size="sm"
                   variant={picking ? "default" : "outline"}
                   className="mt-3 gap-1.5"
-                  onClick={() => setPicking((p) => !p)}
+                  onClick={() => {
+                    setPicking((p) => !p);
+                    if (pickingPaths) setPickingPaths(false);
+                  }}
                 >
                   <MousePointerClick className="h-3.5 w-3.5" />
                   {picking
                     ? "Clicking the drawing…"
                     : "Or click a wall on the drawing"}
                 </Button>
+
+                <div className="mt-3 rounded-md border border-dashed bg-muted/30 p-2.5">
+                  <p className="text-[11px] font-medium">
+                    Mono-colour drawing? Pick walls one by one.
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    When every wall is the same colour as the rest of the
+                    linework, switch to per-wall picking. Click any wall to
+                    grab the whole run; hold Alt or Shift to pick just one
+                    line segment.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant={pickingPaths ? "default" : "outline"}
+                    className="mt-2 w-full gap-1.5"
+                    onClick={() => {
+                      setPickingPaths((p) => !p);
+                      if (picking) setPicking(false);
+                    }}
+                  >
+                    <MousePointerClick className="h-3.5 w-3.5" />
+                    {pickingPaths
+                      ? `Picking walls… (${pickedPathIndices.size} picked)`
+                      : "Pick walls one by one"}
+                  </Button>
+                  {pickedPathIndices.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setPickedPathIndices(new Set())}
+                      className="mt-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                    >
+                      Clear all {pickedPathIndices.size} picks
+                    </button>
+                  )}
+                </div>
 
                 {wallTypes.length > 0 && (
                   <div className="mt-3 space-y-2">
@@ -931,10 +1192,37 @@ export function WallMeasurePage() {
               <Button
                 className="w-full"
                 onClick={measureAndSave}
-                disabled={saving || mmPerPx === null}
+                disabled={
+                  saving ||
+                  mmPerPx === null ||
+                  (wallTypes.length === 0 && pickedPathIndices.size === 0)
+                }
               >
-                {saving ? "Measuring…" : "Measure & save walls"}
+                {saving
+                  ? "Measuring…"
+                  : pickedPathIndices.size > 0
+                    ? `Measure & save ${pickedPathIndices.size} picked path${pickedPathIndices.size === 1 ? "" : "s"}`
+                    : "Measure & save walls"}
               </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={skipAndOpenReview}
+                disabled={saving || mmPerPx === null}
+                title={
+                  mmPerPx === null
+                    ? "Calibrate the scale first — the manually drawn walls still need a real length."
+                    : "Save the calibration and open Review so you can draw each wall by hand."
+                }
+              >
+                Skip — add walls manually in Review
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                Use this when every wall is drawn the same colour and the
+                auto-detect can't tell them apart. The scale you calibrated
+                above is saved, so your manual clicks still measure in real
+                metres.
+              </p>
             </div>
           </div>
         )}

@@ -1237,3 +1237,30 @@ export function nearestPath(
   }
   return best;
 }
+
+/**
+ * Same idea as `nearestPath` but returns the index in `paths` of the
+ * hit, so callers can use it as a stable key (the click-walls-by-hand
+ * picker needs to identify the exact path the user clicked, not just
+ * one with the same colour).
+ */
+export function nearestPathIndex(
+  paths: VectorPath[],
+  x: number,
+  y: number,
+  maxDistPx: number,
+): number {
+  let bestIdx = -1;
+  let bestD = maxDistPx;
+  for (let i = 0; i < paths.length; i++) {
+    const pts = paths[i].points;
+    for (let k = 0; k + 3 < pts.length; k += 2) {
+      const d = pointSegDist(x, y, pts[k], pts[k + 1], pts[k + 2], pts[k + 3]);
+      if (d < bestD) {
+        bestD = d;
+        bestIdx = i;
+      }
+    }
+  }
+  return bestIdx;
+}
