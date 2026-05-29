@@ -922,7 +922,7 @@ export function WallMeasurePage() {
                     // the user can see they're meant to click. Plain
                     // viewing keeps the wrapper's grab cursor.
                     className={
-                      picking || showDistance
+                      picking || pickingPaths || showDistance
                         ? "block cursor-crosshair"
                         : "block"
                     }
