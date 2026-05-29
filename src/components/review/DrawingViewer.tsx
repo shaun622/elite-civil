@@ -136,10 +136,23 @@ export function DrawingViewer({
     );
   }, [containerSize, imageWidth, imageHeight]);
 
+  // Auto-fit ONCE per image, the first time the container has a real
+  // size — not on every fitZoom change. Re-fitting on each container
+  // resize meant that anything nudging the layout (e.g. the "Add a
+  // wall" / calibration banner appearing above the canvas, or a
+  // scrollbar flickering in) would yank the user's zoom + pan back to
+  // fit mid-task. The explicit "Fit to viewport" button still calls
+  // fitToContainer directly.
+  const fittedForRef = useRef<string>("");
   useEffect(() => {
+    if (containerSize.width === 0 || containerSize.height === 0) return;
+    if (imageWidth === 0 || imageHeight === 0) return;
+    const key = `${imageWidth}x${imageHeight}`;
+    if (fittedForRef.current === key) return;
+    fittedForRef.current = key;
     fitToContainer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitZoom]);
+  }, [containerSize, imageWidth, imageHeight]);
 
   // Click a wall row in the table -> pan the drawing to it, but only when
   // the wall is currently off-screen (so a click on the drawing itself
