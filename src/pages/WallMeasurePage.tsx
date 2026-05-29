@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Image as ImageIcon,
   Loader2,
   Maximize2,
   MousePointerClick,
@@ -15,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabase";
+import { getSignedUrlsForPaths } from "@/lib/api/drawings";
 import { useAuth } from "@/hooks/useAuth";
 import {
   extractPageVectors,
@@ -63,10 +65,22 @@ export function WallMeasurePage() {
   const [pageNumber, setPageNumber] = useState(1);
   const [vectors, setVectors] = useState<PageVectors | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
-  // 1.0 = "fit page to viewport", anything > 1 enlarges the canvas so the
-  // user can pan around it via the scroll container.
+  // 1.0 = "fit full sheet to viewport", anything > 1 enlarges the canvas so
+  // the user can pan around it via the scroll container.
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Tracked so the base scale (fit-the-full-sheet-to-container) recomputes
+  // when the container resizes — the canvas would otherwise stay sized for
+  // the first paint.
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  // Faint rasterised-sheet backdrop behind the vectors, so the user can read
+  // lot labels / streets / legend (none of which survive vector extraction)
+  // while picking walls. Same 200-DPI coordinate space as the vectors, so it
+  // overlays 1:1.
+  const [imagePath, setImagePath] = useState<string | null>(null);
+  const [backdrop, setBackdrop] = useState<HTMLImageElement | null>(null);
+  const [showBackdrop, setShowBackdrop] = useState(true);
 
   // Click-and-drag pan on the canvas wrapper. The drag state lives in a
   // ref so the click handler sees the final "did the user actually
@@ -107,53 +121,6 @@ export function WallMeasurePage() {
   const [pickedPathIndices, setPickedPathIndices] = useState<Set<number>>(
     () => new Set(),
   );
-
-  // Bounding box of the drawn content, in vector coordinates. Used to
-  // crop the canvas so the empty paper margins of an A1/A3 sheet don't
-  // dominate the viewport. Uses percentile-based bounds rather than the
-  // raw min/max so a couple of stray paths (scale-bar ticks at the page
-  // edge, title-block borders, a single-line page frame) can't single-
-  // handedly stretch the bbox to the full sheet — we crop to where the
-  // bulk of the linework actually lives.
-  const contentBbox = useMemo(() => {
-    if (!vectors) return null;
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const path of vectors.paths) {
-      const p = path.points;
-      for (let i = 0; i + 1 < p.length; i += 2) {
-        xs.push(p[i]);
-        ys.push(p[i + 1]);
-      }
-    }
-    if (xs.length < 4) return null;
-    xs.sort((a, b) => a - b);
-    ys.sort((a, b) => a - b);
-    // 1st / 99th percentile gives us a bbox containing ~98% of all
-    // vector points, dropping the worst outliers without trimming the
-    // drawing itself. The padding then extends back out a bit so any
-    // wall pieces just outside the percentile band aren't clipped.
-    const pct = (arr: number[], q: number) =>
-      arr[Math.min(arr.length - 1, Math.floor(arr.length * q))];
-    const lowX = pct(xs, 0.01);
-    const highX = pct(xs, 0.99);
-    const lowY = pct(ys, 0.01);
-    const highY = pct(ys, 0.99);
-    if (highX <= lowX || highY <= lowY) return null;
-    const pad = 48;
-    const bMinX = Math.max(0, lowX - pad);
-    const bMinY = Math.max(0, lowY - pad);
-    const bMaxX = Math.min(vectors.width, highX + pad);
-    const bMaxY = Math.min(vectors.height, highY + pad);
-    return {
-      minX: bMinX,
-      minY: bMinY,
-      maxX: bMaxX,
-      maxY: bMaxY,
-      width: bMaxX - bMinX,
-      height: bMaxY - bMinY,
-    };
-  }, [vectors]);
 
   /**
    * Pre-computed run-groups: for every path index, which connected run
@@ -325,10 +292,11 @@ export function WallMeasurePage() {
       try {
         const { data: page, error: pageErr } = await supabase
           .from("drawing_pages")
-          .select("page_number, drawing_id")
+          .select("page_number, drawing_id, image_path")
           .eq("id", pageId)
           .single();
         if (pageErr || !page) throw new Error(pageErr?.message ?? "Page not found.");
+        if (active) setImagePath(page.image_path ?? null);
 
         const { data: drawing, error: drawErr } = await supabase
           .from("drawings")
@@ -384,6 +352,51 @@ export function WallMeasurePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfBuffer, pageNumber]);
 
+  // Load the rasterised page PNG for the faint backdrop. Same 200-DPI space
+  // as the vectors, so it overlays without any coordinate transform.
+  useEffect(() => {
+    if (!imagePath) {
+      setBackdrop(null);
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const urls = await getSignedUrlsForPaths([imagePath]);
+        const url = urls[imagePath];
+        if (!url || !active) return;
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          if (active) setBackdrop(img);
+        };
+        img.onerror = () => {
+          if (active) setBackdrop(null);
+        };
+        img.src = url;
+      } catch {
+        // Non-fatal — the page just shows vectors only.
+        if (active) setBackdrop(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [imagePath]);
+
+  // Track the scroll container's size so the base "fit full sheet" scale
+  // recomputes on resize (otherwise the canvas stays sized for first paint).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(() => {
+      setContainerSize({ width: el.clientWidth, height: el.clientHeight });
+    });
+    obs.observe(el);
+    setContainerSize({ width: el.clientWidth, height: el.clientHeight });
+    return () => obs.disconnect();
+  }, [vectors]);
+
   // Draw the linework once the canvas has mounted (i.e. vectors are ready).
   useEffect(() => {
     if (!vectors) return;
@@ -395,9 +408,9 @@ export function WallMeasurePage() {
         highlight,
         picking,
         zoom,
-        contentBbox,
         pickedPathIndices,
         pickingPaths,
+        showBackdrop ? backdrop : null,
       ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -407,9 +420,11 @@ export function WallMeasurePage() {
     wallTypes,
     picking,
     zoom,
-    contentBbox,
     pickedPathIndices,
     pickingPaths,
+    backdrop,
+    showBackdrop,
+    containerSize,
   ]);
 
   function redraw(
@@ -418,29 +433,39 @@ export function WallMeasurePage() {
     highlight: Set<string>,
     picking: boolean,
     zoomFactor: number,
-    bbox: { minX: number; minY: number; width: number; height: number } | null,
     pickedIndices: Set<number>,
     pickingPaths: boolean,
+    backdropImg: HTMLImageElement | null,
   ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
-    // Render the content bbox rather than the full page so blank paper
-    // margins don't fill the viewport. Falls back to the full sheet if
-    // we couldn't compute a bbox (e.g. empty page).
-    const renderW = bbox ? bbox.width : v.width;
-    const renderH = bbox ? bbox.height : v.height;
-    const ox = bbox ? bbox.minX : 0;
-    const oy = bbox ? bbox.minY : 0;
-    // Base fit: shrink wide content to ~1400 px so it fits a default
-    // viewport. Zoom is applied on top — the canvas itself grows so lines
-    // stay crisp at any zoom level (no CSS upscaling blur).
-    const ds = Math.min(1, 1400 / renderW) * zoomFactor;
+    // Render the full sheet (the faint backdrop fills the paper margins).
+    const renderW = v.width;
+    const renderH = v.height;
+    // Base fit: scale the whole sheet to fit the scroll container so it's
+    // fully visible at zoom 1, matching the Review viewer. Falls back to a
+    // ~1400 px fit before the container has laid out. Zoom multiplies on
+    // top; the canvas bitmap itself grows so lines stay crisp at any zoom.
+    const cw = scrollRef.current?.clientWidth ?? 0;
+    const ch = scrollRef.current?.clientHeight ?? 0;
+    const baseDs =
+      cw > 0 && ch > 0
+        ? Math.min(cw / renderW, ch / renderH)
+        : Math.min(1, 1400 / renderW);
+    const ds = baseDs * zoomFactor;
     canvas.width = Math.round(renderW * ds);
     canvas.height = Math.round(renderH * ds);
     const ctx = canvas.getContext("2d");
     if (!ctx) return ds;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Faint rasterised sheet under the vectors — coords are 1:1 so the full
+    // PNG scales straight onto the full canvas.
+    if (backdropImg) {
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(backdropImg, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+    }
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
@@ -453,9 +478,9 @@ export function WallMeasurePage() {
       ctx.lineWidth = width;
       ctx.beginPath();
       const p = path.points;
-      ctx.moveTo((p[0] - ox) * ds, (p[1] - oy) * ds);
+      ctx.moveTo(p[0] * ds, p[1] * ds);
       for (let k = 2; k + 1 < p.length; k += 2) {
-        ctx.lineTo((p[k] - ox) * ds, (p[k + 1] - oy) * ds);
+        ctx.lineTo(p[k] * ds, p[k + 1] * ds);
       }
       ctx.stroke();
     };
@@ -490,14 +515,14 @@ export function WallMeasurePage() {
       ctx.lineWidth = 1.5;
       ctx.setLineDash([6, 4]);
       ctx.beginPath();
-      ctx.moveTo((points[0][0] - ox) * ds, (points[0][1] - oy) * ds);
-      ctx.lineTo((points[1][0] - ox) * ds, (points[1][1] - oy) * ds);
+      ctx.moveTo(points[0][0] * ds, points[0][1] * ds);
+      ctx.lineTo(points[1][0] * ds, points[1][1] * ds);
       ctx.stroke();
       ctx.setLineDash([]);
     }
     points.forEach(([x, y]) => {
-      const px = (x - ox) * ds;
-      const py = (y - oy) * ds;
+      const px = x * ds;
+      const py = y * ds;
       const half = 30;
       ctx.beginPath();
       ctx.moveTo(px, py - half);
@@ -572,13 +597,10 @@ export function WallMeasurePage() {
     }
     if (!vectors) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    // Click in vector coords: undo the canvas display scale, then add
-    // back the bbox offset (the canvas content is translated so the
-    // bbox origin sits at canvas (0,0)).
-    const ox = contentBbox?.minX ?? 0;
-    const oy = contentBbox?.minY ?? 0;
-    const cx = (e.clientX - rect.left) / displayScale + ox;
-    const cy = (e.clientY - rect.top) / displayScale + oy;
+    // Click in vector coords: the canvas renders the full sheet at
+    // `displayScale`, origin at (0,0), so undoing the scale is enough.
+    const cx = (e.clientX - rect.left) / displayScale;
+    const cy = (e.clientY - rect.top) / displayScale;
 
     if (picking) {
       // Sample the colour of the wall line nearest the click.
@@ -875,25 +897,39 @@ export function WallMeasurePage() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
-                    title="Fit drawing to viewport (skips empty paper margins)"
+                    title="Fit drawing to viewport"
                     onClick={() => {
-                      const fit = computeFitZoom(vectors, scrollRef.current);
-                      if (fit) {
-                        setZoom(fit.zoom);
-                        // After the canvas grows, scroll the content
-                        // bbox into view so the user lands on the drawing,
-                        // not on the white margins above it.
-                        requestAnimationFrame(() => {
-                          const el = scrollRef.current;
-                          if (!el) return;
-                          el.scrollLeft = fit.scrollLeft;
-                          el.scrollTop = fit.scrollTop;
-                        });
-                      }
+                      // zoom 1 == the base "whole sheet fits the container"
+                      // scale, so reset zoom and scroll back to the corner.
+                      setZoom(1);
+                      requestAnimationFrame(() => {
+                        const el = scrollRef.current;
+                        if (!el) return;
+                        el.scrollLeft = 0;
+                        el.scrollTop = 0;
+                      });
                     }}
                   >
                     <Maximize2 className="h-3.5 w-3.5" />
                   </Button>
+                  <span className="mx-1 h-4 w-px bg-border" />
+                  <button
+                    type="button"
+                    onClick={() => setShowBackdrop((s) => !s)}
+                    title={
+                      showBackdrop
+                        ? "Hide the drawing background"
+                        : "Show the drawing background"
+                    }
+                    className={`flex items-center gap-1 rounded px-1.5 py-1 text-xs font-medium ${
+                      showBackdrop
+                        ? "bg-muted text-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    Drawing
+                  </button>
                 </div>
 
                 <div
@@ -1228,61 +1264,4 @@ export function WallMeasurePage() {
         )}
     </main>
   );
-}
-
-/**
- * Walk every path's points to find the bounding box of the actual drawn
- * content (in vector coordinates), then work out a zoom factor + scroll
- * offset that fits that box snugly inside the scroll container. Returns
- * null if there's no content or no container yet.
- */
-function computeFitZoom(
-  v: PageVectors | null,
-  container: HTMLDivElement | null,
-): { zoom: number; scrollLeft: number; scrollTop: number } | null {
-  if (!v || !container) return null;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const path of v.paths) {
-    const p = path.points;
-    for (let i = 0; i + 1 < p.length; i += 2) {
-      const x = p[i];
-      const y = p[i + 1];
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-  }
-  if (!Number.isFinite(minX) || maxX <= minX || maxY <= minY) return null;
-
-  // Padding around the content so the user doesn't end up flush against
-  // the wall of the viewport.
-  const padX = (maxX - minX) * 0.05;
-  const padY = (maxY - minY) * 0.05;
-  const bboxW = maxX - minX + padX * 2;
-  const bboxH = maxY - minY + padY * 2;
-
-  const baseDs = Math.min(1, 1400 / v.width);
-  // viewport size in vector-pixel space (assuming the redraw applies
-  // baseDs * zoom). We want bbox to fill the viewport in vector pixels.
-  const viewportVecW = container.clientWidth / baseDs;
-  const viewportVecH = container.clientHeight / baseDs;
-  const zoom = Math.min(
-    8,
-    Math.max(1, Math.min(viewportVecW / bboxW, viewportVecH / bboxH)),
-  );
-
-  // Where to scroll so the content bbox is centred. Coordinates are in
-  // displayed-canvas pixels (vector * baseDs * zoom).
-  const scale = baseDs * zoom;
-  const cx = (minX - padX + bboxW / 2) * scale;
-  const cy = (minY - padY + bboxH / 2) * scale;
-  return {
-    zoom,
-    scrollLeft: Math.max(0, cx - container.clientWidth / 2),
-    scrollTop: Math.max(0, cy - container.clientHeight / 2),
-  };
 }
