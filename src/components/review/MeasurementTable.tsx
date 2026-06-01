@@ -60,7 +60,8 @@ type FlatItem =
   | { kind: "wall"; id: string; segment: WallSegment };
 
 // dot · label · length · height · confirm
-const GRID = "grid-cols-[24px_1fr_96px_84px_56px]";
+// dot · label · length · avg-RL · height · confirm+chevron
+const GRID = "grid-cols-[24px_1fr_92px_76px_84px_56px]";
 
 function confidenceTone(c: number): "good" | "amber" | "red" {
   if (c >= 0.85) return "good";
@@ -334,6 +335,25 @@ export function MeasurementTable({
             New group
           </Button>
         )}
+      </div>
+
+      {/* Column headers — a leading spacer matches the row grip + card
+          padding so the labels line up over the row cells. */}
+      <div className="flex items-stretch gap-1">
+        <span className="w-5 shrink-0" />
+        <div
+          className={cn(
+            "grid flex-1 items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground",
+            GRID,
+          )}
+        >
+          <span />
+          <span>Label</span>
+          <span className="text-right">Length (m)</span>
+          <span className="text-right">Avg RL (m)</span>
+          <span className="text-right">Height (m)</span>
+          <span />
+        </div>
       </div>
 
       <DndContext
@@ -762,6 +782,14 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
               }
             }}
           />
+          {/* Average height from the RL pairs — the reference. Reads the
+              same whether or not a manual height override is set. */}
+          <div
+            className="text-right text-sm tabular-nums text-muted-foreground"
+            title="Average of the per-pair RL heights (reference)"
+          >
+            {avgMm != null ? formatLength(avgMm) : "—"}
+          </div>
           <div
             className={cn(
               "text-right text-sm tabular-nums",
