@@ -360,7 +360,32 @@ export function TakeOffPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {groupedRows.map((group) => (
+                  {groupedRows.map((group) => {
+                    const gLM = group.walls.reduce(
+                      (s, r) => s + r.calc.lengthLM,
+                      0,
+                    );
+                    const gFace = group.walls.reduce(
+                      (s, r) =>
+                        s +
+                        ((r.segment.length_mm ?? 0) / 1000) *
+                          ((r.segment.height_mm ?? 0) / 1000),
+                      0,
+                    );
+                    const gEng = group.walls.reduce((s, r) => s + r.calc.m2, 0);
+                    const gConc = group.walls.reduce(
+                      (s, r) => s + r.calc.concreteM3,
+                      0,
+                    );
+                    const gGravel = group.walls.reduce(
+                      (s, r) => s + r.calc.gravelM3,
+                      0,
+                    );
+                    const gHoles = group.walls.reduce(
+                      (s, r) => s + r.calc.numberOfHoles,
+                      0,
+                    );
+                    return (
                     <Fragment key={group.key}>
                       {showGroups && (
                         <TableRow className="bg-muted/30">
@@ -538,8 +563,41 @@ export function TakeOffPage() {
                       </TableCell>
                         </TableRow>
                       ))}
+                      {showGroups && (
+                        <TableRow className="border-t border-dashed bg-muted/10 text-xs text-muted-foreground hover:bg-muted/10">
+                          <TableCell
+                            colSpan={4}
+                            className="py-1.5 italic"
+                          >
+                            {group.lot ?? "Ungrouped"} subtotal
+                          </TableCell>
+                          <TableCell className="pr-5 text-right tabular-nums">
+                            {gLM.toFixed(2)}
+                          </TableCell>
+                          <TableCell />
+                          <TableCell className="text-right tabular-nums">
+                            {gFace.toFixed(1)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {gEng.toFixed(1)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {gConc.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {gGravel.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {gHoles.toFixed(0)}
+                          </TableCell>
+                          <TableCell />
+                          <TableCell />
+                          <TableCell />
+                        </TableRow>
+                      )}
                     </Fragment>
-                  ))}
+                    );
+                  })}
                   <TableRow className="bg-muted/40 font-medium">
                     <TableCell colSpan={4} className="text-xs uppercase tracking-wider text-muted-foreground">
                       Total ({rows.length} segment{rows.length === 1 ? "" : "s"})
