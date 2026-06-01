@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronDown,
   FolderPlus,
   GripVertical,
   Loader2,
@@ -8,6 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { DragOverlay } from "@dnd-kit/core";
 import {
   DndContext,
   PointerSensor,
@@ -58,7 +60,7 @@ type FlatItem =
   | { kind: "wall"; id: string; segment: WallSegment };
 
 // dot · label · length · height · confirm
-const GRID = "grid-cols-[24px_1fr_96px_84px_24px]";
+const GRID = "grid-cols-[24px_1fr_96px_84px_56px]";
 
 function confidenceTone(c: number): "good" | "amber" | "red" {
   if (c >= 0.85) return "good";
@@ -149,6 +151,11 @@ export function MeasurementTable({
   // once a wall carries its lot — so they vanish on reload if left empty.
   const [pendingGroups, setPendingGroups] = useState<string[]>([]);
 
+  // The item currently being dragged — drives the DragOverlay so a whole
+  // lot (header + its walls) is shown moving as a block, not just the
+  // header on its own.
+  const [activeId, setActiveId] = useState<string | null>(null);
+
   // A small drag distance before a drag starts, so a click on the grip
   // that doesn't move doesn't count as a drag (and clicks on the row's
   // controls keep working).
@@ -160,6 +167,14 @@ export function MeasurementTable({
     () => groupByLot(segments, (s) => s.lot),
     [segments],
   );
+
+  // While a lot header is being dragged, the ids of that lot's walls, so
+  // they dim in place alongside the lifted overlay.
+  const activeGroupWallIds = useMemo(() => {
+    if (!activeId) return new Set<string>();
+    const g = groups.find((gr) => `header:${gr.key}` === activeId);
+    return new Set((g?.walls ?? []).map((w) => w.id));
+  }, [activeId, groups]);
 
   // Build the flat [header, ...walls] list that drives both rendering and
   // drag math. Append any pending (still-empty) groups at the end.
@@ -324,7 +339,12 @@ export function MeasurementTable({
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
+        onDragStart={(e) => setActiveId(String(e.active.id))}
+        onDragEnd={(e) => {
+          setActiveId(null);
+          handleDragEnd(e);
+        }}
+        onDragCancel={() => setActiveId(null)}
       >
         <SortableContext
           items={flatItems.map((i) => i.id)}
@@ -355,6 +375,7 @@ export function MeasurementTable({
                   key={item.id}
                   id={item.id}
                   disabled={locked}
+                  dimmed={activeGroupWallIds.has(item.id)}
                   registerRef={(el) => {
                     if (el) rowRefs.current.set(item.id, el);
                     else rowRefs.current.delete(item.id);
@@ -383,6 +404,49 @@ export function MeasurementTable({
             )}
           </div>
         </SortableContext>
+
+        {/* While dragging a lot header, show the whole group (header +
+            its walls) following the cursor, so it reads as one block
+            moving rather than a lone header. */}
+        <DragOverlay>
+          {(() => {
+            if (!activeId) return null;
+            const active = flatItems.find((i) => i.id === activeId);
+            if (!active) return null;
+            if (active.kind === "wall") {
+              return (
+                <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-lg">
+                  {active.segment.label ?? "(no label)"}
+                </div>
+              );
+            }
+            const g = groups.find((gr) => gr.lot === active.lot);
+            const ws = g?.walls ?? [];
+            return (
+              <div className="overflow-hidden rounded-md border bg-card shadow-lg">
+                <div className="bg-muted/85 px-3 py-1.5 text-sm font-semibold">
+                  {active.lot ?? "Ungrouped"}
+                  <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+                    {ws.length} {ws.length === 1 ? "wall" : "walls"}
+                  </span>
+                </div>
+                {ws.slice(0, 6).map((w) => (
+                  <div
+                    key={w.id}
+                    className="border-t px-3 py-1.5 text-xs text-muted-foreground"
+                  >
+                    {w.label ?? "(no label)"}
+                  </div>
+                ))}
+                {ws.length > 6 && (
+                  <div className="border-t px-3 py-1.5 text-xs text-muted-foreground">
+                    + {ws.length - 6} more
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </DragOverlay>
       </DndContext>
 
       {!locked && (
@@ -406,11 +470,14 @@ export function MeasurementTable({
 function SortableWall({
   id,
   disabled,
+  dimmed,
   registerRef,
   children,
 }: {
   id: string;
   disabled?: boolean;
+  /** Dim because the lot this wall belongs to is being dragged as a block. */
+  dimmed?: boolean;
   registerRef: (el: HTMLDivElement | null) => void;
   children: React.ReactNode;
 }) {
@@ -425,7 +492,7 @@ function SortableWall({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging || dimmed ? 0.4 : 1,
     zIndex: isDragging ? 10 : undefined,
   };
   return (
@@ -722,37 +789,48 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
               </span>
             )}
           </div>
-          {!locked ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                void commit({ confirmed: !segment.confirmed });
-              }}
+          <div className="flex items-center justify-end gap-1">
+            {!locked ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void commit({ confirmed: !segment.confirmed });
+                }}
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
+                  segment.confirmed
+                    ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                    : "border border-muted-foreground/30 text-muted-foreground/30 hover:border-emerald-500 hover:text-emerald-600",
+                )}
+                title={
+                  segment.confirmed
+                    ? "Un-confirm wall"
+                    : "Confirm wall — RLs verified"
+                }
+              >
+                <Check className="h-3.5 w-3.5" />
+              </button>
+            ) : segment.confirmed ? (
+              <span
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white"
+                title="Confirmed"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </span>
+            ) : (
+              <span className="h-6 w-6" />
+            )}
+            {/* Chevron — a cue that the row expands. A plain icon (not a
+                button) so a click bubbles to the row's toggle handler. */}
+            <ChevronDown
+              aria-hidden
               className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
-                segment.confirmed
-                  ? "bg-emerald-500 text-white hover:bg-emerald-600"
-                  : "border border-muted-foreground/30 text-muted-foreground/30 hover:border-emerald-500 hover:text-emerald-600",
+                "h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform",
+                selected && "rotate-180",
               )}
-              title={
-                segment.confirmed
-                  ? "Un-confirm wall"
-                  : "Confirm wall — RLs verified"
-              }
-            >
-              <Check className="h-3.5 w-3.5" />
-            </button>
-          ) : segment.confirmed ? (
-            <span
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white"
-              title="Confirmed"
-            >
-              <Check className="h-3.5 w-3.5" />
-            </span>
-          ) : (
-            <span />
-          )}
+            />
+          </div>
         </div>
 
         {(selected || saving) && (
