@@ -575,28 +575,43 @@ function GroupHeaderRow({
 
   const walls = group?.walls ?? [];
   const lengthM = walls.reduce((s, w) => s + (w.length_mm ?? 0) / 1000, 0);
-  // Per-wall area from the ACTUAL height shown (effective = manual override
-  // or RL average), summed — not the engineering-rounded height. So this
-  // matches the heights in the rows above it. (The 0.2 m embedment roundup
-  // lives on Take Off's "Eng m²" column, clearly labelled.)
-  const areaM2 = walls.reduce((s, w) => {
-    if (w.height_mm == null) return s;
-    return s + ((w.length_mm ?? 0) / 1000) * (w.height_mm / 1000);
-  }, 0);
 
-  // Length-weighted average RL height for the group — the representative
-  // height across the whole run, computed from each wall's RL average
-  // (not the manual override). Walls without RLs are excluded.
-  let rlLen = 0;
-  let rlArea = 0;
+  // Two length-weighted averages over the group:
+  //   • avgRlM   — from each wall's raw RL average (the un-edited figure)
+  //   • avgUsedM — from each wall's effective height (manual override or
+  //                RL avg) — i.e. what the m² is actually calculated from.
+  // The area shown is the effective-height area (matches the rows above).
+  let area = 0; // sum length × effective height (= the m² we display)
+  let usedLen = 0; // length of walls that have an effective height
+  let rlArea = 0; // sum length × RL-avg height
+  let rlLen = 0; // length of walls that have RLs
   for (const w of walls) {
-    const avg = averageHeightMm(w.rl_pairs ?? []);
-    if (avg == null) continue;
     const lenM = (w.length_mm ?? 0) / 1000;
-    rlLen += lenM;
-    rlArea += (avg / 1000) * lenM;
+    if (w.height_mm != null) {
+      area += lenM * (w.height_mm / 1000);
+      usedLen += lenM;
+    }
+    const rlAvg = averageHeightMm(w.rl_pairs ?? []);
+    if (rlAvg != null) {
+      rlArea += lenM * (rlAvg / 1000);
+      rlLen += lenM;
+    }
   }
+  const areaM2 = area;
   const avgRlM = rlLen > 0 ? rlArea / rlLen : null;
+  const avgUsedM = usedLen > 0 ? area / usedLen : null;
+  // Only call out the adjusted average when it actually differs from the
+  // raw RL average (i.e. someone has manually edited a height).
+  const avgDiffers =
+    avgRlM != null && avgUsedM != null && Math.abs(avgRlM - avgUsedM) >= 0.005;
+  const avgLabel =
+    avgRlM == null && avgUsedM != null
+      ? `${avgUsedM.toFixed(2)} m avg`
+      : avgRlM != null && avgDiffers && avgUsedM != null
+        ? `${avgRlM.toFixed(2)} m avg RL (${avgUsedM.toFixed(2)} m adjusted)`
+        : avgRlM != null
+          ? `${avgRlM.toFixed(2)} m avg RL`
+          : null;
 
   return (
     <div
@@ -634,10 +649,16 @@ function GroupHeaderRow({
         {walls.length} {walls.length === 1 ? "wall" : "walls"}
         {walls.length > 0 &&
           ` · ${lengthM.toFixed(1)} LM · ${areaM2.toFixed(1)} m²`}
-        {avgRlM != null && (
-          <span title="Length-weighted average RL height for this lot">
+        {avgLabel && (
+          <span
+            title={
+              avgDiffers
+                ? "Length-weighted average height — raw RL average, then the adjusted average actually used in the m² after manual edits"
+                : "Length-weighted average wall height for this lot"
+            }
+          >
             {" · "}
-            {avgRlM.toFixed(2)} m avg RL
+            {avgLabel}
           </span>
         )}
       </span>
