@@ -10,6 +10,7 @@ import {
   updateWallSegment,
 } from "@/lib/api/review";
 import { getSignedUrlsForPaths } from "@/lib/api/drawings";
+import { reorderWalls } from "@/lib/api/walls";
 import type {
   ExtractionBundle,
   WallSegment,
@@ -133,6 +134,50 @@ export function useReview(drawingPageId: string | undefined) {
     }
   }, []);
 
+  /**
+   * Persist a drag-reorder / regroup. Applies the new sort_order + lot
+   * locally first (so the list snaps immediately), then writes to the DB;
+   * on failure it reloads to resync. `updates` carries one entry per wall
+   * whose order or lot changed.
+   */
+  const reorderSegments = useCallback(
+    async (
+      updates: { id: string; sortOrder: number; lot?: string | null }[],
+    ) => {
+      if (updates.length === 0) return;
+      setActionError(null);
+      const patchById = new Map(updates.map((u) => [u.id, u]));
+      setState((s) => {
+        if (!s.bundle) return s;
+        const segments = s.bundle.segments
+          .map((sg) => {
+            const u = patchById.get(sg.id);
+            if (!u) return sg;
+            return {
+              ...sg,
+              sort_order: u.sortOrder,
+              lot:
+                u.lot !== undefined ? (u.lot?.trim() ? u.lot.trim() : null) : sg.lot,
+            };
+          })
+          .sort((a, b) => {
+            const ao = a.sort_order ?? Number.MAX_SAFE_INTEGER;
+            const bo = b.sort_order ?? Number.MAX_SAFE_INTEGER;
+            if (ao !== bo) return ao - bo;
+            return a.created_at.localeCompare(b.created_at);
+          });
+        return { ...s, bundle: { ...s.bundle, segments } };
+      });
+      try {
+        await reorderWalls(updates);
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Reorder failed.");
+        void load();
+      }
+    },
+    [load],
+  );
+
   const confirmReview = useCallback(async () => {
     if (!state.bundle || !user) return;
     setActionError(null);
@@ -244,6 +289,7 @@ export function useReview(drawingPageId: string | undefined) {
     saveSegment,
     addSegment,
     removeSegment,
+    reorderSegments,
     confirmReview,
     reopen,
     rescale,

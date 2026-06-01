@@ -38,6 +38,7 @@ export async function loadExtractionBundle(
         .from("wall_segments")
         .select("*")
         .eq("extraction_id", extraction.id)
+        .order("sort_order", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
       supabase
         .from("dimension_labels")

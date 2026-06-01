@@ -290,6 +290,10 @@ export interface WallSegment {
   wall_type: WallType | null;
   wall_design: WallDesign | null;
   position: WallPosition | null;
+  /** Explicit display order (lower = earlier), set by drag-reordering on
+   *  the Review page and honoured on Take Off / Quotation. Null walls fall
+   *  back to created_at order. */
+  sort_order: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -308,6 +312,7 @@ export type WallSegmentUpdate = Partial<{
   wall_type: WallType | null;
   wall_design: WallDesign | null;
   position: WallPosition | null;
+  sort_order: number | null;
 }>;
 
 export interface ExtractionBundle {

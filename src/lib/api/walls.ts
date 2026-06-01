@@ -24,7 +24,8 @@ function normalizeUpdate(patch: WallSegmentUpdate): Record<string, unknown> {
   return out;
 }
 
-/** Every wall on a project — manual + PDF-measured, in creation order. */
+/** Every wall on a project — manual + PDF-measured, in display order
+ *  (sort_order asc, nulls last, then creation order). */
 export async function listProjectWalls(
   projectId: string,
 ): Promise<WallSegment[]> {
@@ -32,9 +33,33 @@ export async function listProjectWalls(
     .from("wall_segments")
     .select("*")
     .eq("project_id", projectId)
+    .order("sort_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as WallSegment[];
+}
+
+/**
+ * Persist a drag-reorder / regroup: each entry sets a wall's new
+ * `sort_order` and (when moved into another lot group) its `lot`.
+ * Updates run in parallel — a drag only ever touches a handful of rows.
+ */
+export async function reorderWalls(
+  updates: { id: string; sortOrder: number; lot?: string | null }[],
+): Promise<void> {
+  const results = await Promise.all(
+    updates.map((u) => {
+      const patch: Record<string, unknown> = { sort_order: u.sortOrder };
+      if (u.lot !== undefined) {
+        const trimmed = u.lot?.trim();
+        patch.lot = trimmed ? trimmed : null;
+      }
+      return supabase.from("wall_segments").update(patch).eq("id", u.id);
+    }),
+  );
+  for (const r of results) {
+    if (r.error) throw r.error;
+  }
 }
 
 /** Add a manual wall to a project (no PDF source). */
