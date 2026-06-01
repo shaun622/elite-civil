@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { isMissingColumn } from "@/lib/api/walls";
+import { isMissingColumn, updateWallRow } from "@/lib/api/walls";
 import type {
   DimensionLabel,
   DrawingPage,
@@ -96,18 +96,11 @@ export async function updateWallSegment(
         notes: segment.notes,
       };
 
-  const { data, error } = await supabase
-    .from("wall_segments")
-    .update({
-      ...normalizeUpdate(patch),
-      user_edited: true,
-      original_values: originalValues,
-    })
-    .eq("id", segment.id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as WallSegment;
+  return updateWallRow(segment.id, {
+    ...normalizeUpdate(patch),
+    user_edited: true,
+    original_values: originalValues,
+  });
 }
 
 /** Walk back from an extraction to find the owning project, so newly

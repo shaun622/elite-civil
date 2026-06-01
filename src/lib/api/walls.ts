@@ -11,14 +11,45 @@
 import { supabase } from "@/lib/supabase";
 import type { WallSegment, WallSegmentUpdate } from "@/types/db";
 
-/** True for Postgres "undefined column" (42703) — i.e. the sort_order
- *  migration hasn't been applied yet. Lets queries fall back gracefully
- *  instead of hard-erroring the whole wall list. */
+/** True for Postgres "undefined column" (42703) — i.e. a not-yet-applied
+ *  migration (sort_order / height_override_mm). Lets queries fall back
+ *  gracefully instead of hard-erroring the whole wall list / edit. */
 export function isMissingColumn(err: unknown): boolean {
   const e = err as { code?: string; message?: string } | null;
   return (
     e?.code === "42703" || /column .* does not exist/i.test(e?.message ?? "")
   );
+}
+
+/**
+ * Run a wall_segments update, retrying without any not-yet-migrated
+ * columns if Postgres rejects them (42703). Keeps editing working before
+ * the latest migration is applied — those fields just don't persist yet.
+ */
+export async function updateWallRow(
+  id: string,
+  payload: Record<string, unknown>,
+): Promise<WallSegment> {
+  // Columns that may not exist on older DBs; dropped on 42703 and retried.
+  const OPTIONAL_COLS = ["height_override_mm", "sort_order"];
+  let attempt = { ...payload };
+  for (;;) {
+    const { data, error } = await supabase
+      .from("wall_segments")
+      .update(attempt)
+      .eq("id", id)
+      .select()
+      .single();
+    if (!error) return data as WallSegment;
+    const droppable = OPTIONAL_COLS.find((c) => c in attempt);
+    if (isMissingColumn(error) && droppable) {
+      const next = { ...attempt };
+      delete next[droppable];
+      attempt = next;
+      continue;
+    }
+    throw error;
+  }
 }
 
 function normalizeUpdate(patch: WallSegmentUpdate): Record<string, unknown> {
@@ -112,14 +143,7 @@ export async function updateProjectWall(
   id: string,
   patch: WallSegmentUpdate,
 ): Promise<WallSegment> {
-  const { data, error } = await supabase
-    .from("wall_segments")
-    .update(normalizeUpdate(patch))
-    .eq("id", id)
-    .select()
-    .single();
-  if (error) throw error;
-  return data as WallSegment;
+  return updateWallRow(id, normalizeUpdate(patch));
 }
 
 export async function deleteProjectWall(id: string): Promise<void> {

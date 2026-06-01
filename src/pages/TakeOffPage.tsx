@@ -482,8 +482,12 @@ export function TakeOffPage() {
                             if (!Number.isFinite(raw) || raw <= 0) return;
                             const rounded = roundHeightUp(raw);
                             if (rounded !== calc.height) {
+                              // A Take Off height edit is a manual figure —
+                              // record it as the override so a later RL edit
+                              // on Review doesn't silently overwrite it.
                               updateWall(segment.id, {
                                 height_mm: Math.round(rounded * 1000),
+                                height_override_mm: Math.round(rounded * 1000),
                               });
                             }
                           }}

@@ -490,11 +490,31 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
     const [notes, setNotes] = useState(segment.notes ?? "");
     const [notesOpen, setNotesOpen] = useState(false);
 
+    // The live RL-pair average (the reference), and the editable "used
+    // height" field — defaults to the manual override if set, else the
+    // average. Typing a different value makes it a manual override.
+    const avgMm = averageHeightMm(segment.rl_pairs ?? []);
+    const [heightField, setHeightField] = useState(
+      segment.height_override_mm != null
+        ? formatLength(segment.height_override_mm)
+        : avgMm != null
+          ? formatLength(avgMm)
+          : "",
+    );
+
     useEffect(() => {
       setLabel(segment.label ?? "");
       setLength(formatLength(segment.length_mm));
       setThickness(formatLength(segment.thickness_mm));
       setNotes(segment.notes ?? "");
+      const a = averageHeightMm(segment.rl_pairs ?? []);
+      setHeightField(
+        segment.height_override_mm != null
+          ? formatLength(segment.height_override_mm)
+          : a != null
+            ? formatLength(a)
+            : "",
+      );
     }, [segment]);
 
     async function commit(patch: WallSegmentUpdate) {
@@ -503,7 +523,38 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
 
     function commitRlPairs(pairs: RlPair[]) {
       if (pairsEqual(pairs, segment.rl_pairs ?? [])) return;
-      void commit({ rl_pairs: pairs, height_mm: averageHeightMm(pairs) });
+      const avg = averageHeightMm(pairs);
+      // An active manual override wins; otherwise the effective height
+      // tracks the RL average.
+      const effective = segment.height_override_mm ?? avg;
+      void commit({ rl_pairs: pairs, height_mm: effective });
+    }
+
+    /** Commit the editable height field as a manual override — unless it
+     *  matches the RL average (then we stay average-tracking) or is blank
+     *  (then we revert to the average). */
+    function commitHeightField() {
+      const raw = heightField.trim();
+      const avg = averageHeightMm(segment.rl_pairs ?? []);
+      if (raw === "") {
+        if (segment.height_override_mm != null) {
+          void commit({ height_override_mm: null, height_mm: avg });
+        }
+        return;
+      }
+      const mm = parseLength(raw);
+      if (mm == null || mm <= 0) return;
+      if (mm === segment.height_override_mm) return; // unchanged
+      if (mm === avg && segment.height_override_mm == null) return; // == avg
+      void commit({ height_override_mm: mm, height_mm: mm });
+    }
+
+    function clearHeightOverride() {
+      const avg = averageHeightMm(segment.rl_pairs ?? []);
+      setHeightField(avg != null ? formatLength(avg) : "");
+      if (segment.height_override_mm != null) {
+        void commit({ height_override_mm: null, height_mm: avg });
+      }
     }
 
     return (
@@ -565,17 +616,29 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
           <div
             className={cn(
               "text-right text-sm tabular-nums",
-              segment.height_mm != null && !segment.confirmed
-                ? "rounded border border-purple-300 bg-purple-50/70 px-1.5 py-0.5 text-purple-800"
-                : "text-muted-foreground",
+              segment.height_override_mm != null
+                ? "font-medium text-foreground"
+                : segment.height_mm != null && !segment.confirmed
+                  ? "rounded border border-purple-300 bg-purple-50/70 px-1.5 py-0.5 text-purple-800"
+                  : "text-muted-foreground",
             )}
             title={
-              segment.height_mm != null && !segment.confirmed
-                ? "Auto-derived from RLs — confirm the wall once you've verified"
-                : "Average of the per-pair RL heights"
+              segment.height_override_mm != null
+                ? `Manual height${avgMm != null ? ` — RL average ${formatLength(avgMm)} m` : ""}`
+                : segment.height_mm != null && !segment.confirmed
+                  ? "Auto-derived from RLs — confirm the wall once you've verified"
+                  : "Average of the per-pair RL heights"
             }
           >
             {segment.height_mm != null ? formatLength(segment.height_mm) : "—"}
+            {segment.height_override_mm != null && (
+              <span
+                className="ml-0.5 align-super text-[9px] text-muted-foreground"
+                title="Manual override"
+              >
+                M
+              </span>
+            )}
           </div>
           {!locked ? (
             <button
@@ -617,6 +680,59 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
               disabled={locked}
               onChange={commitRlPairs}
             />
+
+            {/* Editable wall height. Defaults to the RL average; typing a
+                different figure (e.g. rounding 1.123 → 1.2) makes it a manual
+                override that the rest of the app uses, while the real average
+                stays visible as a reference. */}
+            <div className="grid gap-1">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Height used (m)
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  inputMode="decimal"
+                  value={heightField}
+                  disabled={locked}
+                  onChange={(e) => setHeightField(e.target.value)}
+                  onBlur={commitHeightField}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      (e.target as HTMLInputElement).blur();
+                  }}
+                  placeholder={avgMm != null ? formatLength(avgMm) : "height"}
+                  className="h-8 w-24 text-right tabular-nums"
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  {segment.height_override_mm != null ? (
+                    <>
+                      manual override · RL avg{" "}
+                      <span className="font-medium text-foreground">
+                        {avgMm != null ? formatLength(avgMm) : "—"}
+                      </span>{" "}
+                      m
+                      {!locked && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            clearHeightOverride();
+                          }}
+                          className="ml-1.5 underline underline-offset-2 hover:text-foreground"
+                        >
+                          use average
+                        </button>
+                      )}
+                    </>
+                  ) : avgMm != null ? (
+                    <>tracking RL average — type to override</>
+                  ) : (
+                    <>no RLs yet — enter a height, or add RL pairs above</>
+                  )}
+                </span>
+              </div>
+            </div>
 
             <div className="grid w-36 gap-1">
               <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">

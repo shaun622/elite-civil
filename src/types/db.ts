@@ -294,6 +294,10 @@ export interface WallSegment {
    *  the Review page and honoured on Take Off / Quotation. Null walls fall
    *  back to created_at order. */
   sort_order: number | null;
+  /** Manual height override in mm. When set, the app uses it as the
+   *  effective `height_mm`; when null, `height_mm` tracks the RL-pair
+   *  average. The RL average stays computed from `rl_pairs` for reference. */
+  height_override_mm: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -302,6 +306,7 @@ export type WallSegmentUpdate = Partial<{
   label: string | null;
   length_mm: number | null;
   height_mm: number | null;
+  height_override_mm: number | null;
   thickness_mm: number | null;
   notes: string | null;
   polyline: Point[];
