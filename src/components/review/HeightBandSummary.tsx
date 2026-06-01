@@ -128,7 +128,8 @@ export function HeightBandSummary({ segments, projectId }: Props) {
       <h3 className="text-sm font-semibold">Summary by height band</h3>
       <p className="mt-0.5 text-[11px] text-muted-foreground">
         Area = wall length × height, with heights rounded up to the nearest
-        0.2 m (post embedment is paid for too). Matches the Take Off m².
+        0.2 m for post embedment — the pricing basis. Matches Take Off's
+        “Eng m²” (the lot headers above show the un-rounded area).
       </p>
 
       {/* Adjustable band edges */}
