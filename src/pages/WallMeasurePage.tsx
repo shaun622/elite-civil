@@ -103,7 +103,12 @@ export function WallMeasurePage() {
   const [scaleRatio, setScaleRatio] = useState("");
   const [mmPerPx, setMmPerPx] = useState<number | null>(null);
   const [snap, setSnap] = useState(true);
-  const [showDistance, setShowDistance] = useState(false);
+  // Click-two-points distance calibration is the default (most accurate).
+  // The scale-ratio input is a fallback, revealed by `showRatio`.
+  const [showRatio, setShowRatio] = useState(false);
+  // Live cursor position (vector coords) while placing the second
+  // calibration point — drives the rubber-band preview line.
+  const [calibCursor, setCalibCursor] = useState<[number, number] | null>(null);
 
   const [wallTypes, setWallTypes] = useState<WallColorSpec[]>([]);
   const [picking, setPicking] = useState(false);
@@ -411,6 +416,7 @@ export function WallMeasurePage() {
         pickedPathIndices,
         pickingPaths,
         showBackdrop ? backdrop : null,
+        calibCursor,
       ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -425,6 +431,7 @@ export function WallMeasurePage() {
     backdrop,
     showBackdrop,
     containerSize,
+    calibCursor,
   ]);
 
   function redraw(
@@ -436,6 +443,7 @@ export function WallMeasurePage() {
     pickedIndices: Set<number>,
     pickingPaths: boolean,
     backdropImg: HTMLImageElement | null,
+    cursor: [number, number] | null,
   ): number {
     const canvas = canvasRef.current;
     if (!canvas) return 1;
@@ -517,6 +525,18 @@ export function WallMeasurePage() {
       ctx.beginPath();
       ctx.moveTo(points[0][0] * ds, points[0][1] * ds);
       ctx.lineTo(points[1][0] * ds, points[1][1] * ds);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Rubber-band preview: after the first point is placed, draw a live
+    // line from it to the cursor so the user sees the span as they move.
+    if (points.length === 1 && cursor) {
+      ctx.strokeStyle = "#a78bfa";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(points[0][0] * ds, points[0][1] * ds);
+      ctx.lineTo(cursor[0] * ds, cursor[1] * ds);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -622,10 +642,10 @@ export function WallMeasurePage() {
       togglePathPick(idx, singleOnly);
       return;
     }
-    if (!showDistance) return;
 
-    // Calibration click — snap onto exact drawing geometry (scale-bar
-    // ticks, wall corners) so the distance is precise, not freehand.
+    // Default action: distance calibration. Snap onto exact drawing
+    // geometry (scale-bar ticks, wall corners) so the distance is precise,
+    // not freehand.
     let x = cx;
     let y = cy;
     if (snap) {
@@ -638,7 +658,23 @@ export function WallMeasurePage() {
     const next: [number, number][] =
       calibPoints.length >= 2 ? [[x, y]] : [...calibPoints, [x, y]];
     setCalibPoints(next);
+    setCalibCursor(null);
     setMmPerPx(null);
+  }
+
+  /** Track the cursor for the rubber-band preview line, but only while the
+   *  user is placing the second calibration point (one point down so far,
+   *  and not in a colour / path picking mode). */
+  function onCanvasMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (picking || pickingPaths || calibPoints.length !== 1) {
+      if (calibCursor !== null) setCalibCursor(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setCalibCursor([
+      (e.clientX - rect.left) / displayScale,
+      (e.clientY - rect.top) / displayScale,
+    ]);
   }
 
   function setCalibration() {
@@ -954,11 +990,13 @@ export function WallMeasurePage() {
                   <canvas
                     ref={canvasRef}
                     onClick={onCanvasClick}
-                    // Picking / calibration override the grab cursor so
-                    // the user can see they're meant to click. Plain
-                    // viewing keeps the wrapper's grab cursor.
+                    onMouseMove={onCanvasMouseMove}
+                    onMouseLeave={() => setCalibCursor(null)}
+                    // Crosshair while picking, or while the scale isn't
+                    // calibrated yet (clicking sets it). Once calibrated,
+                    // the wrapper's grab cursor returns for panning.
                     className={
-                      picking || pickingPaths || showDistance
+                      picking || pickingPaths || mmPerPx === null
                         ? "block cursor-crosshair"
                         : "block"
                     }
@@ -998,29 +1036,49 @@ export function WallMeasurePage() {
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">1 · Calibrate scale</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Type the scale ratio from the title block — it's exact and
-                  the quickest way to calibrate.
+                  Click two points a known distance apart on the drawing (a
+                  scale bar is ideal), then enter that distance — the most
+                  accurate way to calibrate.
                 </p>
 
-                <div className="mt-3 grid gap-1.5">
-                  <Label htmlFor="ratio" className="text-xs">
-                    Scale ratio
+                <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={snap}
+                    onChange={(e) => setSnap(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-violet-600"
+                  />
+                  Snap clicks to the nearest drawing vertex
+                </label>
+
+                <p className="mt-2.5 text-[11px] font-medium text-violet-700">
+                  {calibPoints.length === 0
+                    ? "Click the first point on the drawing."
+                    : calibPoints.length === 1
+                      ? "Now click the second point."
+                      : "Two points set — enter the distance below."}
+                </p>
+
+                <div className="mt-2 grid gap-1.5">
+                  <Label htmlFor="dist" className="text-xs">
+                    Distance between the points (metres)
                   </Label>
                   <div className="flex gap-2">
                     <Input
-                      id="ratio"
-                      value={scaleRatio}
-                      onChange={(e) => setScaleRatio(e.target.value)}
+                      id="dist"
+                      value={knownDist}
+                      onChange={(e) => setKnownDist(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") setCalibrationFromRatio();
+                        if (e.key === "Enter") setCalibration();
                       }}
-                      placeholder="e.g. 1:500"
-                      className="h-9 font-mono"
+                      placeholder="e.g. 20"
+                      className="h-9"
                     />
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={setCalibrationFromRatio}
+                      onClick={setCalibration}
+                      disabled={calibPoints.length !== 2}
                     >
                       Set
                     </Button>
@@ -1029,47 +1087,40 @@ export function WallMeasurePage() {
 
                 <button
                   type="button"
-                  onClick={() => setShowDistance((s) => !s)}
+                  onClick={() => setShowRatio((s) => !s)}
                   className="mt-3 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
                 >
-                  {showDistance
-                    ? "Hide distance calibration"
-                    : "No ratio on the sheet? Calibrate by clicking a distance"}
+                  {showRatio
+                    ? "Hide scale ratio"
+                    : "Know the scale ratio? Enter it instead"}
                 </button>
 
-                {showDistance && (
+                {showRatio && (
                   <div className="mt-3 rounded-md border border-dashed bg-muted/30 p-3">
                     <p className="text-[11px] text-muted-foreground">
-                      Failsafe — prefer the scale ratio above, it's exact. Use
-                      this only when the sheet has no ratio: click two points
-                      a known distance apart, then enter that distance.
+                      If the title block lists a ratio (e.g. 1:500) you can use
+                      it — but clicking a known distance above is usually more
+                      accurate.
                     </p>
-                    <label className="mt-2.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        checked={snap}
-                        onChange={(e) => setSnap(e.target.checked)}
-                        className="h-3.5 w-3.5 accent-violet-600"
-                      />
-                      Snap clicks to the nearest drawing vertex
-                    </label>
-                    <div className="mt-3 grid gap-2">
-                      <Label htmlFor="dist" className="text-xs">
-                        Distance (metres)
+                    <div className="mt-2.5 grid gap-1.5">
+                      <Label htmlFor="ratio" className="text-xs">
+                        Scale ratio
                       </Label>
                       <div className="flex gap-2">
                         <Input
-                          id="dist"
-                          value={knownDist}
-                          onChange={(e) => setKnownDist(e.target.value)}
-                          placeholder="e.g. 20"
-                          className="h-9"
+                          id="ratio"
+                          value={scaleRatio}
+                          onChange={(e) => setScaleRatio(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") setCalibrationFromRatio();
+                          }}
+                          placeholder="e.g. 1:500"
+                          className="h-9 font-mono"
                         />
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={setCalibration}
-                          disabled={calibPoints.length !== 2}
+                          onClick={setCalibrationFromRatio}
                         >
                           Set
                         </Button>
