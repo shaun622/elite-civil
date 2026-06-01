@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { AlertTriangle, Plus, ScanLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
 import { roundHeightUp } from "@/lib/engine/calculations";
+import { groupByLot } from "@/lib/wallGroups";
 import type {
   WallDesign,
   WallPosition,
@@ -104,6 +105,15 @@ export function TakeOffPage() {
     calc,
     segment: walls.find((w) => w.id === calc.id) as WallSegment,
   }));
+
+  // Group rows by lot for display (walls already arrive in the persisted
+  // sort_order, so groups land in the same order as on the Review page).
+  // Only show group subheaders once at least one wall has a lot — an
+  // all-ungrouped job stays a flat list.
+  const groupedRows = groupByLot(rows, (r) => r.segment.lot);
+  const showGroups =
+    groupedRows.length > 1 ||
+    (groupedRows.length === 1 && groupedRows[0].lot !== null);
 
   const totalLM = rows.reduce((s, r) => s + r.calc.lengthLM, 0);
   const totalEngM2 = rows.reduce((s, r) => s + r.calc.m2, 0);
@@ -350,8 +360,24 @@ export function TakeOffPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map(({ calc, segment }) => (
-                    <TableRow key={calc.id}>
+                  {groupedRows.map((group) => (
+                    <Fragment key={group.key}>
+                      {showGroups && (
+                        <TableRow className="bg-muted/30">
+                          <TableCell
+                            colSpan={14}
+                            className="py-1.5 text-xs font-semibold"
+                          >
+                            {group.lot ?? "Ungrouped"}
+                            <span className="ml-2 font-normal text-muted-foreground">
+                              {group.walls.length}{" "}
+                              {group.walls.length === 1 ? "wall" : "walls"}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {group.walls.map(({ calc, segment }) => (
+                        <TableRow key={calc.id}>
                       <TableCell>
                         <Input
                           className="h-7 w-16 text-xs"
@@ -506,7 +532,9 @@ export function TakeOffPage() {
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </TableCell>
-                    </TableRow>
+                        </TableRow>
+                      ))}
+                    </Fragment>
                   ))}
                   <TableRow className="bg-muted/40 font-medium">
                     <TableCell colSpan={4} className="text-xs uppercase tracking-wider text-muted-foreground">
