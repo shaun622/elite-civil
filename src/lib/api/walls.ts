@@ -34,6 +34,19 @@ export async function updateWallRow(
   const OPTIONAL_COLS = ["height_override_mm", "sort_order"];
   let attempt = { ...payload };
   for (;;) {
+    // If every field was an un-migrated column, there's nothing left to
+    // write — return the row as-is rather than firing an empty update
+    // (which PostgREST rejects). This keeps a pure pre-migration reorder
+    // from throwing, which would otherwise trip the caller's reload path.
+    if (Object.keys(attempt).length === 0) {
+      const { data, error } = await supabase
+        .from("wall_segments")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (error) throw error;
+      return data as WallSegment;
+    }
     const { data, error } = await supabase
       .from("wall_segments")
       .update(attempt)
@@ -98,19 +111,20 @@ export async function listProjectWalls(
 export async function reorderWalls(
   updates: { id: string; sortOrder: number; lot?: string | null }[],
 ): Promise<void> {
-  const results = await Promise.all(
+  // Route through updateWallRow so that, before the sort_order migration
+  // is applied, a rename (which also carries lot) still persists the lot —
+  // the sort_order field is dropped on 42703 instead of failing the whole
+  // update (which used to bounce the caller into a full reload).
+  await Promise.all(
     updates.map((u) => {
       const patch: Record<string, unknown> = { sort_order: u.sortOrder };
       if (u.lot !== undefined) {
         const trimmed = u.lot?.trim();
         patch.lot = trimmed ? trimmed : null;
       }
-      return supabase.from("wall_segments").update(patch).eq("id", u.id);
+      return updateWallRow(u.id, patch);
     }),
   );
-  for (const r of results) {
-    if (r.error) throw r.error;
-  }
 }
 
 /** Add a manual wall to a project (no PDF source). */

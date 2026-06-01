@@ -181,6 +181,14 @@ export function MeasurementTable({
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
+    const activeItem = flatItems.find((i) => i.id === active.id);
+    if (!activeItem) return;
+
+    if (activeItem.kind === "header") {
+      handleGroupDragEnd(String(active.id), String(over.id));
+      return;
+    }
+
     const oldIndex = flatItems.findIndex((i) => i.id === active.id);
     const newIndex = flatItems.findIndex((i) => i.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
@@ -208,6 +216,48 @@ export function MeasurementTable({
           sortOrder: order,
           ...(lotChanged ? { lot: currentLot } : {}),
         });
+      }
+    }
+    if (updates.length > 0) onReorder(updates);
+  }
+
+  /**
+   * Dragging a group header moves the WHOLE lot (header + its walls) as a
+   * block. We reorder at the group level — not the flat-item level — so a
+   * group can never land mid-way through another group and steal its
+   * trailing walls. Lots are unchanged; only sort_order is rewritten so
+   * the new group order sticks.
+   */
+  function handleGroupDragEnd(activeHeaderId: string, overId: string) {
+    // Rebuild the ordered groups (header id + its wall ids) from flatItems.
+    type G = { headerId: string; wallIds: string[] };
+    const order: G[] = [];
+    let cur: G | null = null;
+    for (const it of flatItems) {
+      if (it.kind === "header") {
+        cur = { headerId: it.id, wallIds: [] };
+        order.push(cur);
+      } else if (cur) {
+        cur.wallIds.push(it.id);
+      }
+    }
+    const fromIdx = order.findIndex((g) => g.headerId === activeHeaderId);
+    // The drop target maps to whichever group it belongs to (a header is
+    // its own group; a wall belongs to the group whose block contains it).
+    const toIdx =
+      order.findIndex((g) => g.headerId === overId) !== -1
+        ? order.findIndex((g) => g.headerId === overId)
+        : order.findIndex((g) => g.wallIds.includes(overId));
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+
+    const reordered = arrayMove(order, fromIdx, toIdx);
+    const updates: ReorderUpdate[] = [];
+    let n = 0;
+    for (const g of reordered) {
+      for (const id of g.wallIds) {
+        n += 10;
+        const seg = segments.find((s) => s.id === id);
+        if (seg && seg.sort_order !== n) updates.push({ id, sortOrder: n });
       }
     }
     if (updates.length > 0) onReorder(updates);
@@ -285,6 +335,7 @@ export function MeasurementTable({
               item.kind === "header" ? (
                 <GroupHeaderRow
                   key={item.id}
+                  id={item.id}
                   group={groups.find((g) => g.lot === item.lot) ?? null}
                   lot={item.lot}
                   locked={locked}
@@ -402,15 +453,17 @@ function SortableWall({
   );
 }
 
-/** A lot group header: editable name + a per-group subtotal. Acts as a
- *  fixed anchor in the drag list — dropping a wall under it moves the wall
- *  into that lot. */
+/** A lot group header: a drag handle (drags the whole group), an editable
+ *  name, and a per-group subtotal. Also a drop target — dropping a wall
+ *  onto it moves the wall into that lot. */
 function GroupHeaderRow({
+  id,
   group,
   lot,
   locked,
   onRename,
 }: {
+  id: string;
   group: { walls: WallSegment[] } | null;
   lot: string | null;
   locked: boolean;
@@ -418,6 +471,21 @@ function GroupHeaderRow({
 }) {
   const [name, setName] = useState(lot ?? "");
   useEffect(() => setName(lot ?? ""), [lot]);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled: locked });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 11 : 2,
+  };
 
   const walls = group?.walls ?? [];
   const lengthM = walls.reduce((s, w) => s + (w.length_mm ?? 0) / 1000, 0);
@@ -427,11 +495,25 @@ function GroupHeaderRow({
   }, 0);
 
   return (
-    <div className="sticky top-0 z-[1] -mx-1 flex items-center gap-2 rounded-md border bg-muted/80 px-2 py-1.5 backdrop-blur">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="sticky top-0 z-[2] -mx-1 flex items-center gap-1.5 rounded-md border bg-muted/85 px-2 py-1.5 backdrop-blur"
+    >
+      {!locked && (
+        <button
+          type="button"
+          className="flex h-6 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/50 hover:bg-muted-foreground/10 hover:text-foreground active:cursor-grabbing"
+          aria-label="Drag to reorder this lot"
+          title="Drag to move the whole lot"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
       {locked ? (
-        <span className="text-sm font-semibold">
-          {lot ?? "Ungrouped"}
-        </span>
+        <span className="text-sm font-semibold">{lot ?? "Ungrouped"}</span>
       ) : (
         <Input
           value={name}
