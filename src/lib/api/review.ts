@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { isMissingColumn } from "@/lib/api/walls";
 import type {
   DimensionLabel,
   DrawingPage,
@@ -32,22 +33,33 @@ export async function loadExtractionBundle(
     );
   }
 
-  const [{ data: segments, error: segErr }, { data: dims, error: dimErr }] =
-    await Promise.all([
-      supabase
-        .from("wall_segments")
-        .select("*")
-        .eq("extraction_id", extraction.id)
-        .order("sort_order", { ascending: true, nullsFirst: false })
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("dimension_labels")
-        .select("*")
-        .eq("extraction_id", extraction.id)
-        .order("created_at", { ascending: true }),
-    ]);
-  if (segErr) throw segErr;
+  const [segRes, { data: dims, error: dimErr }] = await Promise.all([
+    supabase
+      .from("wall_segments")
+      .select("*")
+      .eq("extraction_id", extraction.id)
+      .order("sort_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("dimension_labels")
+      .select("*")
+      .eq("extraction_id", extraction.id)
+      .order("created_at", { ascending: true }),
+  ]);
   if (dimErr) throw dimErr;
+
+  let segments = segRes.data;
+  if (segRes.error) {
+    // sort_order migration not applied yet — retry in creation order.
+    if (!isMissingColumn(segRes.error)) throw segRes.error;
+    const { data, error } = await supabase
+      .from("wall_segments")
+      .select("*")
+      .eq("extraction_id", extraction.id)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    segments = data;
+  }
 
   return {
     page: page as DrawingPage,

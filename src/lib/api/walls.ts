@@ -11,6 +11,16 @@
 import { supabase } from "@/lib/supabase";
 import type { WallSegment, WallSegmentUpdate } from "@/types/db";
 
+/** True for Postgres "undefined column" (42703) — i.e. the sort_order
+ *  migration hasn't been applied yet. Lets queries fall back gracefully
+ *  instead of hard-erroring the whole wall list. */
+export function isMissingColumn(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | null;
+  return (
+    e?.code === "42703" || /column .* does not exist/i.test(e?.message ?? "")
+  );
+}
+
 function normalizeUpdate(patch: WallSegmentUpdate): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(patch)) {
@@ -35,8 +45,18 @@ export async function listProjectWalls(
     .eq("project_id", projectId)
     .order("sort_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as WallSegment[];
+  if (!error) return (data ?? []) as WallSegment[];
+
+  // The sort_order migration may not be applied yet — fall back to plain
+  // creation order so the wall list still loads.
+  if (!isMissingColumn(error)) throw error;
+  const { data: legacy, error: legacyErr } = await supabase
+    .from("wall_segments")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: true });
+  if (legacyErr) throw legacyErr;
+  return (legacy ?? []) as WallSegment[];
 }
 
 /**
