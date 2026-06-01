@@ -31,7 +31,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatLength, parseLength } from "@/lib/format";
-import { roundHeightUp } from "@/lib/engine/calculations";
 import { groupByLot } from "@/lib/wallGroups";
 import type { RlPair, WallSegment, WallSegmentUpdate } from "@/types/db";
 
@@ -576,9 +575,13 @@ function GroupHeaderRow({
 
   const walls = group?.walls ?? [];
   const lengthM = walls.reduce((s, w) => s + (w.length_mm ?? 0) / 1000, 0);
+  // Per-wall area from the ACTUAL height shown (effective = manual override
+  // or RL average), summed — not the engineering-rounded height. So this
+  // matches the heights in the rows above it. (The 0.2 m embedment roundup
+  // lives on Take Off's "Eng m²" column, clearly labelled.)
   const areaM2 = walls.reduce((s, w) => {
     if (w.height_mm == null) return s;
-    return s + ((w.length_mm ?? 0) / 1000) * roundHeightUp(w.height_mm / 1000);
+    return s + ((w.length_mm ?? 0) / 1000) * (w.height_mm / 1000);
   }, 0);
 
   // Length-weighted average RL height for the group — the representative
