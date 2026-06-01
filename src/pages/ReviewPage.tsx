@@ -339,6 +339,7 @@ export function ReviewPage() {
                   onHover={setHoveredSegmentId}
                   onSave={review.saveSegment}
                   onAdd={toggleAddWall}
+                  onReorder={review.reorderSegments}
                   drawingWall={drawingWall}
                   onDelete={review.removeSegment}
                 />

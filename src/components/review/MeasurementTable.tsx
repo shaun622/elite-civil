@@ -1,12 +1,39 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Check,
+  FolderPlus,
+  GripVertical,
+  Loader2,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatLength, parseLength } from "@/lib/format";
+import { roundHeightUp } from "@/lib/engine/calculations";
+import { groupByLot } from "@/lib/wallGroups";
 import type { RlPair, WallSegment, WallSegmentUpdate } from "@/types/db";
+
+type ReorderUpdate = { id: string; sortOrder: number; lot?: string | null };
 
 type Props = {
   segments: WallSegment[];
@@ -18,9 +45,17 @@ type Props = {
   onHover: (id: string | null) => void;
   onSave: (segment: WallSegment, patch: WallSegmentUpdate) => Promise<void>;
   onAdd: () => Promise<void>;
+  onReorder: (updates: ReorderUpdate[]) => void;
   drawingWall?: boolean;
   onDelete: (id: string) => Promise<void>;
 };
+
+/** A flat, drag-orderable list item: either a lot group header (a fixed
+ *  anchor) or a draggable wall row. The header's position in the flat list
+ *  is what defines which group a wall belongs to after a drag. */
+type FlatItem =
+  | { kind: "header"; id: string; lot: string | null }
+  | { kind: "wall"; id: string; segment: WallSegment };
 
 // dot · label · length · height · confirm
 const GRID = "grid-cols-[24px_1fr_96px_84px_24px]";
@@ -96,6 +131,7 @@ export function MeasurementTable({
   onHover,
   onSave,
   onAdd,
+  onReorder,
   drawingWall,
   onDelete,
 }: Props) {
@@ -107,6 +143,90 @@ export function MeasurementTable({
     const el = rowRefs.current.get(selectedSegmentId);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedSegmentId]);
+
+  // Empty lot groups the user has created but not yet dragged any walls
+  // into. They live only in local state — a group "exists" in the DB only
+  // once a wall carries its lot — so they vanish on reload if left empty.
+  const [pendingGroups, setPendingGroups] = useState<string[]>([]);
+
+  // A small drag distance before a drag starts, so a click on the grip
+  // that doesn't move doesn't count as a drag (and clicks on the row's
+  // controls keep working).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+
+  const groups = useMemo(
+    () => groupByLot(segments, (s) => s.lot),
+    [segments],
+  );
+
+  // Build the flat [header, ...walls] list that drives both rendering and
+  // drag math. Append any pending (still-empty) groups at the end.
+  const flatItems = useMemo<FlatItem[]>(() => {
+    const items: FlatItem[] = [];
+    const realLots = new Set<string>();
+    for (const g of groups) {
+      if (g.lot) realLots.add(g.lot);
+      items.push({ kind: "header", id: `header:${g.key}`, lot: g.lot });
+      for (const w of g.walls) items.push({ kind: "wall", id: w.id, segment: w });
+    }
+    for (const lot of pendingGroups) {
+      if (realLots.has(lot)) continue; // a wall already adopted this lot
+      items.push({ kind: "header", id: `header:${lot}`, lot });
+    }
+    return items;
+  }, [groups, pendingGroups]);
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = flatItems.findIndex((i) => i.id === active.id);
+    const newIndex = flatItems.findIndex((i) => i.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const moved = arrayMove(flatItems, oldIndex, newIndex);
+
+    // Re-derive every wall's lot (from the nearest preceding header) and a
+    // fresh sort_order from its position. Only walls that actually changed
+    // are sent to the server.
+    const updates: ReorderUpdate[] = [];
+    let currentLot: string | null = null;
+    let order = 0;
+    for (const item of moved) {
+      if (item.kind === "header") {
+        currentLot = item.lot;
+        continue;
+      }
+      order += 10;
+      const seg = item.segment;
+      const prevLot = seg.lot && seg.lot.trim() ? seg.lot.trim() : null;
+      const lotChanged = prevLot !== currentLot;
+      const orderChanged = seg.sort_order !== order;
+      if (lotChanged || orderChanged) {
+        updates.push({
+          id: seg.id,
+          sortOrder: order,
+          ...(lotChanged ? { lot: currentLot } : {}),
+        });
+      }
+    }
+    if (updates.length > 0) onReorder(updates);
+  }
+
+  function renameGroup(group: (typeof groups)[number], nextLot: string | null) {
+    const updates: ReorderUpdate[] = group.walls.map((w) => ({
+      id: w.id,
+      sortOrder: w.sort_order ?? 0,
+      lot: nextLot,
+    }));
+    if (updates.length > 0) onReorder(updates);
+  }
+
+  function addGroup() {
+    const name = window.prompt("New group / lot name (e.g. Lot 7):")?.trim();
+    if (!name) return;
+    setPendingGroups((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  }
 
   if (segments.length === 0) {
     return (
@@ -132,47 +252,87 @@ export function MeasurementTable({
 
   return (
     <div className="space-y-2">
-      <p className="px-2 text-[11px] text-muted-foreground">
-        Tip: click a wall to edit it — enter Top RL and Bottom RL at each end
-        and the height is calculated for you.
-      </p>
-      <div
-        className={cn(
-          "grid items-center gap-2 px-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground",
-          GRID,
+      <div className="flex items-center justify-between gap-2 px-2">
+        <p className="text-[11px] text-muted-foreground">
+          Drag the grip to reorder, or across a group header to move a wall to
+          that lot. Click a wall to edit its RLs.
+        </p>
+        {!locked && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 gap-1.5 text-xs"
+            onClick={addGroup}
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
+            New group
+          </Button>
         )}
+      </div>
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
       >
-        <span></span>
-        <span>Label</span>
-        <span className="text-right">Length (m)</span>
-        <span className="text-right">Height (m)</span>
-        <span></span>
-      </div>
-
-      <div className="max-h-[48vh] space-y-2 overflow-y-auto pr-1">
-        {segments.map((seg) => (
-          <SegmentRow
-            key={seg.id}
-            ref={(el) => {
-              if (el) rowRefs.current.set(seg.id, el);
-              else rowRefs.current.delete(seg.id);
-            }}
-            segment={seg}
-            selected={seg.id === selectedSegmentId}
-            hovered={seg.id === hoveredSegmentId}
-            saving={savingId === seg.id}
-            locked={locked}
-            onSelect={() =>
-              onSelect(seg.id === selectedSegmentId ? null : seg.id)
-            }
-            onHoverEnter={() => onHover(seg.id)}
-            onHoverLeave={() => onHover(null)}
-            onSave={(patch) => onSave(seg, patch)}
-            onDelete={() => onDelete(seg.id)}
-          />
-        ))}
-
-      </div>
+        <SortableContext
+          items={flatItems.map((i) => i.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="max-h-[52vh] space-y-1.5 overflow-y-auto pr-1">
+            {flatItems.map((item) =>
+              item.kind === "header" ? (
+                <GroupHeaderRow
+                  key={item.id}
+                  group={groups.find((g) => g.lot === item.lot) ?? null}
+                  lot={item.lot}
+                  locked={locked}
+                  onRename={(next) => {
+                    const g = groups.find((gr) => gr.lot === item.lot);
+                    if (g) renameGroup(g, next);
+                    else if (item.lot) {
+                      // Rename a still-empty pending group.
+                      setPendingGroups((prev) =>
+                        prev.map((p) => (p === item.lot ? (next ?? p) : p)),
+                      );
+                    }
+                  }}
+                />
+              ) : (
+                <SortableWall
+                  key={item.id}
+                  id={item.id}
+                  disabled={locked}
+                  registerRef={(el) => {
+                    if (el) rowRefs.current.set(item.id, el);
+                    else rowRefs.current.delete(item.id);
+                  }}
+                >
+                  <SegmentRow
+                    segment={item.segment}
+                    selected={item.segment.id === selectedSegmentId}
+                    hovered={item.segment.id === hoveredSegmentId}
+                    saving={savingId === item.segment.id}
+                    locked={locked}
+                    onSelect={() =>
+                      onSelect(
+                        item.segment.id === selectedSegmentId
+                          ? null
+                          : item.segment.id,
+                      )
+                    }
+                    onHoverEnter={() => onHover(item.segment.id)}
+                    onHoverLeave={() => onHover(null)}
+                    onSave={(patch) => onSave(item.segment, patch)}
+                    onDelete={() => onDelete(item.segment.id)}
+                  />
+                </SortableWall>
+              ),
+            )}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {!locked && (
         <Button
@@ -186,6 +346,109 @@ export function MeasurementTable({
           {drawingWall ? "Cancel adding wall" : "Add a wall (N)"}
         </Button>
       )}
+    </div>
+  );
+}
+
+/** Drag-handle wrapper around a wall row. Only the grip starts a drag, so
+ *  the row's inputs / buttons stay interactive. */
+function SortableWall({
+  id,
+  disabled,
+  registerRef,
+  children,
+}: {
+  id: string;
+  disabled?: boolean;
+  registerRef: (el: HTMLDivElement | null) => void;
+  children: React.ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  return (
+    <div
+      ref={(node) => {
+        setNodeRef(node);
+        registerRef(node);
+      }}
+      style={style}
+      className="flex items-start gap-1"
+    >
+      {!disabled && (
+        <button
+          type="button"
+          className="mt-2 flex h-6 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground/40 hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/** A lot group header: editable name + a per-group subtotal. Acts as a
+ *  fixed anchor in the drag list — dropping a wall under it moves the wall
+ *  into that lot. */
+function GroupHeaderRow({
+  group,
+  lot,
+  locked,
+  onRename,
+}: {
+  group: { walls: WallSegment[] } | null;
+  lot: string | null;
+  locked: boolean;
+  onRename: (next: string | null) => void;
+}) {
+  const [name, setName] = useState(lot ?? "");
+  useEffect(() => setName(lot ?? ""), [lot]);
+
+  const walls = group?.walls ?? [];
+  const lengthM = walls.reduce((s, w) => s + (w.length_mm ?? 0) / 1000, 0);
+  const areaM2 = walls.reduce((s, w) => {
+    if (w.height_mm == null) return s;
+    return s + ((w.length_mm ?? 0) / 1000) * roundHeightUp(w.height_mm / 1000);
+  }, 0);
+
+  return (
+    <div className="sticky top-0 z-[1] -mx-1 flex items-center gap-2 rounded-md border bg-muted/80 px-2 py-1.5 backdrop-blur">
+      {locked ? (
+        <span className="text-sm font-semibold">
+          {lot ?? "Ungrouped"}
+        </span>
+      ) : (
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => {
+            const t = name.trim();
+            if ((lot ?? "") !== t) onRename(t ? t : null);
+          }}
+          placeholder="Ungrouped"
+          className="h-7 w-44 text-sm font-semibold"
+        />
+      )}
+      <span className="ml-auto whitespace-nowrap text-[11px] text-muted-foreground">
+        {walls.length} {walls.length === 1 ? "wall" : "walls"}
+        {walls.length > 0 &&
+          ` · ${lengthM.toFixed(1)} LM · ${areaM2.toFixed(1)} m²`}
+      </span>
     </div>
   );
 }
