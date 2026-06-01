@@ -581,6 +581,20 @@ function GroupHeaderRow({
     return s + ((w.length_mm ?? 0) / 1000) * roundHeightUp(w.height_mm / 1000);
   }, 0);
 
+  // Length-weighted average RL height for the group — the representative
+  // height across the whole run, computed from each wall's RL average
+  // (not the manual override). Walls without RLs are excluded.
+  let rlLen = 0;
+  let rlArea = 0;
+  for (const w of walls) {
+    const avg = averageHeightMm(w.rl_pairs ?? []);
+    if (avg == null) continue;
+    const lenM = (w.length_mm ?? 0) / 1000;
+    rlLen += lenM;
+    rlArea += (avg / 1000) * lenM;
+  }
+  const avgRlM = rlLen > 0 ? rlArea / rlLen : null;
+
   return (
     <div
       ref={setNodeRef}
@@ -617,6 +631,12 @@ function GroupHeaderRow({
         {walls.length} {walls.length === 1 ? "wall" : "walls"}
         {walls.length > 0 &&
           ` · ${lengthM.toFixed(1)} LM · ${areaM2.toFixed(1)} m²`}
+        {avgRlM != null && (
+          <span title="Length-weighted average RL height for this lot">
+            {" · "}
+            {avgRlM.toFixed(2)} m avg RL
+          </span>
+        )}
       </span>
     </div>
   );
