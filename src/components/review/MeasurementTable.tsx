@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
-  ChevronDown,
+  ChevronRight,
   FolderPlus,
   GripVertical,
   Loader2,
@@ -60,8 +60,8 @@ type FlatItem =
   | { kind: "wall"; id: string; segment: WallSegment };
 
 // dot · label · length · height · confirm
-// dot · label · length · avg-RL · height · confirm+chevron
-const GRID = "grid-cols-[24px_1fr_92px_76px_84px_56px]";
+// chevron+dot · label · length · avg-RL · height · confirm
+const GRID = "grid-cols-[40px_1fr_92px_76px_84px_28px]";
 
 function confidenceTone(c: number): "good" | "amber" | "red" {
   if (c >= 0.85) return "good";
@@ -759,7 +759,16 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             onSelect();
           }}
         >
-          <span className="flex items-center">
+          <span className="flex items-center gap-1">
+            {/* Expand cue — points right when collapsed, down when open.
+                A plain icon so a click bubbles to the row's toggle. */}
+            <ChevronRight
+              aria-hidden
+              className={cn(
+                "h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform",
+                selected && "rotate-90",
+              )}
+            />
             <ConfidenceDot value={segment.confidence} />
           </span>
           <Input
@@ -817,48 +826,37 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
               </span>
             )}
           </div>
-          <div className="flex items-center justify-end gap-1">
-            {!locked ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void commit({ confirmed: !segment.confirmed });
-                }}
-                className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
-                  segment.confirmed
-                    ? "bg-emerald-500 text-white hover:bg-emerald-600"
-                    : "border border-muted-foreground/30 text-muted-foreground/30 hover:border-emerald-500 hover:text-emerald-600",
-                )}
-                title={
-                  segment.confirmed
-                    ? "Un-confirm wall"
-                    : "Confirm wall — RLs verified"
-                }
-              >
-                <Check className="h-3.5 w-3.5" />
-              </button>
-            ) : segment.confirmed ? (
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-white"
-                title="Confirmed"
-              >
-                <Check className="h-3.5 w-3.5" />
-              </span>
-            ) : (
-              <span className="h-6 w-6" />
-            )}
-            {/* Chevron — a cue that the row expands. A plain icon (not a
-                button) so a click bubbles to the row's toggle handler. */}
-            <ChevronDown
-              aria-hidden
+          {!locked ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void commit({ confirmed: !segment.confirmed });
+              }}
               className={cn(
-                "h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform",
-                selected && "rotate-180",
+                "flex h-6 w-6 items-center justify-center justify-self-end rounded-full transition-colors",
+                segment.confirmed
+                  ? "bg-emerald-500 text-white hover:bg-emerald-600"
+                  : "border border-muted-foreground/30 text-muted-foreground/30 hover:border-emerald-500 hover:text-emerald-600",
               )}
-            />
-          </div>
+              title={
+                segment.confirmed
+                  ? "Un-confirm wall"
+                  : "Confirm wall — RLs verified"
+              }
+            >
+              <Check className="h-3.5 w-3.5" />
+            </button>
+          ) : segment.confirmed ? (
+            <span
+              className="flex h-6 w-6 items-center justify-center justify-self-end rounded-full bg-emerald-500 text-white"
+              title="Confirmed"
+            >
+              <Check className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <span />
+          )}
         </div>
 
         {(selected || saving) && (
