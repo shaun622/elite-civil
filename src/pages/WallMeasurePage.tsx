@@ -69,6 +69,18 @@ export function WallMeasurePage() {
   // the user can pan around it via the scroll container.
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Live mirror of zoom + a pending zoom anchor, used by the native
+  // (non-passive) wheel handler to zoom toward the cursor. React's onWheel
+  // is passive, so preventDefault there is a no-op — hence the manual
+  // listener below.
+  const zoomRef = useRef(1);
+  const zoomAnchorRef = useRef<{
+    px: number;
+    py: number;
+    prevLeft: number;
+    prevTop: number;
+    f: number;
+  } | null>(null);
   // Tracked so the base scale (fit-the-full-sheet-to-container) recomputes
   // when the container resizes — the canvas would otherwise stay sized for
   // the first paint.
@@ -96,7 +108,6 @@ export function WallMeasurePage() {
       }
     | null
   >(null);
-  const suppressClickRef = useRef(false);
 
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [knownDist, setKnownDist] = useState("");
@@ -106,6 +117,10 @@ export function WallMeasurePage() {
   // Click-two-points distance calibration is the default (most accurate).
   // The scale-ratio input is a fallback, revealed by `showRatio`.
   const [showRatio, setShowRatio] = useState(false);
+  // Explicit "Set points" mode — when on, clicking the drawing places the
+  // two calibration points (crosshair cursor). Keeps stray clicks from
+  // dropping points when the user just wants to pan / look around.
+  const [settingPoints, setSettingPoints] = useState(false);
   // Live cursor position (vector coords) while placing the second
   // calibration point — drives the rubber-band preview line.
   const [calibCursor, setCalibCursor] = useState<[number, number] | null>(null);
@@ -402,6 +417,38 @@ export function WallMeasurePage() {
     return () => obs.disconnect();
   }, [vectors]);
 
+  // Keep the zoom mirror in sync for the native wheel handler.
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  // Native, non-passive wheel-to-zoom (toward the cursor). React's onWheel
+  // is passive so it can't preventDefault the page scroll; this can.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !vectors) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const z = zoomRef.current;
+      const delta = e.deltaY > 0 ? 1 / 1.15 : 1.15;
+      const nz = Math.max(0.25, Math.min(8, +(z * delta).toFixed(3)));
+      if (nz === z) return;
+      zoomAnchorRef.current = {
+        px,
+        py,
+        prevLeft: el.scrollLeft,
+        prevTop: el.scrollTop,
+        f: nz / z,
+      };
+      setZoom(nz);
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [vectors]);
+
   // Draw the linework once the canvas has mounted (i.e. vectors are ready).
   useEffect(() => {
     if (!vectors) return;
@@ -419,6 +466,17 @@ export function WallMeasurePage() {
         calibCursor,
       ),
     );
+    // After a wheel-zoom resized the canvas, shift the scroll so the point
+    // under the cursor stays put (zoom toward cursor).
+    const anchor = zoomAnchorRef.current;
+    if (anchor) {
+      const el = scrollRef.current;
+      if (el) {
+        el.scrollLeft = (anchor.prevLeft + anchor.px) * anchor.f - anchor.px;
+        el.scrollTop = (anchor.prevTop + anchor.py) * anchor.f - anchor.py;
+      }
+      zoomAnchorRef.current = null;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     vectors,
@@ -595,57 +653,54 @@ export function WallMeasurePage() {
     }
   }
 
-  /** Release the pointer and, if the user actually dragged, suppress the
-   *  follow-up click on the canvas so a pan past a wall doesn't pick it. */
+  /** Release the pointer. If the press didn't move (a click, not a drag),
+   *  run the canvas action — picking or placing a calibration point. We do
+   *  this from pointer-up rather than a separate `click` handler because the
+   *  pan's setPointerCapture swallows the canvas `click` event in most
+   *  browsers, which is why clicks "did nothing" before. */
   function onPanPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
-    if (drag?.moved) suppressClickRef.current = true;
+    const moved = drag?.moved ?? false;
     dragRef.current = null;
     setDragging(false);
     const el = scrollRef.current;
     if (el && el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
     }
+    if (!moved) activateAt(e.clientX, e.clientY, e.altKey, e.shiftKey);
   }
 
-  function onCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (suppressClickRef.current) {
-      // The user just dragged — eat this click so they don't accidentally
-      // pick a wall colour or drop a calibration point.
-      suppressClickRef.current = false;
-      return;
-    }
-    if (!vectors) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    // Click in vector coords: the canvas renders the full sheet at
-    // `displayScale`, origin at (0,0), so undoing the scale is enough.
-    const cx = (e.clientX - rect.left) / displayScale;
-    const cy = (e.clientY - rect.top) / displayScale;
+  /** A click on the canvas (resolved from pointer-up). Picks a colour, picks
+   *  a wall, or places a calibration point depending on the active mode. */
+  function activateAt(
+    clientX: number,
+    clientY: number,
+    altKey: boolean,
+    shiftKey: boolean,
+  ) {
+    const canvas = canvasRef.current;
+    if (!vectors || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    // Canvas renders the full sheet at `displayScale`, origin at (0,0), so
+    // undoing the scale gives vector coords.
+    const cx = (clientX - rect.left) / displayScale;
+    const cy = (clientY - rect.top) / displayScale;
 
     if (picking) {
-      // Sample the colour of the wall line nearest the click.
       const hit = nearestPath(vectors.paths, cx, cy, 12 / displayScale);
       if (hit) addWallColor(hit.color.toLowerCase());
       return;
     }
     if (pickingPaths) {
-      // Find the path nearest the click, then either pick the whole
-      // connected run (default) or just this single path (Alt / Shift).
-      const idx = nearestPathIndex(
-        vectors.paths,
-        cx,
-        cy,
-        12 / displayScale,
-      );
+      const idx = nearestPathIndex(vectors.paths, cx, cy, 12 / displayScale);
       if (idx < 0) return;
-      const singleOnly = e.altKey || e.shiftKey;
-      togglePathPick(idx, singleOnly);
+      togglePathPick(idx, altKey || shiftKey);
       return;
     }
+    if (!settingPoints) return; // navigate mode — clicks don't place points
 
-    // Default action: distance calibration. Snap onto exact drawing
-    // geometry (scale-bar ticks, wall corners) so the distance is precise,
-    // not freehand.
+    // Snap onto exact drawing geometry (scale-bar ticks, wall corners) so
+    // the calibration distance is precise, not freehand.
     let x = cx;
     let y = cy;
     if (snap) {
@@ -662,11 +717,10 @@ export function WallMeasurePage() {
     setMmPerPx(null);
   }
 
-  /** Track the cursor for the rubber-band preview line, but only while the
-   *  user is placing the second calibration point (one point down so far,
-   *  and not in a colour / path picking mode). */
+  /** Track the cursor for the rubber-band preview line — only in Set-points
+   *  mode, after the first point is down and before the second. */
   function onCanvasMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
-    if (picking || pickingPaths || calibPoints.length !== 1) {
+    if (!settingPoints || calibPoints.length !== 1 || dragging) {
       if (calibCursor !== null) setCalibCursor(null);
       return;
     }
@@ -692,6 +746,8 @@ export function WallMeasurePage() {
     }
     setError(null);
     setMmPerPx(distMm / px);
+    setSettingPoints(false);
+    setCalibCursor(null);
   }
 
   function setCalibrationFromRatio() {
@@ -970,15 +1026,6 @@ export function WallMeasurePage() {
 
                 <div
                   ref={scrollRef}
-                  onWheel={(e) => {
-                    // Ctrl + wheel zooms (matches PDF readers / browsers).
-                    if (!e.ctrlKey && !e.metaKey) return;
-                    e.preventDefault();
-                    const delta = e.deltaY > 0 ? 1 / 1.15 : 1.15;
-                    setZoom((z) =>
-                      Math.max(0.25, Math.min(8, +(z * delta).toFixed(3))),
-                    );
-                  }}
                   onPointerDown={onPanPointerDown}
                   onPointerMove={onPanPointerMove}
                   onPointerUp={onPanPointerUp}
@@ -989,14 +1036,13 @@ export function WallMeasurePage() {
                 >
                   <canvas
                     ref={canvasRef}
-                    onClick={onCanvasClick}
                     onMouseMove={onCanvasMouseMove}
                     onMouseLeave={() => setCalibCursor(null)}
-                    // Crosshair while picking, or while the scale isn't
-                    // calibrated yet (clicking sets it). Once calibrated,
-                    // the wrapper's grab cursor returns for panning.
+                    // Crosshair while a click-mode is active (picking a
+                    // colour / wall, or setting calibration points). Plain
+                    // otherwise — the wrapper shows grab for panning.
                     className={
-                      picking || pickingPaths || mmPerPx === null
+                      picking || pickingPaths || settingPoints
                         ? "block cursor-crosshair"
                         : "block"
                     }
@@ -1036,28 +1082,55 @@ export function WallMeasurePage() {
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">1 · Calibrate scale</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Click two points a known distance apart on the drawing (a
-                  scale bar is ideal), then enter that distance — the most
-                  accurate way to calibrate.
+                  Click <strong>Set points</strong>, then click two points a
+                  known distance apart on the drawing (a scale bar is ideal)
+                  and enter that distance — the most accurate way to
+                  calibrate.
                 </p>
 
-                <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={snap}
-                    onChange={(e) => setSnap(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-violet-600"
-                  />
-                  Snap clicks to the nearest drawing vertex
-                </label>
+                <Button
+                  size="sm"
+                  variant={settingPoints ? "default" : "outline"}
+                  className="mt-3 gap-1.5"
+                  onClick={() => {
+                    setSettingPoints((s) => {
+                      const next = !s;
+                      if (next) {
+                        // entering set-points mode — leave the picking modes
+                        setPicking(false);
+                        setPickingPaths(false);
+                        setCalibPoints([]);
+                        setCalibCursor(null);
+                      }
+                      return next;
+                    });
+                  }}
+                >
+                  <MousePointerClick className="h-3.5 w-3.5" />
+                  {settingPoints ? "Setting points… (click to stop)" : "Set points"}
+                </Button>
 
-                <p className="mt-2.5 text-[11px] font-medium text-violet-700">
-                  {calibPoints.length === 0
-                    ? "Click the first point on the drawing."
-                    : calibPoints.length === 1
-                      ? "Now click the second point."
-                      : "Two points set — enter the distance below."}
-                </p>
+                {settingPoints && (
+                  <>
+                    <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={snap}
+                        onChange={(e) => setSnap(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-violet-600"
+                      />
+                      Snap clicks to the nearest drawing vertex
+                    </label>
+
+                    <p className="mt-2.5 text-[11px] font-medium text-violet-700">
+                      {calibPoints.length === 0
+                        ? "Click the first point on the drawing."
+                        : calibPoints.length === 1
+                          ? "Now click the second point."
+                          : "Two points set — enter the distance below."}
+                    </p>
+                  </>
+                )}
 
                 <div className="mt-2 grid gap-1.5">
                   <Label htmlFor="dist" className="text-xs">
@@ -1180,6 +1253,7 @@ export function WallMeasurePage() {
                   onClick={() => {
                     setPicking((p) => !p);
                     if (pickingPaths) setPickingPaths(false);
+                    setSettingPoints(false);
                   }}
                 >
                   <MousePointerClick className="h-3.5 w-3.5" />
@@ -1205,6 +1279,7 @@ export function WallMeasurePage() {
                     onClick={() => {
                       setPickingPaths((p) => !p);
                       if (picking) setPicking(false);
+                      setSettingPoints(false);
                     }}
                   >
                     <MousePointerClick className="h-3.5 w-3.5" />
