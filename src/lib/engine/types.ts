@@ -82,12 +82,24 @@ export interface CostBreakdown {
   costPerM2: number;
 }
 
+/** How a per-m² quotation rate was built, for an in-app "how is this
+ *  calculated?" breakdown:
+ *  rate = directCostPerM2 × (1+markup) × (1+margin) × (1+bandMultiplier). */
+export interface RateBreakdown {
+  directCostPerM2: number;
+  markup: number;
+  margin: number;
+  bandMultiplier: number;
+}
+
 export interface QuotationLineItem {
   description: string;
   qty: number;
   unit: string;
   rate: number;
   total: number;
+  /** Present on the per-m² wall lines (not flat-rate lines like Form 15). */
+  rateBreakdown?: RateBreakdown;
 }
 
 export type MaterialCategory =

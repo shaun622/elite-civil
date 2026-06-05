@@ -1,5 +1,6 @@
+import { Fragment, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Info, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,6 +22,7 @@ import {
 import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
+import type { RateBreakdown } from "@/lib/engine/types";
 import type { ExtraOverItem } from "@/types/db";
 
 const aud = new Intl.NumberFormat("en-AU", {
@@ -43,6 +45,8 @@ export function QuotationPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading, update } = useProject(id);
   const { walls, loading: wallsLoading } = useProjectWalls(id);
+  // Which pricing-schedule line has its rate breakdown expanded.
+  const [expandedLine, setExpandedLine] = useState<number | null>(null);
 
   if (!id) return <Navigate to="/dashboard" replace />;
   if (projectLoading || wallsLoading) {
@@ -182,20 +186,67 @@ export function QuotationPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lines.map((line, i) => (
-                <TableRow key={`${line.description}-${i}`}>
-                  <TableCell className="text-sm">{line.description}</TableCell>
-                  <TableCell className="text-right text-sm">
-                    {line.qty.toFixed(line.unit === "m2" ? 2 : 0)} {line.unit}
-                  </TableCell>
-                  <TableCell className="text-right text-sm">
-                    {fmt(line.rate)}
-                  </TableCell>
-                  <TableCell className="text-right text-sm font-medium">
-                    {fmt(line.total)}
-                  </TableCell>
-                </TableRow>
-              ))}
+              {lines.map((line, i) => {
+                const bd = line.rateBreakdown;
+                const isOpen = expandedLine === i;
+                const rateTip = bd
+                  ? `${fmt(bd.directCostPerM2)}/m² direct cost × ${(1 + bd.markup).toFixed(2)} markup × ${(1 + bd.margin).toFixed(2)} margin${bd.bandMultiplier ? ` × ${(1 + bd.bandMultiplier).toFixed(2)} band` : ""} = ${fmt(line.rate)}/m²`
+                  : undefined;
+                return (
+                  <Fragment key={`${line.description}-${i}`}>
+                    <TableRow>
+                      <TableCell className="text-sm">
+                        <span className="inline-flex items-center gap-1.5">
+                          {bd && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedLine(isOpen ? null : i)
+                              }
+                              title="How is this rate calculated?"
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              <ChevronRight
+                                className={`h-3.5 w-3.5 transition-transform ${
+                                  isOpen ? "rotate-90" : ""
+                                }`}
+                              />
+                            </button>
+                          )}
+                          {line.description}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        {line.qty.toFixed(line.unit === "m2" ? 2 : 0)}{" "}
+                        {line.unit}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        <span
+                          className={
+                            bd ? "cursor-help underline decoration-dotted underline-offset-2" : ""
+                          }
+                          title={rateTip}
+                        >
+                          {fmt(line.rate)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-sm font-medium">
+                        {fmt(line.total)}
+                      </TableCell>
+                    </TableRow>
+                    {bd && isOpen && (
+                      <TableRow className="bg-muted/30 hover:bg-muted/30">
+                        <TableCell colSpan={4} className="py-2">
+                          <RateBreakdownDetail
+                            rate={line.rate}
+                            bd={bd}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
               <TableRow>
                 <TableCell
                   colSpan={3}
@@ -563,6 +614,52 @@ export function QuotationPage() {
           />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Step-by-step "how this per-m² rate is built" panel, shown when a
+ *  pricing-schedule line is expanded. */
+function RateBreakdownDetail({
+  rate,
+  bd,
+}: {
+  rate: number;
+  bd: RateBreakdown;
+}) {
+  const row = (label: string, value: string, strong = false) => (
+    <div className="flex items-baseline justify-between gap-4">
+      <span className={strong ? "font-medium text-foreground" : "text-muted-foreground"}>
+        {label}
+      </span>
+      <span className={`tabular-nums ${strong ? "font-semibold" : ""}`}>
+        {value}
+      </span>
+    </div>
+  );
+  return (
+    <div className="space-y-2 rounded-md border bg-background p-3 text-xs">
+      <p className="flex items-center gap-1.5 font-medium text-foreground">
+        <Info className="h-3.5 w-3.5" /> How this rate is built
+      </p>
+      <div className="space-y-1">
+        {row("Direct construction cost", `${fmt(bd.directCostPerM2)} /m²`)}
+        {row(`× Markup (${(bd.markup * 100).toFixed(0)}%)`, `× ${(1 + bd.markup).toFixed(2)}`)}
+        {row(`× Margin (${(bd.margin * 100).toFixed(0)}%)`, `× ${(1 + bd.margin).toFixed(2)}`)}
+        {bd.bandMultiplier > 0 &&
+          row(
+            `× Height-band premium (${(bd.bandMultiplier * 100).toFixed(0)}%)`,
+            `× ${(1 + bd.bandMultiplier).toFixed(2)}`,
+          )}
+        <div className="my-1 border-t" />
+        {row("= Rate", `${fmt(rate)} /m²`, true)}
+      </div>
+      <p className="text-muted-foreground">
+        Direct cost = (Drilling + Posting + Wall Building + Backfill &amp;
+        Gravel) ÷ total m². Establishment, engineering (Form 15 / 12) and
+        fence brackets are separate lines. Adjust the markup, margin and band
+        premiums in Pricing &amp; Performance.
+      </p>
     </div>
   );
 }

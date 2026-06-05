@@ -4,6 +4,7 @@ import type {
   WallCalculated,
   CostBreakdown,
   QuotationLineItem,
+  RateBreakdown,
   MaterialsOrder,
   MaterialOrderLine,
   CostBreakdownDetail,
@@ -388,6 +389,12 @@ export function generateQuotationLines(
 
   const bands = config.extraOverBands;
   const getRate = (multiplier: number) => baseRate * (1 + multiplier);
+  const breakdownFor = (multiplier: number): RateBreakdown => ({
+    directCostPerM2,
+    markup: config.admin.markup,
+    margin: config.admin.margin,
+    bandMultiplier: multiplier,
+  });
   const isTierBand = (label: string) => /upper|lower/i.test(label);
 
   const estQty = getQty("other-establishment", 1);
@@ -410,24 +417,28 @@ export function generateQuotationLines(
 
   if (m2_upper > 0) {
     const tierBand = bands.find((b) => /upper/i.test(b.label));
-    const rate = getRate(tierBand?.multiplier ?? 0.12);
+    const mult = tierBand?.multiplier ?? 0.12;
+    const rate = getRate(mult);
     lines.push({
       description: "Upper 2 tier wall",
       qty: m2_upper,
       unit: "m2",
       rate,
       total: m2_upper * rate,
+      rateBreakdown: breakdownFor(mult),
     });
   }
   if (m2_lower > 0) {
     const tierBand = bands.find((b) => /lower/i.test(b.label));
-    const rate = getRate(tierBand?.multiplier ?? 0.11);
+    const mult = tierBand?.multiplier ?? 0.11;
+    const rate = getRate(mult);
     lines.push({
       description: "Lower 2 tier wall",
       qty: m2_lower,
       unit: "m2",
       rate,
       total: m2_lower * rate,
+      rateBreakdown: breakdownFor(mult),
     });
   }
 
@@ -448,6 +459,7 @@ export function generateQuotationLines(
       unit: "m2",
       rate,
       total: m2InBand * rate,
+      rateBreakdown: breakdownFor(band.multiplier),
     });
   }
 
