@@ -29,7 +29,6 @@ import {
 import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
-import { roundHeightUp } from "@/lib/engine/calculations";
 import { groupByLot } from "@/lib/wallGroups";
 import type {
   WallDesign,
@@ -132,14 +131,17 @@ export function TakeOffPage() {
 
   function commitDraft() {
     if (draft.lengthLM <= 0 || draft.height <= 0) return;
-    const heightRounded = roundHeightUp(draft.height);
+    // Store the height as entered — the engine rounds it up to 0.2 m for
+    // the engineering m² / posts, but the stored figure stays exact.
+    const heightMm = Math.round(draft.height * 1000);
     void addWall({
       lot: draft.lot.trim() || null,
       wall_type: draft.wall_type,
       wall_design: draft.wall_design,
       position: draft.position,
       length_mm: Math.round(draft.lengthLM * 1000),
-      height_mm: Math.round(heightRounded * 1000),
+      height_mm: heightMm,
+      height_override_mm: heightMm,
     });
     setDraft(emptyDraft());
   }
@@ -178,8 +180,9 @@ export function TakeOffPage() {
         <CardHeader>
           <CardTitle className="text-base">Add wall segment</CardTitle>
           <CardDescription>
-            Enter measurements from the civil plans. Lengths are linear
-            metres; heights round up to the nearest 0.2 m increment.
+            Enter measurements from the civil plans. Lengths and heights are
+            stored as entered; the engineering m² rounds height up to the
+            nearest 0.2 m for post embedment.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -266,7 +269,7 @@ export function TakeOffPage() {
             <Field label="Height (m)">
               <Input
                 type="number"
-                step="0.2"
+                step="0.01"
                 placeholder="0"
                 value={draft.height || ""}
                 onChange={(e) =>
@@ -275,11 +278,6 @@ export function TakeOffPage() {
                     height: parseFloat(e.target.value) || 0,
                   })
                 }
-                onBlur={(e) => {
-                  const v = parseFloat(e.target.value);
-                  if (v > 0)
-                    setDraft({ ...draft, height: roundHeightUp(v) });
-                }}
                 onKeyDown={onDraftKeyDown}
               />
             </Field>
@@ -496,23 +494,31 @@ export function TakeOffPage() {
                         />
                       </TableCell>
                       <TableCell className="text-right">
+                        {/* The wall's ACTUAL height (matches the Review
+                            page). The engineering 0.2 m roundup only affects
+                            the Eng m² / Concrete / Holes / Post columns. */}
                         <Input
-                          key={`h-${segment.id}-${calc.height}`}
+                          key={`h-${segment.id}-${segment.height_mm ?? ""}`}
                           type="number"
-                          step="0.2"
+                          step="0.01"
                           className="ml-auto h-7 w-16 text-right text-xs"
-                          defaultValue={calc.height}
+                          defaultValue={
+                            segment.height_mm != null
+                              ? segment.height_mm / 1000
+                              : ""
+                          }
                           onBlur={(e) => {
                             const raw = parseFloat(e.target.value);
                             if (!Number.isFinite(raw) || raw <= 0) return;
-                            const rounded = roundHeightUp(raw);
-                            if (rounded !== calc.height) {
+                            const mm = Math.round(raw * 1000);
+                            if (mm !== segment.height_mm) {
                               // A Take Off height edit is a manual figure —
-                              // record it as the override so a later RL edit
-                              // on Review doesn't silently overwrite it.
+                              // store it as entered (no roundup) and record
+                              // the override so a later RL edit on Review
+                              // doesn't silently overwrite it.
                               updateWall(segment.id, {
-                                height_mm: Math.round(rounded * 1000),
-                                height_override_mm: Math.round(rounded * 1000),
+                                height_mm: mm,
+                                height_override_mm: mm,
                               });
                             }
                           }}
