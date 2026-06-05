@@ -1,14 +1,8 @@
+import { Fragment } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { Printer, RotateCcw } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -49,10 +43,10 @@ function formatQty(n: number): string {
 }
 
 /**
- * Cost Breakdown — every category × line from the engine, with the
- * estimator's calculated quantity plus an editable override. Persists
- * overrides into `projects.cost_overrides` so all downstream pages
- * (Quotation, Dashboard cost totals) pick them up.
+ * Cost Breakdown — one consolidated table, grouped into category
+ * sections with subtotals and a grand total. Each line shows the
+ * engine's estimated quantity plus an editable override; overrides
+ * persist into projects.cost_overrides.
  */
 export function CostBreakdownPage() {
   const { id } = useParams<{ id: string }>();
@@ -86,6 +80,7 @@ export function CostBreakdownPage() {
     bucket.push(line);
     byCategory.set(line.category, bucket);
   }
+  const cats = CATEGORY_ORDER.filter((c) => byCategory.has(c));
 
   function setOverride(lineId: string, value: number | undefined) {
     const next = { ...overrides };
@@ -99,8 +94,8 @@ export function CostBreakdownPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">
             Cost Breakdown
@@ -110,7 +105,7 @@ export function CostBreakdownPage() {
             actual job needs.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           {hasOverrides && (
             <Button variant="outline" onClick={clearOverrides}>
               <RotateCcw className="mr-2 h-4 w-4" />
@@ -131,48 +126,49 @@ export function CostBreakdownPage() {
           </CardContent>
         </Card>
       ) : (
-        <>
-          {CATEGORY_ORDER.filter((cat) => byCategory.has(cat)).map((cat) => {
-            const lines = byCategory.get(cat) ?? [];
-            const subtotal = detail.categoryTotals[cat] ?? 0;
-            return (
-              <Card key={cat}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-base">
-                    <span>{cat}</span>
-                    <Badge variant="secondary">{formatCurrency(subtotal)}</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">
-                          Estimated qty
-                        </TableHead>
-                        <TableHead className="w-32 text-right">
-                          Override
-                        </TableHead>
-                        <TableHead>Unit</TableHead>
-                        <TableHead className="text-right">Rate</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-24 text-right">Est. qty</TableHead>
+                  <TableHead className="w-28 text-right">Override</TableHead>
+                  <TableHead className="w-16">Unit</TableHead>
+                  <TableHead className="w-28 text-right">Rate</TableHead>
+                  <TableHead className="w-32 text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cats.map((cat) => {
+                  const lines = byCategory.get(cat) ?? [];
+                  const subtotal = detail.categoryTotals[cat] ?? 0;
+                  return (
+                    <Fragment key={cat}>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableCell
+                          colSpan={5}
+                          className="py-1.5 text-xs font-semibold uppercase tracking-wide"
+                        >
+                          {cat}
+                        </TableCell>
+                        <TableCell className="py-1.5 text-right text-xs font-semibold tabular-nums">
+                          {formatCurrency(subtotal)}
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
                       {lines.map((l) => {
                         const isOverridden = l.qtyOverride !== undefined;
                         return (
                           <TableRow key={l.id}>
                             <TableCell>{l.description}</TableCell>
-                            <TableCell className="text-right text-xs text-muted-foreground">
+                            <TableCell className="text-right tabular-nums text-muted-foreground">
                               {formatQty(l.qtyEstimated)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Input
                                 type="number"
                                 step="0.1"
-                                className={`h-7 w-24 text-right text-xs ${
+                                className={`ml-auto h-7 w-24 text-right text-xs ${
                                   isOverridden ? "border-primary" : ""
                                 }`}
                                 placeholder={formatQty(l.qtyEstimated)}
@@ -191,40 +187,36 @@ export function CostBreakdownPage() {
                                 }}
                               />
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
+                            <TableCell className="text-muted-foreground">
                               {l.unit}
                             </TableCell>
-                            <TableCell className="text-right text-xs">
+                            <TableCell className="text-right tabular-nums text-muted-foreground">
                               {formatCurrency(l.rate)}
                             </TableCell>
-                            <TableCell className="text-right font-medium">
+                            <TableCell className="text-right font-medium tabular-nums">
                               {formatCurrency(l.total)}
                             </TableCell>
                           </TableRow>
                         );
                       })}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            );
-          })}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span>Total Cost</span>
-                <span className="text-lg">
-                  {formatCurrency(detail.grandTotal)}
-                </span>
-              </CardTitle>
-              <CardDescription>
-                All costs ex GST, before markup / margin. Markup &amp; margin
-                are set in Pricing &amp; Performance.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </>
+                    </Fragment>
+                  );
+                })}
+                <TableRow className="border-t-2 bg-muted/30 font-semibold hover:bg-muted/30">
+                  <TableCell colSpan={5} className="py-2">
+                    Total cost
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ex GST, before markup / margin
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-2 text-right text-base tabular-nums">
+                    {formatCurrency(detail.grandTotal)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

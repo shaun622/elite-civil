@@ -1,14 +1,8 @@
+import { Fragment } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { Printer } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -48,9 +42,9 @@ function formatQty(n: number, unit: string): string {
 }
 
 /**
- * Materials Order — flat procurement list grouped by category.
- * Quantities come straight from the engine's calculator; prices use
- * the project's `materialPrices` config.
+ * Materials Order — one consolidated procurement table, grouped into
+ * category sections with subtotals and a grand total. Quantities come
+ * from the engine's calculator; prices use the project's materialPrices.
  */
 export function MaterialsOrderPage() {
   const { id } = useParams<{ id: string }>();
@@ -81,10 +75,11 @@ export function MaterialsOrderPage() {
     bucket.push(line);
     byCategory.set(line.category, bucket);
   }
+  const cats = CATEGORY_ORDER.filter((c) => byCategory.has(c));
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">
             Materials Order
@@ -107,66 +102,70 @@ export function MaterialsOrderPage() {
           </CardContent>
         </Card>
       ) : (
-        <>
-          {CATEGORY_ORDER.filter((cat) => byCategory.has(cat)).map((cat) => {
-            const lines = byCategory.get(cat) ?? [];
-            const subtotal = lines.reduce((s, l) => s + l.total, 0);
-            return (
-              <Card key={cat}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-base">
-                    <span>{cat}</span>
-                    <Badge variant="secondary">{formatCurrency(subtotal)}</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="text-right">Qty</TableHead>
-                        <TableHead>Unit</TableHead>
-                        <TableHead className="text-right">Unit price</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="w-24 text-right">Qty</TableHead>
+                  <TableHead className="w-16">Unit</TableHead>
+                  <TableHead className="w-28 text-right">Unit price</TableHead>
+                  <TableHead className="w-32 text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cats.map((cat) => {
+                  const lines = byCategory.get(cat) ?? [];
+                  const subtotal = lines.reduce((s, l) => s + l.total, 0);
+                  return (
+                    <Fragment key={cat}>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableCell
+                          colSpan={4}
+                          className="py-1.5 text-xs font-semibold uppercase tracking-wide"
+                        >
+                          {cat}
+                        </TableCell>
+                        <TableCell className="py-1.5 text-right text-xs font-semibold tabular-nums">
+                          {formatCurrency(subtotal)}
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
                       {lines.map((l, i) => (
-                        <TableRow key={`${l.description}-${i}`}>
+                        <TableRow key={`${cat}-${i}`}>
                           <TableCell>{l.description}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right tabular-nums">
                             {formatQty(l.qty, l.unit)}
                           </TableCell>
-                          <TableCell>{l.unit}</TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-muted-foreground">
+                            {l.unit}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">
                             {formatCurrency(l.unitPrice)}
                           </TableCell>
-                          <TableCell className="text-right font-medium">
+                          <TableCell className="text-right font-medium tabular-nums">
                             {formatCurrency(l.total)}
                           </TableCell>
                         </TableRow>
                       ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            );
-          })}
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span>Grand total</span>
-                <span className="text-lg">
-                  {formatCurrency(order.grandTotal)}
-                </span>
-              </CardTitle>
-              <CardDescription>
-                Total material cost (ex GST, at cost price — no markup).
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </>
+                    </Fragment>
+                  );
+                })}
+                <TableRow className="border-t-2 bg-muted/30 font-semibold hover:bg-muted/30">
+                  <TableCell colSpan={4} className="py-2">
+                    Grand total
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ex GST, at cost (no markup)
+                    </span>
+                  </TableCell>
+                  <TableCell className="py-2 text-right text-base tabular-nums">
+                    {formatCurrency(order.grandTotal)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
