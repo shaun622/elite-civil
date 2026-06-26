@@ -5,7 +5,6 @@ import {
   measureWalls,
   type VectorPath,
 } from "@/lib/pdfVectors";
-import type { AnalyzeLot, AnalyzeRl } from "@/lib/api/analyzeDrawing";
 import type { RlPair } from "@/types/db";
 
 /**
@@ -159,15 +158,9 @@ export async function saveVectorWalls(opts: {
 }): Promise<SaveVectorWallsResult> {
   const { drawingPageId, userId, walls, scaleText, mmPerPx } = opts;
 
-  const withRls = walls.filter((w) => (w.rlPairs?.length ?? 0) > 0).length;
-  const warnings =
-    withRls > 0
-      ? [
-          `Lengths measured from PDF vector geometry. Top/Bottom RLs were auto-read from the drawing for ${withRls} of ${walls.length} walls — verify each wall's RLs before quoting.`,
-        ]
-      : [
-          "Lengths measured from PDF vector geometry. Enter Top RL and Bottom RL for each wall to set its height.",
-        ];
+  const warnings = [
+    "Lengths measured from PDF vector geometry. Grab or enter Top RL and Bottom RL for each wall to set its height.",
+  ];
 
   // Walk drawing_page -> drawing to find the owning project. New
   // wall_segments rows carry `project_id` so the project-wide Take Off
@@ -306,41 +299,3 @@ export function snapHexToColors(
   return best && bestD <= 3 * 80 * 80 ? best : null;
 }
 
-function wallMidpoint(polyline: [number, number][]): [number, number] {
-  if (polyline.length === 0) return [0, 0];
-  const a = polyline[0];
-  const b = polyline[polyline.length - 1];
-  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-}
-
-/**
- * Attach AI-read semantics to measured walls: name each wall by its nearest
- * lot, and pair the two RLs flanking each wall end into the wall's RL pairs
- * (top = the higher level, bottom = the lower). Best-effort — walls with
- * nothing nearby keep their default label and no RL pairs.
- */
-export function fuseWallSemantics(
-  walls: MeasuredWall[],
-  lots: AnalyzeLot[],
-  // RLs are intentionally NOT auto-paired onto walls — guessing which two
-  // levels belong to each wall end mis-assigned them too often. Walls arrive
-  // with empty RLs; the user fills each one with the "Grab RLs" marquee on
-  // the Review page. Kept in the signature so callers don't change.
-  _rls: AnalyzeRl[],
-): MeasuredWall[] {
-  return walls.map((wall) => {
-    let lotName: string | null = null;
-    if (lots.length > 0) {
-      const [mx, my] = wallMidpoint(wall.polyline);
-      let bestD = Infinity;
-      for (const lot of lots) {
-        const d = (lot.x - mx) ** 2 + (lot.y - my) ** 2;
-        if (d < bestD) {
-          bestD = d;
-          lotName = lot.name;
-        }
-      }
-    }
-    return { ...wall, lotName, rlPairs: [] };
-  });
-}

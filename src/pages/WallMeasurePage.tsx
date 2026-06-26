@@ -6,7 +6,6 @@ import {
   Loader2,
   Maximize2,
   MousePointerClick,
-  Sparkles,
   X,
   ZoomIn,
   ZoomOut,
@@ -27,21 +26,13 @@ import {
 } from "@/lib/pdfVectors";
 import { loadPdf } from "@/lib/pdfRender";
 import {
-  distinctVectorColors,
   extractWallsFromPdfPage,
-  fuseWallSemantics,
   measurePickedWalls,
   mmPerPxFromScaleRatio,
   saveVectorWalls,
-  snapHexToColors,
   VECTOR_SCALE,
   type WallColorSpec,
 } from "@/lib/vectorWalls";
-import {
-  analyzeDrawingPage,
-  type AnalyzeLot,
-  type AnalyzeRl,
-} from "@/lib/api/analyzeDrawing";
 import { parseScaleRatio } from "@/lib/api/review";
 
 /**
@@ -129,10 +120,6 @@ export function WallMeasurePage() {
   const [picking, setPicking] = useState(false);
   const [scaleText, setScaleText] = useState("");
   const [saving, setSaving] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [aiLots, setAiLots] = useState<AnalyzeLot[]>([]);
-  const [aiRls, setAiRls] = useState<AnalyzeRl[]>([]);
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
 
   // "Pick walls one by one" mode — needed on mono-colour drawings
   // where the colour-pick workflow can't tell walls apart from contours.
@@ -761,63 +748,6 @@ export function WallMeasurePage() {
     setScaleText(`1:${ratio}`);
   }
 
-  async function autoDetect() {
-    if (!pageId || !pdfBuffer || !vectors) return;
-    setError(null);
-    setAnalyzing(true);
-    try {
-      const ai = await analyzeDrawingPage(
-        pageId,
-        pdfBuffer.slice(0),
-        pageNumber,
-      );
-
-      const sb = ai.scale_bar;
-      if (sb.found && sb.p0 && sb.p1 && sb.length_m && sb.length_m > 0) {
-        const px = Math.hypot(sb.p0[0] - sb.p1[0], sb.p0[1] - sb.p1[1]);
-        if (px >= 1) {
-          setCalibPoints([sb.p0, sb.p1]);
-          setKnownDist(String(sb.length_m));
-          // Don't auto-commit the scale here — the user must hit Set on the
-          // ratio or distance below, so a wrong scale-bar read never ships.
-        }
-      }
-
-      if (ai.scale_text) {
-        setScaleText(ai.scale_text);
-        // Pre-fill the Scale ratio field from the AI's reading so the user
-        // can just confirm it with Set.
-        const m = ai.scale_text.match(/1\s*[:=]\s*(\d+)/);
-        if (m) setScaleRatio(`1:${m[1]}`);
-      }
-
-      if (ai.wall_colors.length > 0) {
-        const palette = distinctVectorColors(vectors.paths);
-        const detected: WallColorSpec[] = [];
-        for (const c of ai.wall_colors) {
-          const snapped = snapHexToColors(c.hex, palette);
-          if (snapped && !detected.some((d) => d.color === snapped)) {
-            detected.push({ color: snapped, typeLabel: c.type_label });
-          }
-        }
-        if (detected.length > 0) setWallTypes(detected);
-      }
-
-      setAiLots(ai.lots);
-      setAiRls(ai.rls);
-      setAiSummary(
-        `Detected: ${sb.found ? "scale bar" : "no scale bar"}, ` +
-          `${ai.wall_colors.length} wall colour${ai.wall_colors.length === 1 ? "" : "s"}, ` +
-          `${ai.lots.length} lot${ai.lots.length === 1 ? "" : "s"}, ` +
-          `${ai.rls.length} RL${ai.rls.length === 1 ? "" : "s"}.`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Auto-detect failed.");
-    } finally {
-      setAnalyzing(false);
-    }
-  }
-
   /**
    * Persist the calibration (mm-per-pixel) as an empty extraction and
    * jump to Review. Used when the drawing is mono-colour and the auto
@@ -884,11 +814,12 @@ export function WallMeasurePage() {
           "No walls measured. Check the wall colours and calibration.",
         );
       }
-      const walls = fuseWallSemantics(measured, aiLots, aiRls);
+      // Walls arrive with no lot names or RLs — the user assigns lots and
+      // grabs RLs on the Review page.
       await saveVectorWalls({
         drawingPageId: pageId,
         userId: user.id,
-        walls,
+        walls: measured,
         scaleText: scaleText.trim() || null,
         mmPerPx,
       });
@@ -1052,33 +983,6 @@ export function WallMeasurePage() {
             </div>
 
             <div className="min-h-0 space-y-5 overflow-y-auto pr-1">
-              <section className="rounded-lg border bg-card p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold">Auto-detect</h2>
-                  <Button
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={autoDetect}
-                    disabled={analyzing}
-                  >
-                    {analyzing ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5" />
-                    )}
-                    {analyzing ? "Analysing…" : "Auto-detect with AI"}
-                  </Button>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Reads the scale bar, legend colours, lot numbers and the
-                  ground RLs off the drawing. Calibration and colours fill in
-                  below; the RLs are paired to each wall when you measure.
-                </p>
-                {aiSummary && (
-                  <p className="mt-2 text-xs text-emerald-700">{aiSummary}</p>
-                )}
-              </section>
-
               <section className="rounded-lg border bg-card p-4">
                 <h2 className="text-sm font-semibold">1 · Calibrate scale</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
