@@ -697,9 +697,6 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
   ) {
     const [label, setLabel] = useState(segment.label ?? "");
     const [length, setLength] = useState(formatLength(segment.length_mm));
-    const [thickness, setThickness] = useState(
-      formatLength(segment.thickness_mm),
-    );
     const [notes, setNotes] = useState(segment.notes ?? "");
     const [notesOpen, setNotesOpen] = useState(false);
 
@@ -718,7 +715,6 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
     useEffect(() => {
       setLabel(segment.label ?? "");
       setLength(formatLength(segment.length_mm));
-      setThickness(formatLength(segment.thickness_mm));
       setNotes(segment.notes ?? "");
       const a = averageHeightMm(segment.rl_pairs ?? []);
       setHeightField(
@@ -729,6 +725,15 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             : "",
       );
     }, [segment]);
+
+    // Face area for this wall — length × the height actually used (manual
+    // override if set, else the RL average). Shows once a height exists; the
+    // priced (engineering, rounded-up) m² lives in the Take Off table.
+    const heightUsedMm = segment.height_override_mm ?? avgMm;
+    const areaM2 =
+      heightUsedMm != null && segment.length_mm != null
+        ? (segment.length_mm / 1000) * (heightUsedMm / 1000)
+        : null;
 
     async function commit(patch: WallSegmentUpdate) {
       await onSave(patch);
@@ -964,22 +969,15 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
               </div>
             </div>
 
-            <div className="grid w-36 gap-1">
+            {/* Wall area — length × the height used. A quiet read-only line
+                so each wall's m² is visible right after its RLs are set. */}
+            <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
               <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Thickness (m)
+                Area
               </span>
-              <LengthCell
-                value={thickness}
-                disabled={locked}
-                onChange={setThickness}
-                onCommit={() => {
-                  const v = parseLength(thickness);
-                  if (v !== segment.thickness_mm) {
-                    commit({ thickness_mm: v });
-                    setThickness(formatLength(v));
-                  }
-                }}
-              />
+              <span className="text-sm font-semibold tabular-nums">
+                {areaM2 != null ? `${areaM2.toFixed(2)} m²` : "—"}
+              </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
