@@ -1115,9 +1115,25 @@ function RlPairEditor({
   disabled?: boolean;
   onChange: (pairs: RlPair[]) => void;
 }) {
-  // Initialised once per mount — the editor mounts fresh each time a wall is
-  // selected, so it must not reset on its own saves (that clobbers typing).
   const [rows, setRows] = useState<RlRow[]>(() => rlPairsToRows(value));
+
+  // Track the pairs this editor last saved, so we can tell our OWN saves
+  // (don't re-sync — that would drop a half-typed row) from EXTERNAL changes
+  // like the Grab-RLs tool (do re-sync, so the new pair shows immediately).
+  const lastEmitted = useRef<RlPair[] | null>(null);
+  useEffect(() => {
+    const incoming = value ?? [];
+    if (lastEmitted.current && pairsEqual(incoming, lastEmitted.current)) {
+      return;
+    }
+    lastEmitted.current = null;
+    setRows(rlPairsToRows(value));
+  }, [value]);
+
+  function emit(pairs: RlPair[]) {
+    lastEmitted.current = pairs;
+    onChange(pairs);
+  }
 
   function update(i: number, key: "top" | "bottom", v: string) {
     setRows((rs) => rs.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
@@ -1128,7 +1144,7 @@ function RlPairEditor({
   function removeRow(i: number) {
     const next = rows.filter((_, j) => j !== i);
     setRows(next);
-    onChange(rowsToPairs(next));
+    emit(rowsToPairs(next));
   }
 
   const pairs = rowsToPairs(rows);
@@ -1159,7 +1175,7 @@ function RlPairEditor({
               value={r.top}
               disabled={disabled}
               onChange={(e) => update(i, "top", e.target.value)}
-              onBlur={() => onChange(rowsToPairs(rows))}
+              onBlur={() => emit(rowsToPairs(rows))}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -1172,7 +1188,7 @@ function RlPairEditor({
               value={r.bottom}
               disabled={disabled}
               onChange={(e) => update(i, "bottom", e.target.value)}
-              onBlur={() => onChange(rowsToPairs(rows))}
+              onBlur={() => emit(rowsToPairs(rows))}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();

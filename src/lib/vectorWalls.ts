@@ -322,10 +322,12 @@ function wallMidpoint(polyline: [number, number][]): [number, number] {
 export function fuseWallSemantics(
   walls: MeasuredWall[],
   lots: AnalyzeLot[],
-  rls: AnalyzeRl[],
+  // RLs are intentionally NOT auto-paired onto walls — guessing which two
+  // levels belong to each wall end mis-assigned them too often. Walls arrive
+  // with empty RLs; the user fills each one with the "Grab RLs" marquee on
+  // the Review page. Kept in the signature so callers don't change.
+  _rls: AnalyzeRl[],
 ): MeasuredWall[] {
-  // Max px from a wall end for an RL to count as belonging to that end.
-  const MAX_RL_DIST = 320;
   return walls.map((wall) => {
     let lotName: string | null = null;
     if (lots.length > 0) {
@@ -339,26 +341,6 @@ export function fuseWallSemantics(
         }
       }
     }
-
-    const rlPairs: RlPair[] = [];
-    if (rls.length > 0 && wall.polyline.length >= 2) {
-      const ends = [
-        wall.polyline[0],
-        wall.polyline[wall.polyline.length - 1],
-      ];
-      for (const [ex, ey] of ends) {
-        const near = rls
-          .map((r) => ({ r, d: Math.hypot(r.x - ex, r.y - ey) }))
-          .filter((o) => o.d <= MAX_RL_DIST)
-          .sort((a, b) => a.d - b.d);
-        if (near.length >= 2) {
-          const v1 = near[0].r.value;
-          const v2 = near[1].r.value;
-          rlPairs.push({ top: Math.max(v1, v2), bottom: Math.min(v1, v2) });
-        }
-      }
-    }
-
-    return { ...wall, lotName, rlPairs };
+    return { ...wall, lotName, rlPairs: [] };
   });
 }
