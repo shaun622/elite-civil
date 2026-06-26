@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  ArrowRight,
   CheckCircle2,
   Loader2,
   Lock,
@@ -299,28 +300,46 @@ export function ReviewPage() {
                 </p>
               </div>
 
-              {review.bundle.extraction.reviewed ? (
+              <div className="flex items-center gap-2">
+                {/* Failsafe save-and-leave. Everything autosaves, but clicking
+                    this first blurs (and so commits) any focused field, then
+                    navigates to Take Off. */}
                 <Button
+                  asChild
                   type="button"
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={review.reopen}
                 >
-                  <Unlock className="h-4 w-4" />
-                  Reopen review
+                  <Link to={`/projects/${projectId}/takeoff`}>
+                    Save &amp; go to Take Off
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
                 </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-2"
-                  onClick={review.confirmReview}
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  Confirm &amp; lock
-                </Button>
-              )}
+
+                {review.bundle.extraction.reviewed ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={review.reopen}
+                  >
+                    <Unlock className="h-4 w-4" />
+                    Reopen review
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-2"
+                    onClick={review.confirmReview}
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirm &amp; lock
+                  </Button>
+                )}
+              </div>
             </div>
 
             {review.actionError && (
