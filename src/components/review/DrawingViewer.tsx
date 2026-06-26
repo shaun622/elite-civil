@@ -55,6 +55,13 @@ type Props = {
   drawingWall: boolean;
   wallPoints: [number, number][];
   onWallPointClick: (point: [number, number]) => void;
+  /** "Grab RLs" marquee mode — drag a box over the level numbers. */
+  grabbingRls?: boolean;
+  /** Emits a base64 PNG crop of the marquee region + its image-pixel bbox. */
+  onRlCrop?: (
+    base64: string,
+    bbox: [number, number, number, number],
+  ) => void;
 };
 
 export function DrawingViewer({
@@ -76,6 +83,8 @@ export function DrawingViewer({
   drawingWall,
   wallPoints,
   onWallPointClick,
+  grabbingRls = false,
+  onRlCrop,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -91,6 +100,13 @@ export function DrawingViewer({
   // Preview of where the second draw-wall click would land, so the user
   // sees the wall they're about to place rather than aiming blind.
   const [previewEnd, setPreviewEnd] = useState<[number, number] | null>(null);
+  // The "Grab RLs" marquee, in image-pixel coords, while dragging.
+  const [marquee, setMarquee] = useState<{
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!imageUrl) {
@@ -269,6 +285,38 @@ export function DrawingViewer({
     setOrigin(next);
   }
 
+  /** Pointer position in image-pixel coords (undoing pan + zoom). */
+  function pointerToImage(): [number, number] | null {
+    const pointer = stageRef.current?.getPointerPosition();
+    if (!pointer) return null;
+    return [(pointer.x - origin.x) / zoom, (pointer.y - origin.y) / zoom];
+  }
+
+  /** Finish the "Grab RLs" marquee: crop the raster to the boxed region
+   *  (upscaled so the OCR has enough pixels) and emit base64 + bbox. */
+  function finishMarquee() {
+    const m = marquee;
+    setMarquee(null);
+    if (!m || !image || !onRlCrop) return;
+    const x0 = Math.max(0, Math.min(m.x0, m.x1));
+    const y0 = Math.max(0, Math.min(m.y0, m.y1));
+    const x1 = Math.min(imageWidth, Math.max(m.x0, m.x1));
+    const y1 = Math.min(imageHeight, Math.max(m.y0, m.y1));
+    const bw = x1 - x0;
+    const bh = y1 - y0;
+    if (bw < 6 || bh < 6) return; // a stray click, not a real box
+    const scale = Math.max(1, Math.min(4, 600 / Math.max(bw, bh)));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bw * scale);
+    canvas.height = Math.round(bh * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(image, x0, y0, bw, bh, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL("image/png").split(",")[1] ?? "";
+    if (base64) onRlCrop(base64, [x0, y0, x1, y1]);
+  }
+
   const mmPerPx = readMmPerPx(extraction.raw_response);
   // Render the selected segment last so its drag handles sit above the
   // other walls' linework.
@@ -304,12 +352,19 @@ export function DrawingViewer({
         y={origin.y}
         scaleX={zoom}
         scaleY={zoom}
-        draggable
+        draggable={!grabbingRls}
         onWheel={onWheel}
         onDragEnd={onDragEnd}
         style={{
           background: "#1f2937",
-          cursor: calibrating || drawingWall ? "crosshair" : undefined,
+          cursor:
+            calibrating || drawingWall || grabbingRls ? "crosshair" : undefined,
+        }}
+        onMouseDown={() => {
+          if (!grabbingRls) return;
+          const p = pointerToImage();
+          if (!p) return;
+          setMarquee({ x0: p[0], y0: p[1], x1: p[0], y1: p[1] });
         }}
         onClick={(e) => {
           // Calibration / draw-wall clicks always do their own thing.
@@ -324,6 +379,7 @@ export function DrawingViewer({
             else onWallPointClick(p);
             return;
           }
+          if (grabbingRls) return; // marquee handled on mouse up
           // Plain click on empty drawing area deselects the open wall.
           // Doing this on `onClick` (post-mouseup) rather than `onMouseDown`
           // means a drag-pan doesn't race with the deselect's React render
@@ -333,6 +389,12 @@ export function DrawingViewer({
           if (e.target === stageRef.current) onSelectSegment(null);
         }}
         onMouseMove={() => {
+          if (grabbingRls) {
+            if (!marquee) return;
+            const p = pointerToImage();
+            if (p) setMarquee((m) => (m ? { ...m, x1: p[0], y1: p[1] } : m));
+            return;
+          }
           if (!drawingWall || wallPoints.length !== 1) {
             if (previewEnd !== null) setPreviewEnd(null);
             return;
@@ -344,7 +406,13 @@ export function DrawingViewer({
             (pointer.y - origin.y) / zoom,
           ]);
         }}
-        onMouseLeave={() => setPreviewEnd(null)}
+        onMouseUp={() => {
+          if (grabbingRls) finishMarquee();
+        }}
+        onMouseLeave={() => {
+          setPreviewEnd(null);
+          if (marquee) setMarquee(null);
+        }}
       >
         <Layer listening={false}>
           {image && (
@@ -395,11 +463,18 @@ export function DrawingViewer({
                   color={color}
                   selected={selected}
                   hovered={hovered}
-                  editable={selected && !locked && !calibrating && !drawingWall}
+                  editable={
+                    selected &&
+                    !locked &&
+                    !calibrating &&
+                    !drawingWall &&
+                    !grabbingRls
+                  }
                   zoom={zoom}
                   mmPerPx={mmPerPx}
                   onClick={() => {
-                    if (!calibrating && !drawingWall) onSelectSegment(seg.id);
+                    if (!calibrating && !drawingWall && !grabbingRls)
+                      onSelectSegment(seg.id);
                   }}
                   onHoverEnter={() => onHoverSegment(seg.id)}
                   onHoverLeave={() => onHoverSegment(null)}
@@ -472,6 +547,19 @@ export function DrawingViewer({
               stroke={COLOR_USER}
               strokeWidth={2 / zoom}
               dash={[8 / zoom, 6 / zoom]}
+              listening={false}
+            />
+          )}
+          {marquee && (
+            <Rect
+              x={Math.min(marquee.x0, marquee.x1)}
+              y={Math.min(marquee.y0, marquee.y1)}
+              width={Math.abs(marquee.x1 - marquee.x0)}
+              height={Math.abs(marquee.y1 - marquee.y0)}
+              stroke="#7c3aed"
+              strokeWidth={1.5 / zoom}
+              dash={[6 / zoom, 4 / zoom]}
+              fill="rgba(124,58,237,0.12)"
               listening={false}
             />
           )}

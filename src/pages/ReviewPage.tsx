@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Lock, Unlock } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  Lock,
+  MousePointerClick,
+  Unlock,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +19,8 @@ import { HeightBandSummary } from "@/components/review/HeightBandSummary";
 import { ExtractionMeta } from "@/components/review/ExtractionMeta";
 import { WarningsPanel } from "@/components/review/WarningsPanel";
 import { useReview } from "@/hooks/useReview";
+import { readRlsFromCrop } from "@/lib/api/readRls";
+import type { RlPair } from "@/types/db";
 
 export function ReviewPage() {
   const { projectId, pageId } = useParams<{
@@ -29,6 +39,15 @@ export function ReviewPage() {
   const [calibDistance, setCalibDistance] = useState("");
   const [drawingWall, setDrawingWall] = useState(false);
   const [wallPoints, setWallPoints] = useState<[number, number][]>([]);
+  // "Grab RLs" marquee mode + the OCR result awaiting confirmation.
+  const [grabbingRls, setGrabbingRls] = useState(false);
+  const [rlReading, setRlReading] = useState(false);
+  const [rlPreview, setRlPreview] = useState<{
+    numbers: number[];
+    top: number;
+    bottom: number;
+  } | null>(null);
+  const [rlError, setRlError] = useState<string | null>(null);
 
   function startCalibration() {
     setCalibPoints([]);
@@ -86,6 +105,63 @@ export function ReviewPage() {
       length_mm: lengthMm,
     });
     if (created) setSelectedSegmentId(created.id);
+  }
+
+  // --- "Grab RLs" — OCR a boxed region for the selected wall's RLs -------
+  function toggleGrabRls() {
+    setRlError(null);
+    setRlPreview(null);
+    setDrawingWall(false);
+    setCalibrating(false);
+    setGrabbingRls((g) => !g);
+  }
+
+  /** A marquee crop arrived from the viewer — OCR it and stage the result. */
+  async function onRlCrop(base64: string) {
+    setGrabbingRls(false);
+    setRlError(null);
+    setRlReading(true);
+    try {
+      const numbers = await readRlsFromCrop(base64);
+      if (numbers.length < 2) {
+        setRlError(
+          numbers.length === 1
+            ? `Only read one number (${numbers[0]}). Box both the top and bottom RL.`
+            : "Couldn't read two numbers in that box — try again, tighter around the two RLs.",
+        );
+        return;
+      }
+      // Larger value = top of wall, smaller = bottom; height = top − bottom.
+      const top = Math.max(...numbers);
+      const bottom = Math.min(...numbers);
+      setRlPreview({ numbers, top, bottom });
+    } catch (err) {
+      setRlError(err instanceof Error ? err.message : "Couldn't read the RLs.");
+    } finally {
+      setRlReading(false);
+    }
+  }
+
+  /** Apply the staged RL pair to the selected wall as a new rl_pair. */
+  async function applyRlPair() {
+    if (!rlPreview || !review.bundle) return;
+    const seg = review.bundle.segments.find((s) => s.id === selectedSegmentId);
+    if (!seg) return;
+    const pairs: RlPair[] = [
+      ...(seg.rl_pairs ?? []),
+      { top: rlPreview.top, bottom: rlPreview.bottom },
+    ];
+    // Effective height tracks the RL average unless a manual override is set.
+    const avgMm =
+      pairs.length > 0
+        ? Math.round(
+            (pairs.reduce((s, p) => s + (p.top - p.bottom), 0) / pairs.length) *
+              1000,
+          )
+        : null;
+    const heightMm = seg.height_override_mm ?? avgMm;
+    await review.saveSegment(seg, { rl_pairs: pairs, height_mm: heightMm });
+    setRlPreview(null);
   }
 
   // Keyboard shortcuts. Ignored while typing in a field, on a locked page,
@@ -287,6 +363,125 @@ export function ReviewPage() {
                     </Button>
                   </div>
                 )}
+
+                {/* Grab RLs — available once a wall is selected (and the page
+                    isn't locked). Box the two level numbers for one wall end;
+                    we OCR the crop and stage the pair for confirmation. */}
+                {selectedSegmentId &&
+                  !review.bundle.extraction.reviewed &&
+                  !calibrating &&
+                  !drawingWall && (
+                    <div className="mb-2 space-y-2">
+                      {!grabbingRls && !rlReading && !rlPreview && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1.5"
+                            onClick={toggleGrabRls}
+                          >
+                            <MousePointerClick className="h-3.5 w-3.5" />
+                            Grab RLs from drawing
+                          </Button>
+                          <span className="text-[11px] text-muted-foreground">
+                            Box the top + bottom level numbers for this wall —
+                            we read them and set the height.
+                          </span>
+                        </div>
+                      )}
+
+                      {grabbingRls && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 p-3 text-xs text-violet-900">
+                          <span className="font-medium">
+                            Drag a box over the two RL numbers (top &amp; bottom)
+                            for this wall.
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8"
+                            onClick={() => setGrabbingRls(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      )}
+
+                      {rlReading && (
+                        <div className="flex items-center gap-2 rounded-lg border bg-card p-3 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Reading the numbers…
+                        </div>
+                      )}
+
+                      {rlError && !rlReading && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                          <span>{rlError}</span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8"
+                            onClick={toggleGrabRls}
+                          >
+                            Try again
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => setRlError(null)}
+                            className="text-amber-700 hover:text-amber-900"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {rlPreview && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900">
+                          <span>
+                            Read{" "}
+                            <span className="font-medium">
+                              {rlPreview.numbers.join(", ")}
+                            </span>{" "}
+                            → top {rlPreview.top}, bottom {rlPreview.bottom},
+                            height{" "}
+                            <span className="font-semibold">
+                              {(rlPreview.top - rlPreview.bottom).toFixed(2)} m
+                            </span>
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => void applyRlPair()}
+                          >
+                            Apply
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8"
+                            onClick={() => {
+                              setRlPreview(null);
+                              setGrabbingRls(true);
+                            }}
+                          >
+                            Redo
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={() => setRlPreview(null)}
+                            className="text-emerald-700 hover:text-emerald-900"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 <div className="h-[78vh] min-h-[480px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
@@ -307,6 +502,8 @@ export function ReviewPage() {
                     drawingWall={drawingWall}
                     wallPoints={wallPoints}
                     onWallPointClick={addWallPoint}
+                    grabbingRls={grabbingRls}
+                    onRlCrop={onRlCrop}
                   />
                 </div>
               </div>
