@@ -42,12 +42,21 @@ export function ReviewPage() {
   // "Grab RLs" marquee mode + the OCR result awaiting confirmation.
   const [grabbingRls, setGrabbingRls] = useState(false);
   const [rlReading, setRlReading] = useState(false);
-  const [rlPreview, setRlPreview] = useState<{
-    numbers: number[];
-    top: number;
-    bottom: number;
-  } | null>(null);
+  // Every number the OCR read in the box, and the (up to two) the user has
+  // chosen as the top/bottom pair. When the box reads exactly two we
+  // pre-select both; when it reads more, the user picks which two.
+  const [rlNumbers, setRlNumbers] = useState<number[] | null>(null);
+  const [rlSelected, setRlSelected] = useState<number[]>([]);
+  // Append the pair (default) or replace the wall's existing RLs.
+  const [rlReplace, setRlReplace] = useState(false);
   const [rlError, setRlError] = useState<string | null>(null);
+
+  function resetRlGrab() {
+    setRlNumbers(null);
+    setRlSelected([]);
+    setRlReplace(false);
+    setRlError(null);
+  }
 
   function startCalibration() {
     setCalibPoints([]);
@@ -109,17 +118,16 @@ export function ReviewPage() {
 
   // --- "Grab RLs" — OCR a boxed region for the selected wall's RLs -------
   function toggleGrabRls() {
-    setRlError(null);
-    setRlPreview(null);
+    resetRlGrab();
     setDrawingWall(false);
     setCalibrating(false);
     setGrabbingRls((g) => !g);
   }
 
-  /** A marquee crop arrived from the viewer — OCR it and stage the result. */
+  /** A marquee crop arrived from the viewer — OCR it and stage the numbers. */
   async function onRlCrop(base64: string) {
     setGrabbingRls(false);
-    setRlError(null);
+    resetRlGrab();
     setRlReading(true);
     try {
       const numbers = await readRlsFromCrop(base64);
@@ -131,10 +139,9 @@ export function ReviewPage() {
         );
         return;
       }
-      // Larger value = top of wall, smaller = bottom; height = top − bottom.
-      const top = Math.max(...numbers);
-      const bottom = Math.min(...numbers);
-      setRlPreview({ numbers, top, bottom });
+      setRlNumbers(numbers);
+      // Exactly two read → auto-select both. More → let the user pick which two.
+      setRlSelected(numbers.length === 2 ? [...numbers] : []);
     } catch (err) {
       setRlError(err instanceof Error ? err.message : "Couldn't read the RLs.");
     } finally {
@@ -142,15 +149,28 @@ export function ReviewPage() {
     }
   }
 
-  /** Apply the staged RL pair to the selected wall as a new rl_pair. */
+  /** Toggle a read number in/out of the chosen top/bottom pair (max two —
+   *  choosing a third drops the oldest). */
+  function toggleRlPick(n: number) {
+    setRlSelected((prev) => {
+      if (prev.includes(n)) return prev.filter((x) => x !== n);
+      if (prev.length >= 2) return [prev[1], n];
+      return [...prev, n];
+    });
+  }
+
+  /** Apply the chosen RL pair to the selected wall — appended, or replacing
+   *  the wall's existing RLs when "Replace" is ticked. */
   async function applyRlPair() {
-    if (!rlPreview || !review.bundle) return;
+    if (rlSelected.length !== 2 || !review.bundle) return;
     const seg = review.bundle.segments.find((s) => s.id === selectedSegmentId);
     if (!seg) return;
-    const pairs: RlPair[] = [
-      ...(seg.rl_pairs ?? []),
-      { top: rlPreview.top, bottom: rlPreview.bottom },
-    ];
+    const top = Math.max(rlSelected[0], rlSelected[1]);
+    const bottom = Math.min(rlSelected[0], rlSelected[1]);
+    const newPair: RlPair = { top, bottom };
+    const pairs: RlPair[] = rlReplace
+      ? [newPair]
+      : [...(seg.rl_pairs ?? []), newPair];
     // Effective height tracks the RL average unless a manual override is set.
     const avgMm =
       pairs.length > 0
@@ -161,7 +181,7 @@ export function ReviewPage() {
         : null;
     const heightMm = seg.height_override_mm ?? avgMm;
     await review.saveSegment(seg, { rl_pairs: pairs, height_mm: heightMm });
-    setRlPreview(null);
+    resetRlGrab();
   }
 
   // Keyboard shortcuts. Ignored while typing in a field, on a locked page,
@@ -372,7 +392,7 @@ export function ReviewPage() {
                   !calibrating &&
                   !drawingWall && (
                     <div className="mb-2 space-y-2">
-                      {!grabbingRls && !rlReading && !rlPreview && (
+                      {!grabbingRls && !rlReading && !rlNumbers && !rlError && (
                         <div className="flex flex-wrap items-center gap-2">
                           <Button
                             type="button"
@@ -438,46 +458,92 @@ export function ReviewPage() {
                         </div>
                       )}
 
-                      {rlPreview && (
-                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900">
-                          <span>
-                            Read{" "}
+                      {rlNumbers && !rlReading && (
+                        <div className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-medium">
-                              {rlPreview.numbers.join(", ")}
-                            </span>{" "}
-                            → top {rlPreview.top}, bottom {rlPreview.bottom},
-                            height{" "}
-                            <span className="font-semibold">
-                              {(rlPreview.top - rlPreview.bottom).toFixed(2)} m
+                              {rlNumbers.length > 2
+                                ? "Pick the two levels (top & bottom):"
+                                : "Read:"}
                             </span>
-                          </span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => void applyRlPair()}
-                          >
-                            Apply
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8"
-                            onClick={() => {
-                              setRlPreview(null);
-                              setGrabbingRls(true);
-                            }}
-                          >
-                            Redo
-                          </Button>
-                          <button
-                            type="button"
-                            onClick={() => setRlPreview(null)}
-                            className="text-emerald-700 hover:text-emerald-900"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
+                            {rlNumbers.map((n, i) => {
+                              const on = rlSelected.includes(n);
+                              return (
+                                <button
+                                  key={`${n}-${i}`}
+                                  type="button"
+                                  onClick={() => toggleRlPick(n)}
+                                  className={`rounded border px-2 py-0.5 tabular-nums transition-colors ${
+                                    on
+                                      ? "border-emerald-600 bg-emerald-600 text-white"
+                                      : "border-emerald-300 bg-white text-emerald-900 hover:border-emerald-500"
+                                  }`}
+                                >
+                                  {n}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            {rlSelected.length === 2 ? (
+                              <span>
+                                top {Math.max(...rlSelected)}, bottom{" "}
+                                {Math.min(...rlSelected)}, height{" "}
+                                <span className="font-semibold">
+                                  {(
+                                    Math.max(...rlSelected) -
+                                    Math.min(...rlSelected)
+                                  ).toFixed(2)}{" "}
+                                  m
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-emerald-700">
+                                Select two numbers.
+                              </span>
+                            )}
+                            <label className="ml-auto flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={rlReplace}
+                                onChange={(e) => setRlReplace(e.target.checked)}
+                                className="h-3.5 w-3.5 accent-emerald-600"
+                              />
+                              Replace this wall&apos;s RLs
+                            </label>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-8"
+                              disabled={rlSelected.length !== 2}
+                              onClick={() => void applyRlPair()}
+                            >
+                              {rlReplace ? "Apply (replace)" : "Apply (add)"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-8"
+                              onClick={() => {
+                                resetRlGrab();
+                                setGrabbingRls(true);
+                              }}
+                            >
+                              Redo
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={resetRlGrab}
+                              className="text-emerald-700 hover:text-emerald-900"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
