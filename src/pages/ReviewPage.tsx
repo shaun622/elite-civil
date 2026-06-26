@@ -239,6 +239,12 @@ export function ReviewPage() {
     return <Navigate to="/dashboard" replace />;
   }
 
+  // Name of the wall the RL grab will be applied to, for the panel's labels.
+  const selectedWallName =
+    review.bundle?.segments
+      .find((s) => s.id === selectedSegmentId)
+      ?.label?.trim() || "this wall";
+
   return (
     <main className="flex flex-1 flex-col px-6 py-6">
         <div className="flex items-center justify-between gap-3">
@@ -503,18 +509,19 @@ export function ReviewPage() {
                                 Select two numbers.
                               </span>
                             )}
-                            <label className="ml-auto flex items-center gap-1.5">
-                              <input
-                                type="checkbox"
-                                checked={rlReplace}
-                                onChange={(e) => setRlReplace(e.target.checked)}
-                                className="h-3.5 w-3.5 accent-emerald-600"
-                              />
-                              Replace this wall&apos;s RLs
-                            </label>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 border-y border-emerald-200 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={rlReplace}
+                              onChange={(e) => setRlReplace(e.target.checked)}
+                              className="h-3.5 w-3.5 accent-emerald-600"
+                            />
+                            Replace {selectedWallName} RLs
+                          </label>
+
+                          <div className="flex items-center gap-2 pt-0.5">
                             <Button
                               type="button"
                               size="sm"
