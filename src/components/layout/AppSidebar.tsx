@@ -1,4 +1,4 @@
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Calculator,
   ClipboardCheck,
@@ -11,9 +11,13 @@ import {
   Ruler,
   ScanLine,
   Settings,
+  Trash2,
 } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrg } from "@/hooks/useOrg";
+import { deleteProject } from "@/lib/api/projects";
+import type { Project } from "@/types/db";
 import { cn } from "@/lib/utils";
 
 /**
@@ -25,10 +29,33 @@ import { cn } from "@/lib/utils";
  */
 export function AppSidebar() {
   const { user } = useAuth();
-  const { projects } = useProjects();
+  const { projects, refresh } = useProjects();
+  const { canManageMembers } = useOrg();
+  const navigate = useNavigate();
   const params = useParams<{ id?: string; projectId?: string }>();
   const activeProjectId = params.id ?? params.projectId;
   const location = useLocation();
+
+  async function onDeleteProject(e: React.MouseEvent, project: Project) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      !confirm(
+        `Delete "${project.name}"? This permanently removes the project and all its drawings and walls. This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await deleteProject(project.id);
+      if (project.id === activeProjectId) navigate("/dashboard");
+      await refresh();
+    } catch (err) {
+      alert(
+        err instanceof Error ? err.message : "Could not delete the project.",
+      );
+    }
+  }
 
   const navItems = activeProjectId
     ? [
@@ -143,19 +170,36 @@ export function AppSidebar() {
           {projects?.map((project) => {
             const active = project.id === activeProjectId;
             return (
-              <Link
+              <div
                 key={project.id}
-                to={`/projects/${project.id}`}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  active
-                    ? "bg-muted font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                  "group flex items-center rounded-md pr-1 transition-colors",
+                  active ? "bg-muted" : "hover:bg-muted/50",
                 )}
               >
-                <FolderOpen className="h-4 w-4 shrink-0" />
-                <span className="truncate">{project.name}</span>
-              </Link>
+                <Link
+                  to={`/projects/${project.id}`}
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm",
+                    active
+                      ? "font-medium text-foreground"
+                      : "text-muted-foreground group-hover:text-foreground",
+                  )}
+                >
+                  <FolderOpen className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{project.name}</span>
+                </Link>
+                {canManageMembers && (
+                  <button
+                    type="button"
+                    onClick={(e) => void onDeleteProject(e, project)}
+                    title="Delete project"
+                    className="hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             );
           })}
           {projects && projects.length === 0 && (
