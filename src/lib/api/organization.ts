@@ -145,6 +145,68 @@ export async function updateOrgBranding(
   return data as Organization;
 }
 
+export type ProjectVisibility = "org" | "restricted";
+
+/** A project's visibility + the user_ids explicitly granted access. */
+export async function getProjectAccess(projectId: string): Promise<{
+  visibility: ProjectVisibility;
+  memberIds: string[];
+}> {
+  const { data: proj, error: e1 } = await supabase
+    .from("projects")
+    .select("visibility")
+    .eq("id", projectId)
+    .single();
+  if (e1) throw e1;
+  const { data: pm, error: e2 } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId);
+  if (e2) throw e2;
+  return {
+    visibility: ((proj as { visibility?: string })?.visibility ??
+      "org") as ProjectVisibility,
+    memberIds: (pm ?? []).map((r) => (r as { user_id: string }).user_id),
+  };
+}
+
+export async function setProjectVisibility(
+  projectId: string,
+  visibility: ProjectVisibility,
+): Promise<void> {
+  const { error } = await supabase
+    .from("projects")
+    .update({ visibility })
+    .eq("id", projectId);
+  if (error) throw error;
+}
+
+export async function addProjectMember(
+  projectId: string,
+  userId: string,
+  addedBy: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("project_members")
+    .upsert(
+      { project_id: projectId, user_id: userId, added_by: addedBy },
+      { onConflict: "project_id,user_id" },
+    );
+  if (error) throw error;
+}
+
+export async function removeProjectMember(
+  projectId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("project_members")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
 /** True if the role can create/edit takeoff data. */
 export function canEdit(role: OrgRole | null | undefined): boolean {
   return role === "owner" || role === "admin" || role === "editor";

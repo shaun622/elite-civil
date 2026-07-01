@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -13,8 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { useProject } from "@/hooks/useProjects";
 import { useOrg } from "@/hooks/useOrg";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  addProjectMember,
+  getProjectAccess,
+  listOrgMembers,
+  removeProjectMember,
+  setProjectVisibility,
+  type OrgMember,
+  type ProjectVisibility,
+} from "@/lib/api/organization";
+import { cn } from "@/lib/utils";
 
 /**
  * Per-project Settings — edits the project's metadata (name, client,
@@ -183,6 +195,8 @@ export function ProjectSettingsPage() {
         </CardContent>
       </Card>
 
+      {canManageMembers && id && <AccessCard projectId={id} />}
+
       {canManageMembers && (
         <Card className="border-destructive/40">
           <CardHeader>
@@ -214,6 +228,160 @@ export function ProjectSettingsPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function AccessCard({ projectId }: { projectId: string }) {
+  const { user } = useAuth();
+  const [visibility, setVisibility] = useState<ProjectVisibility>("org");
+  const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [access, orgMembers] = await Promise.all([
+        getProjectAccess(projectId),
+        listOrgMembers(),
+      ]);
+      setVisibility(access.visibility);
+      setMemberIds(new Set(access.memberIds));
+      setMembers(orgMembers);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load access.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  async function changeVisibility(next: ProjectVisibility) {
+    if (next === visibility) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await setProjectVisibility(projectId, next);
+      await load(); // trigger auto-adds the creator when restricting
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change access.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleMember(userId: string, on: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (on) await addProjectMember(projectId, userId, user!.id);
+      else await removeProjectMember(projectId, userId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update member.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Access</CardTitle>
+        <CardDescription>
+          Who in your company can see this project.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <>
+            <div className="inline-flex rounded-md border p-0.5">
+              {(
+                [
+                  ["org", "Whole company"],
+                  ["restricted", "Restricted"],
+                ] as [ProjectVisibility, string][]
+              ).map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => changeVisibility(val)}
+                  className={cn(
+                    "rounded px-3 py-1.5 text-sm transition-colors",
+                    visibility === val
+                      ? "bg-foreground text-background"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {visibility === "org" ? (
+              <p className="text-sm text-muted-foreground">
+                Everyone in the company can open this project.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Owners and admins always have access. Tick the editors and
+                  viewers who can see this project.
+                </p>
+                <ul className="divide-y rounded-md border">
+                  {members.map((m) => {
+                    const always = m.role === "owner" || m.role === "admin";
+                    const on = always || memberIds.has(m.user_id);
+                    return (
+                      <li
+                        key={m.user_id}
+                        className="flex items-center gap-3 px-3 py-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          disabled={always || busy}
+                          onChange={(e) =>
+                            toggleMember(m.user_id, e.target.checked)
+                          }
+                          className="h-4 w-4 accent-foreground"
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {m.email ?? m.user_id}
+                        </span>
+                        {always ? (
+                          <span className="text-xs text-muted-foreground">
+                            always
+                          </span>
+                        ) : (
+                          <Badge variant="outline">{m.role}</Badge>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
