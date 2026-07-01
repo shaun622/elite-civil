@@ -416,7 +416,12 @@ export function ReviewPage() {
                 )}
                 {drawingWall && (
                   <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-purple-300 bg-purple-50 p-3 text-xs text-purple-900">
-                    <span className="font-medium">
+                    <span className="flex flex-wrap items-center gap-1.5 font-medium">
+                      {pendingAddLot && (
+                        <span className="rounded bg-purple-200 px-1.5 py-0.5">
+                          Adding to {pendingAddLot}
+                        </span>
+                      )}
                       {wallPoints.length === 0
                         ? "Click the start of the wall on the drawing."
                         : "Now click the end of the wall."}

@@ -299,6 +299,9 @@ export function MeasurementTable({
     const name = window.prompt("New group / lot name (e.g. Lot 7):")?.trim();
     if (!name) return;
     setPendingGroups((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    // Jump straight into placing a wall in the new group so there's no
+    // scrolling back to hunt for the right "Add a wall" button.
+    onAdd(name);
   }
 
   /** Delete a group: an empty group just drops its (pending) entry; a group
@@ -388,7 +391,7 @@ export function MeasurementTable({
           items={flatItems.map((i) => i.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="space-y-1.5 pr-1">
+          <div className="space-y-2.5 pr-1">
             {flatItems.map((item, i) => {
               // The last item of a group is either the final row overall or the
               // row just before the next group header — that's where this
@@ -522,7 +525,7 @@ export function MeasurementTable({
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-2 w-full gap-2 border border-dashed"
+            className="mt-4 w-full gap-2 border border-dashed"
             onClick={() => onAdd(null)}
           >
             <Plus className="h-4 w-4" />
@@ -533,7 +536,7 @@ export function MeasurementTable({
             type="button"
             variant="ghost"
             size="sm"
-            className="mt-2 w-full gap-2 border border-dashed"
+            className="mt-4 w-full gap-2 border border-dashed"
             onClick={addGroup}
           >
             <FolderPlus className="h-4 w-4" />
