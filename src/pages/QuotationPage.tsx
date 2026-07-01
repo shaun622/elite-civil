@@ -644,7 +644,7 @@ function RateBreakdownDetail({
     </div>
   );
   return (
-    <div className="max-w-2xl space-y-2 rounded-md border bg-background p-3 text-xs">
+    <div className="max-w-2xl space-y-2 whitespace-normal break-words rounded-md border bg-background p-3 text-xs">
       <p className="flex items-center gap-1.5 font-medium text-foreground">
         <Info className="h-3.5 w-3.5" /> How this rate is built
       </p>
