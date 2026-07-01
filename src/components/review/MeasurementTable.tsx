@@ -301,6 +301,28 @@ export function MeasurementTable({
     setPendingGroups((prev) => (prev.includes(name) ? prev : [...prev, name]));
   }
 
+  /** Delete a group: an empty group just drops its (pending) entry; a group
+   *  with walls confirms and deletes those walls too. */
+  async function deleteGroup(lot: string | null, walls: WallSegment[]) {
+    if (walls.length === 0) {
+      if (lot) setPendingGroups((prev) => prev.filter((p) => p !== lot));
+      return;
+    }
+    if (
+      !window.confirm(
+        `Delete group "${lot ?? "Ungrouped"}" and its ${walls.length} wall${
+          walls.length === 1 ? "" : "s"
+        }? This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    for (const w of walls) {
+      await onDelete(w.id);
+    }
+    if (lot) setPendingGroups((prev) => prev.filter((p) => p !== lot));
+  }
+
   if (segments.length === 0) {
     return (
       <div className="rounded-md border border-dashed bg-card p-8 text-center">
@@ -384,6 +406,12 @@ export function MeasurementTable({
                       group={groups.find((g) => g.lot === item.lot) ?? null}
                       lot={item.lot}
                       locked={locked}
+                      onDelete={() =>
+                        void deleteGroup(
+                          item.lot,
+                          groups.find((g) => g.lot === item.lot)?.walls ?? [],
+                        )
+                      }
                       onRename={(next) => {
                         const g = groups.find((gr) => gr.lot === item.lot);
                         if (g) renameGroup(g, next);
@@ -580,12 +608,14 @@ function GroupHeaderRow({
   lot,
   locked,
   onRename,
+  onDelete,
 }: {
   id: string;
   group: { walls: WallSegment[] } | null;
   lot: string | null;
   locked: boolean;
   onRename: (next: string | null) => void;
+  onDelete: () => void;
 }) {
   const [name, setName] = useState(lot ?? "");
   useEffect(() => setName(lot ?? ""), [lot]);
@@ -694,6 +724,19 @@ function GroupHeaderRow({
           </span>
         )}
       </span>
+      {!locked && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          title="Delete this group"
+          className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-destructive"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
 }
