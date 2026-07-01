@@ -50,13 +50,25 @@ export function ReviewPage() {
   // pre-select both; when it reads more, the user picks which two.
   const [rlNumbers, setRlNumbers] = useState<number[] | null>(null);
   const [rlSelected, setRlSelected] = useState<number[]>([]);
+  // Default assigns the higher number as top; swap flips it for the times the
+  // top-of-wall RL is actually the lower figure.
+  const [rlSwap, setRlSwap] = useState(false);
   // Append the pair (default) or replace the wall's existing RLs.
   const [rlReplace, setRlReplace] = useState(false);
   const [rlError, setRlError] = useState<string | null>(null);
 
+  /** Top/bottom from the two picked numbers, honouring the swap toggle. */
+  function rlTopBottom(): { top: number; bottom: number } | null {
+    if (rlSelected.length !== 2) return null;
+    const hi = Math.max(rlSelected[0], rlSelected[1]);
+    const lo = Math.min(rlSelected[0], rlSelected[1]);
+    return rlSwap ? { top: lo, bottom: hi } : { top: hi, bottom: lo };
+  }
+
   function resetRlGrab() {
     setRlNumbers(null);
     setRlSelected([]);
+    setRlSwap(false);
     setRlReplace(false);
     setRlError(null);
   }
@@ -171,12 +183,11 @@ export function ReviewPage() {
   /** Apply the chosen RL pair to the selected wall — appended, or replacing
    *  the wall's existing RLs when "Replace" is ticked. */
   async function applyRlPair() {
-    if (rlSelected.length !== 2 || !review.bundle) return;
+    const tb = rlTopBottom();
+    if (!tb || !review.bundle) return;
     const seg = review.bundle.segments.find((s) => s.id === selectedSegmentId);
     if (!seg) return;
-    const top = Math.max(rlSelected[0], rlSelected[1]);
-    const bottom = Math.min(rlSelected[0], rlSelected[1]);
-    const newPair: RlPair = { top, bottom };
+    const newPair: RlPair = { top: tb.top, bottom: tb.bottom };
     const pairs: RlPair[] = rlReplace
       ? [newPair]
       : [...(seg.rl_pairs ?? []), newPair];
@@ -524,23 +535,41 @@ export function ReviewPage() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            {rlSelected.length === 2 ? (
-                              <span>
-                                top {Math.max(...rlSelected)}, bottom{" "}
-                                {Math.min(...rlSelected)}, height{" "}
-                                <span className="font-semibold">
-                                  {(
-                                    Math.max(...rlSelected) -
-                                    Math.min(...rlSelected)
-                                  ).toFixed(2)}{" "}
-                                  m
-                                </span>
-                              </span>
-                            ) : (
-                              <span className="text-emerald-700">
-                                Select two numbers.
-                              </span>
-                            )}
+                            {(() => {
+                              const tb = rlTopBottom();
+                              if (!tb) {
+                                return (
+                                  <span className="text-emerald-700">
+                                    Select two numbers.
+                                  </span>
+                                );
+                              }
+                              const h = tb.top - tb.bottom;
+                              return (
+                                <>
+                                  <span>
+                                    top {tb.top}, bottom {tb.bottom}, height{" "}
+                                    <span
+                                      className={`font-semibold ${h < 0 ? "text-amber-700" : ""}`}
+                                    >
+                                      {h.toFixed(2)} m
+                                    </span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRlSwap((s) => !s)}
+                                    className="rounded border border-emerald-300 bg-white px-2 py-0.5 text-[11px] font-medium text-emerald-800 hover:border-emerald-500"
+                                  >
+                                    Swap top/bottom
+                                  </button>
+                                  {h < 0 && (
+                                    <span className="text-[11px] text-amber-700">
+                                      negative — swap?
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
 
                           <label className="flex items-center gap-2 border-y border-emerald-200 py-2.5">
