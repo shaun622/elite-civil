@@ -388,7 +388,7 @@ export function MeasurementTable({
           items={flatItems.map((i) => i.id)}
           strategy={verticalListSortingStrategy}
         >
-          <div className="max-h-[52vh] space-y-1.5 overflow-y-auto pr-1">
+          <div className="space-y-1.5 pr-1">
             {flatItems.map((item, i) => {
               // The last item of a group is either the final row overall or the
               // row just before the next group header — that's where this
@@ -679,7 +679,7 @@ function GroupHeaderRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="sticky top-0 z-[2] -mx-1 flex items-center gap-1.5 rounded-md border bg-muted/85 px-2 py-1.5 backdrop-blur"
+      className="-mx-1 flex items-center gap-1.5 rounded-md border bg-muted px-2 py-1.5"
     >
       {!locked && (
         <button
