@@ -123,6 +123,11 @@ export interface EngineeringParams {
   heightAboveThreshold: number;
   sleeperLengthAbove: number;
   defaultSleeperLength: number;
+  /** Round wall height UP to the next increment for post embedment (the
+   *  200 mm sleeper module). Optional for back-compat: undefined = on. */
+  embedmentRoundUp?: boolean;
+  /** The round-up step in metres (default 0.2). Optional for back-compat. */
+  embedmentIncrementM?: number;
 }
 
 export interface AdminCosts {

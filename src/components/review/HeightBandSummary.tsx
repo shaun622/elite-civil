@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { formatLength } from "@/lib/format";
-import { roundHeightUp } from "@/lib/engine/calculations";
+import { embedmentOpts, roundHeightUp } from "@/lib/engine/calculations";
+import { useProject } from "@/hooks/useProjects";
 import type { WallSegment } from "@/types/db";
 
 type Props = {
@@ -64,6 +65,17 @@ const COLS = "grid grid-cols-[1fr_44px_78px_70px] gap-2";
  * Band edges are adjustable and remembered per project (no dollars yet).
  */
 export function HeightBandSummary({ segments, projectId }: Props) {
+  const { project } = useProject(projectId);
+  // Match the engine's embedment round-up so this area agrees with Take Off's
+  // Eng m². Falls back to on/0.2 for legacy configs.
+  const roundOpts = useMemo(
+    () =>
+      project?.config
+        ? embedmentOpts(project.config)
+        : { enabled: true, incrementM: 0.2 },
+    [project?.config],
+  );
+
   const [edgeDrafts, setEdgeDrafts] = useState<string[]>(() =>
     loadEdges(projectId).map((n) => String(n)),
   );
@@ -90,11 +102,9 @@ export function HeightBandSummary({ segments, projectId }: Props) {
         noHeight.lengthMm += lengthMm;
         continue;
       }
-      // Round up to the nearest 0.2 m, matching the BE engine — the
-      // extra height is post embedment that's still paid for. Without
-      // this, the m² here disagreed with the engineering m² on Take
-      // Off / Cost Breakdown.
-      const heightM = roundHeightUp(seg.height_mm / 1000);
+      // Match the engine's embedment round-up so this m² agrees with the
+      // engineering m² on Take Off / Cost Breakdown.
+      const heightM = roundHeightUp(seg.height_mm / 1000, roundOpts);
       const band = bands[bandIndex(heightM, edges)];
       band.count += 1;
       band.lengthMm += lengthMm;
@@ -107,7 +117,7 @@ export function HeightBandSummary({ segments, projectId }: Props) {
       areaM2: bands.reduce((s, b) => s + b.areaM2, 0),
     };
     return { bands, noHeight, totals };
-  }, [segments, edges]);
+  }, [segments, edges, roundOpts]);
 
   function setEdges(drafts: string[]) {
     setEdgeDrafts(drafts);
@@ -127,9 +137,19 @@ export function HeightBandSummary({ segments, projectId }: Props) {
     <div className="rounded-lg border bg-card p-3">
       <h3 className="text-sm font-semibold">Summary by height band</h3>
       <p className="mt-0.5 text-[11px] text-muted-foreground">
-        Area = wall length × height, with heights rounded up to the nearest
-        0.2 m for post embedment — the pricing basis. Matches Take Off's
-        “Eng m²” (the lot headers above show the un-rounded area).
+        {roundOpts.enabled ? (
+          <>
+            Area = wall length × height, with heights rounded up to the nearest{" "}
+            {roundOpts.incrementM} m for post embedment — the pricing basis.
+            Matches Take Off's “Eng m²” (the lot headers above show the
+            un-rounded area).
+          </>
+        ) : (
+          <>
+            Area = wall length × the actual measured height (embedment round-up
+            is off in Pricing &amp; Performance). Matches Take Off's “Eng m²”.
+          </>
+        )}
       </p>
 
       {/* Adjustable band edges */}

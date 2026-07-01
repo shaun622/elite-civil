@@ -59,7 +59,7 @@ export function PricingPerfPage() {
   function setField<K extends keyof ProjectConfig>(
     section: K,
     field: string,
-    value: number | string,
+    value: number | string | boolean,
   ) {
     const next = structuredClone(config);
     // Section is a known nested object — cast through unknown to satisfy TS.
@@ -346,6 +346,41 @@ export function PricingPerfPage() {
 
         {/* =========================== Engineering ============================ */}
         <TabsContent value="engineering" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Embedment round-up</CardTitle>
+              <CardDescription>
+                Round each wall height up to a whole sleeper (200 mm) so the
+                extra becomes in-ground embedment — this is the m² pricing basis
+                (Take Off's “Eng m²” and the Review height-band summary). Turn
+                it off to price on the actual measured height.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={config.engineering.embedmentRoundUp ?? true}
+                  onChange={(e) =>
+                    setField("engineering", "embedmentRoundUp", e.target.checked)
+                  }
+                  className="h-4 w-4 accent-foreground"
+                />
+                Round heights up for embedment
+              </label>
+              <NumberField
+                label="Round-up increment"
+                unit="m"
+                step="0.05"
+                value={config.engineering.embedmentIncrementM ?? 0.2}
+                onChange={(v) =>
+                  setField("engineering", "embedmentIncrementM", v)
+                }
+                disabled={!(config.engineering.embedmentRoundUp ?? true)}
+              />
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <Card>
               <CardHeader>
@@ -700,12 +735,14 @@ function NumberField({
   value,
   onChange,
   step,
+  disabled,
 }: {
   label: string;
   unit: string;
   value: number;
   onChange: (v: number) => void;
   step?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -713,6 +750,7 @@ function NumberField({
       <Input
         type="number"
         step={step}
+        disabled={disabled}
         className="h-8 w-24 text-sm"
         value={value}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}

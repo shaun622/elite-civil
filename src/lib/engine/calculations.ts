@@ -13,14 +13,34 @@ import type {
 } from "./types";
 
 /**
- * Round wall height UP to the nearest 0.2 m increment.
- * Per Brenton: a 1.3 m wall becomes 1.4 m, with the extra 0.1 m being
- * embedment in-ground. The QS rounds up at takeoff, the engine uses
- * the rounded value.
+ * Round wall height UP to the next embedment increment (default 0.2 m, the
+ * 200 mm sleeper module). Per Brenton: a 1.3 m wall becomes 1.4 m, the extra
+ * 0.1 m being embedment in-ground. Both the increment and whether to round at
+ * all are per-project settings; when `enabled` is false the actual height is
+ * used (price on measured height). Defaults keep the original behaviour so
+ * pre-existing project configs are unchanged.
  */
-export function roundHeightUp(height: number): number {
+export function roundHeightUp(
+  height: number,
+  opts?: { enabled?: boolean; incrementM?: number },
+): number {
   if (height <= 0) return 0;
-  return Math.ceil(height * 5 - 1e-9) / 5;
+  const enabled = opts?.enabled ?? true;
+  const inc = opts?.incrementM && opts.incrementM > 0 ? opts.incrementM : 0.2;
+  if (!enabled) return height;
+  // Round the product to kill float drift (0.2 × 7 = 1.4000…01 otherwise).
+  return Math.round(Math.ceil(height / inc - 1e-9) * inc * 1e6) / 1e6;
+}
+
+/** Pull the embedment round-up settings off a project config. */
+export function embedmentOpts(config: ProjectConfig): {
+  enabled: boolean;
+  incrementM: number;
+} {
+  return {
+    enabled: config.engineering.embedmentRoundUp ?? true,
+    incrementM: config.engineering.embedmentIncrementM ?? 0.2,
+  };
 }
 
 /**
@@ -77,7 +97,7 @@ export function calculateWall(
   entry: WallEntry,
   config: ProjectConfig,
 ): WallCalculated {
-  const height = roundHeightUp(entry.height);
+  const height = roundHeightUp(entry.height, embedmentOpts(config));
   const lengthLM = entry.lengthLM;
 
   const baySize = getBaySize(height, config);
