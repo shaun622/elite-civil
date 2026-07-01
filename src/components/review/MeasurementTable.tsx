@@ -815,7 +815,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
         className={cn(
           "rounded-md border bg-card p-2 transition-colors",
           selected
-            ? "border-foreground/40 ring-1 ring-foreground/10"
+            ? "border-2 border-emerald-500 ring-2 ring-emerald-500/25"
             : hovered
               ? "border-foreground/20"
               : "border-border",
