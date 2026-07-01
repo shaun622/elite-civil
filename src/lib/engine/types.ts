@@ -93,6 +93,8 @@ export interface RateBreakdown {
 }
 
 export interface QuotationLineItem {
+  /** Stable key for a manual rate override (cost_overrides["quote_rate:<key>"]). */
+  key: string;
   description: string;
   qty: number;
   unit: string;
@@ -100,6 +102,8 @@ export interface QuotationLineItem {
   total: number;
   /** Present on the per-m² wall lines (not flat-rate lines like Form 15). */
   rateBreakdown?: RateBreakdown;
+  /** True when this line's rate came from a manual override, not the engine. */
+  rateOverridden?: boolean;
 }
 
 export type MaterialCategory =

@@ -391,6 +391,33 @@ export function generateQuotationLines(
   const lines: QuotationLineItem[] = [];
   const totalM2 = calculated.reduce((s, w) => s + w.m2, 0);
 
+  // Push a line, applying a manual per-line rate override if one is stored
+  // (cost_overrides["quote_rate:<key>"]). A negative/NaN override is ignored.
+  const pushLine = (
+    key: string,
+    description: string,
+    qty: number,
+    unit: string,
+    computedRate: number,
+    rateBreakdown?: RateBreakdown,
+  ) => {
+    const ovr = overrides[`quote_rate:${key}`];
+    const overridden =
+      typeof ovr === "number" && Number.isFinite(ovr) && ovr >= 0;
+    const rate = overridden ? ovr : computedRate;
+    lines.push({
+      key,
+      description,
+      qty,
+      unit,
+      rate,
+      total: qty * rate,
+      // The breakdown explains the computed rate; drop it once overridden.
+      rateBreakdown: overridden ? undefined : rateBreakdown,
+      rateOverridden: overridden,
+    });
+  };
+
   const getQty = (id: string, fallback: number): number => {
     const line = detail.lines.find((l) => l.id === id);
     if (!line) return fallback;
@@ -419,13 +446,7 @@ export function generateQuotationLines(
 
   const estQty = getQty("other-establishment", 1);
   if (estQty > 0) {
-    lines.push({
-      description: "Establishment",
-      qty: estQty,
-      unit: "EA",
-      rate: config.admin.mobeAndDemobe,
-      total: estQty * config.admin.mobeAndDemobe,
-    });
+    pushLine("establishment", "Establishment", estQty, "EA", config.admin.mobeAndDemobe);
   }
 
   const m2_upper = calculated
@@ -438,28 +459,26 @@ export function generateQuotationLines(
   if (m2_upper > 0) {
     const tierBand = bands.find((b) => /upper/i.test(b.label));
     const mult = tierBand?.multiplier ?? 0.12;
-    const rate = getRate(mult);
-    lines.push({
-      description: "Upper 2 tier wall",
-      qty: m2_upper,
-      unit: "m2",
-      rate,
-      total: m2_upper * rate,
-      rateBreakdown: breakdownFor(mult),
-    });
+    pushLine(
+      "upper-tier",
+      "Upper 2 tier wall",
+      m2_upper,
+      "m2",
+      getRate(mult),
+      breakdownFor(mult),
+    );
   }
   if (m2_lower > 0) {
     const tierBand = bands.find((b) => /lower/i.test(b.label));
     const mult = tierBand?.multiplier ?? 0.11;
-    const rate = getRate(mult);
-    lines.push({
-      description: "Lower 2 tier wall",
-      qty: m2_lower,
-      unit: "m2",
-      rate,
-      total: m2_lower * rate,
-      rateBreakdown: breakdownFor(mult),
-    });
+    pushLine(
+      "lower-tier",
+      "Lower 2 tier wall",
+      m2_lower,
+      "m2",
+      getRate(mult),
+      breakdownFor(mult),
+    );
   }
 
   const singles = calculated.filter((w) => w.type === "Single");
@@ -471,63 +490,37 @@ export function generateQuotationLines(
       .reduce((s, w) => s + w.m2, 0);
     if (m2InBand <= 0) continue;
 
-    const rate = getRate(band.multiplier);
     const desc = `Height ${band.heightMin}-${band.heightMax}m - Single Tier`;
-    lines.push({
-      description: desc,
-      qty: m2InBand,
-      unit: "m2",
-      rate,
-      total: m2InBand * rate,
-      rateBreakdown: breakdownFor(band.multiplier),
-    });
+    pushLine(
+      `single-${band.heightMin}-${band.heightMax}`,
+      desc,
+      m2InBand,
+      "m2",
+      getRate(band.multiplier),
+      breakdownFor(band.multiplier),
+    );
   }
 
   const totalBrackets = getQty("other-brackets-material", 0);
   if (totalBrackets > 0) {
     const bracketCost =
       config.materialPrices.fenceBracket + config.materialPrices.fenceBracketLabour;
-    const bracketRate = bracketCost * markupMargin;
-    lines.push({
-      description: "Fence Brackets - 6mm",
-      qty: totalBrackets,
-      unit: "EA",
-      rate: bracketRate,
-      total: totalBrackets * bracketRate,
-    });
+    pushLine("brackets", "Fence Brackets - 6mm", totalBrackets, "EA", bracketCost * markupMargin);
   }
 
   const form15Qty = getQty("eng-form15", 1);
   if (form15Qty > 0) {
-    lines.push({
-      description: "Form 15",
-      qty: form15Qty,
-      unit: "",
-      rate: config.admin.engineering,
-      total: form15Qty * config.admin.engineering,
-    });
+    pushLine("form15", "Form 15", form15Qty, "", config.admin.engineering);
   }
 
   const form12Qty = getQty("eng-form12", getUniqueLotCount(walls));
   if (form12Qty > 0) {
-    lines.push({
-      description: "Form 12 (per lot)",
-      qty: form12Qty,
-      unit: "lots",
-      rate: config.admin.formPerLot,
-      total: form12Qty * config.admin.formPerLot,
-    });
+    pushLine("form12", "Form 12 (per lot)", form12Qty, "lots", config.admin.formPerLot);
   }
 
   const deestQty = getQty("other-deestablishment", 1);
   if (deestQty > 0) {
-    lines.push({
-      description: "De-establishment",
-      qty: deestQty,
-      unit: "EA",
-      rate: config.admin.mobeAndDemobe,
-      total: deestQty * config.admin.mobeAndDemobe,
-    });
+    pushLine("deestablishment", "De-establishment", deestQty, "EA", config.admin.mobeAndDemobe);
   }
 
   return lines;

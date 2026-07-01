@@ -134,6 +134,41 @@ export function ProjectDashboardPage() {
         </Card>
       </div>
 
+      {/* Wall area by height — the m² the quote is priced on. */}
+      {hasWalls && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Wall area by height</CardTitle>
+            <CardDescription>
+              m² per height band — the figures the quote is priced on.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1.5 text-sm">
+            {bundle.quotationLines
+              .filter((l) => l.unit === "m2")
+              .map((l) => (
+                <div
+                  key={l.key}
+                  className="flex items-center justify-between"
+                >
+                  <span className="text-muted-foreground">
+                    {l.description}
+                  </span>
+                  <span className="font-medium tabular-nums">
+                    {l.qty.toFixed(1)} m²
+                  </span>
+                </div>
+              ))}
+            <div className="flex items-center justify-between border-t pt-1.5 font-semibold">
+              <span>Total</span>
+              <span className="tabular-nums">
+                {breakdown.totalM2.toFixed(1)} m²
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Per-stage breakdown */}
       {hasWalls && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

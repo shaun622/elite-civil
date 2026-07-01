@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { ChevronRight, Info, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Info, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,7 +22,7 @@ import {
 import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
-import type { RateBreakdown } from "@/lib/engine/types";
+import type { QuotationLineItem, RateBreakdown } from "@/lib/engine/types";
 import type { ExtraOverItem } from "@/types/db";
 
 const aud = new Intl.NumberFormat("en-AU", {
@@ -97,6 +97,19 @@ export function QuotationPage() {
 
   function removeExtra(itemId: string) {
     updateExtras(extras.filter((x) => x.id !== itemId));
+  }
+
+  /** Set (or clear, with null) a manual rate override for a pricing line. */
+  function setRateOverride(key: string, value: number | null) {
+    if (!project) return;
+    const next = { ...(project.cost_overrides ?? {}) } as Record<
+      string,
+      number
+    >;
+    const k = `quote_rate:${key}`;
+    if (value == null || !Number.isFinite(value) || value < 0) delete next[k];
+    else next[k] = value;
+    void update({ cost_overrides: next });
   }
 
   if (bundle.entries.length === 0) {
@@ -221,14 +234,11 @@ export function QuotationPage() {
                         {line.unit}
                       </TableCell>
                       <TableCell className="text-right text-sm">
-                        <span
-                          className={
-                            bd ? "cursor-help underline decoration-dotted underline-offset-2" : ""
-                          }
-                          title={rateTip}
-                        >
-                          {fmt(line.rate)}
-                        </span>
+                        <EditableRate
+                          line={line}
+                          rateTip={rateTip}
+                          onOverride={(v) => setRateOverride(line.key, v)}
+                        />
                       </TableCell>
                       <TableCell className="text-right text-sm font-medium">
                         {fmt(line.total)}
@@ -666,6 +676,84 @@ function RateBreakdownDetail({
         fence brackets are separate lines. Adjust the markup, margin and band
         premiums in Pricing &amp; Performance.
       </p>
+    </div>
+  );
+}
+
+/** A pricing-schedule rate cell you can click to type a manual override.
+ *  Overridden rates show in green with a reset control. */
+function EditableRate({
+  line,
+  rateTip,
+  onOverride,
+}: {
+  line: QuotationLineItem;
+  rateTip?: string;
+  onOverride: (value: number | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  function start() {
+    setDraft(line.rate.toFixed(2));
+    setEditing(true);
+  }
+  function commit() {
+    setEditing(false);
+    const v = parseFloat(draft);
+    if (Number.isFinite(v) && v >= 0) onOverride(v);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <span className="text-muted-foreground">$</span>
+        <Input
+          autoFocus
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          className="h-7 w-24 text-right tabular-nums"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-end gap-1.5">
+      {line.rateOverridden && (
+        <button
+          type="button"
+          onClick={() => onOverride(null)}
+          title="Reset to the calculated rate"
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <RotateCcw className="h-3 w-3" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={start}
+        title={
+          line.rateOverridden
+            ? "Manual rate — click to edit"
+            : (rateTip ?? "Click to set a manual rate")
+        }
+        className={`rounded px-1 tabular-nums hover:bg-muted ${
+          line.rateOverridden
+            ? "font-semibold text-emerald-700"
+            : rateTip
+              ? "underline decoration-dotted underline-offset-2"
+              : ""
+        }`}
+      >
+        {fmt(line.rate)}
+      </button>
     </div>
   );
 }
