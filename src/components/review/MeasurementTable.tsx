@@ -787,7 +787,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             : hovered
               ? "border-foreground/20"
               : "border-border",
-          segment.user_added && "bg-purple-50/40",
+          segment.user_added && !segment.confirmed && "bg-purple-50/40",
         )}
       >
         <div
@@ -981,22 +981,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
-              {segment.user_added && !locked ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1.5 border-purple-300 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void commit({ user_added: false });
-                  }}
-                  title="Save wall — turns it from purple (in-progress) to blue"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  Save wall
-                </Button>
-              ) : segment.user_added ? (
+              {segment.user_added ? (
                 <Badge variant="secondary">User added</Badge>
               ) : segment.user_edited && !segment.confirmed ? (
                 <Badge variant="secondary">Edited</Badge>

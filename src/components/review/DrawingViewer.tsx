@@ -447,7 +447,10 @@ export function DrawingViewer({
             orderedSegments.map((seg) => {
               const selected = seg.id === selectedSegmentId;
               const hovered = seg.id === hoveredSegmentId;
-              const color = seg.user_added ? COLOR_USER : COLOR_WALL;
+              // Purple while a manually-added wall is still unconfirmed;
+              // Confirm turns it blue (and un-confirm turns it back).
+              const color =
+                seg.user_added && !seg.confirmed ? COLOR_USER : COLOR_WALL;
               const polylinePx = pointsToPixels(
                 seg.polyline,
                 imageWidth,
