@@ -778,11 +778,6 @@ function readMmPerPx(raw: unknown): number | null {
   return null;
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace("#", ""), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
 /** A thin sighting crosshair drawn at a wall endpoint while it is dragged —
  *  an open centre so the exact target pixel stays visible. */
 function Crosshair({ x, y, zoom }: { x: number; y: number; zoom: number }) {
@@ -912,31 +907,9 @@ function SegmentOverlay({
     commitGeometry(next);
   }
 
-  // When editable, fade the line toward its ends so the wall underneath
-  // stays visible where the handles are; solid through the middle.
-  const gradStart = { x: livePx[0], y: livePx[1] };
-  const gradEnd = {
-    x: livePx[livePx.length - 2],
-    y: livePx[livePx.length - 1],
-  };
-  const [cr, cg, cb] = hexToRgb(color);
-  const coloredStops = editable
-    ? [
-        0, `rgba(${cr},${cg},${cb},0.1)`,
-        0.22, `rgba(${cr},${cg},${cb},1)`,
-        0.78, `rgba(${cr},${cg},${cb},1)`,
-        1, `rgba(${cr},${cg},${cb},0.1)`,
-      ]
-    : undefined;
-  const haloStops = editable
-    ? [
-        0, "rgba(255,255,255,0)",
-        0.22, "rgba(255,255,255,0.9)",
-        0.78, "rgba(255,255,255,0.9)",
-        1, "rgba(255,255,255,0)",
-      ]
-    : undefined;
-
+  // When the wall is selected/editable, render it uniformly translucent so the
+  // client's on-drawing RLs underneath stay readable along its whole length
+  // (not just at the ends). Unselected walls stay solid/normal.
   const dragPoint =
     draggingIndex != null && livePx.length >= (draggingIndex + 1) * 2
       ? { x: livePx[draggingIndex * 2], y: livePx[draggingIndex * 2 + 1] }
@@ -949,10 +922,7 @@ function SegmentOverlay({
           <Line
             points={livePx}
             stroke="#ffffff"
-            opacity={editable ? 1 : emphasized ? 0.95 : 0.6}
-            strokeLinearGradientStartPoint={editable ? gradStart : undefined}
-            strokeLinearGradientEndPoint={editable ? gradEnd : undefined}
-            strokeLinearGradientColorStops={haloStops}
+            opacity={editable ? 0.08 : emphasized ? 0.95 : 0.6}
             strokeWidth={strokeWidth + (emphasized ? 5 : 3)}
             lineCap="butt"
             lineJoin="round"
@@ -961,10 +931,7 @@ function SegmentOverlay({
           <Line
             points={livePx}
             stroke={color}
-            opacity={editable ? 1 : emphasized ? 1 : 0.9}
-            strokeLinearGradientStartPoint={editable ? gradStart : undefined}
-            strokeLinearGradientEndPoint={editable ? gradEnd : undefined}
-            strokeLinearGradientColorStops={coloredStops}
+            opacity={editable ? 0.35 : emphasized ? 1 : 0.9}
             strokeWidth={strokeWidth}
             lineCap="butt"
             lineJoin="round"
