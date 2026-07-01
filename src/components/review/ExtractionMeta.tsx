@@ -52,6 +52,21 @@ export function ExtractionMeta({
   const currentRatio = parseScaleRatio(extraction.scale_text);
   const changed = inputRatio !== null && inputRatio !== currentRatio;
 
+  // Current calibration reading (from the stored mm-per-pixel + any ratio).
+  const raw = extraction.raw_response;
+  const mmPerPx =
+    raw &&
+    typeof raw === "object" &&
+    "mm_per_px" in raw &&
+    typeof (raw as Record<string, unknown>).mm_per_px === "number"
+      ? ((raw as Record<string, unknown>).mm_per_px as number)
+      : null;
+  const currentReading = extraction.scale_text
+    ? `Current: ${extraction.scale_text}${mmPerPx ? ` · 1 px = ${mmPerPx.toFixed(3)} mm` : ""}`
+    : mmPerPx
+      ? `Current: 1 px = ${mmPerPx.toFixed(3)} mm`
+      : "Not calibrated yet";
+
   function applyRescale() {
     if (inputRatio === null || rescaling) return;
     if (
@@ -93,7 +108,10 @@ export function ExtractionMeta({
         <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           Scale
         </p>
-        <div className="mt-1 flex items-center gap-2">
+        <p className="mt-0.5 text-sm font-medium tabular-nums">
+          {currentReading}
+        </p>
+        <div className="mt-1.5 flex items-center gap-2">
           <Input
             value={scaleInput}
             disabled={locked || rescaling}

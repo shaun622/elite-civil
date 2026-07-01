@@ -135,7 +135,21 @@ export function HeightBandSummary({ segments, projectId }: Props) {
 
   return (
     <div className="rounded-lg border bg-card p-3">
-      <h3 className="text-sm font-semibold">Summary by height band</h3>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold">Summary by height band</h3>
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+            roundOpts.enabled
+              ? "bg-amber-100 text-amber-800"
+              : "bg-muted text-muted-foreground"
+          }`}
+          title="Set in Pricing & Performance → Engineering"
+        >
+          {roundOpts.enabled
+            ? `Rounding ON · ↑ ${roundOpts.incrementM} m`
+            : "Rounding OFF · actual heights"}
+        </span>
+      </div>
       <p className="mt-0.5 text-[11px] text-muted-foreground">
         {roundOpts.enabled ? (
           <>

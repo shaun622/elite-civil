@@ -386,9 +386,15 @@ export function QuotationPage() {
             <span className="text-2xl font-bold">{fmt(totalExGST)}</span>
           </div>
           <Separator className="my-3" />
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Total inc GST (10%)</span>
-            <span>{fmt(totalExGST * 1.1)}</span>
+          <div className="space-y-1.5 text-sm text-muted-foreground">
+            <div className="flex items-center justify-between">
+              <span>GST (10%)</span>
+              <span>{fmt(totalExGST * 0.1)}</span>
+            </div>
+            <div className="flex items-center justify-between font-medium text-foreground">
+              <span>Total inc GST</span>
+              <span>{fmt(totalExGST * 1.1)}</span>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -638,7 +644,7 @@ function RateBreakdownDetail({
     </div>
   );
   return (
-    <div className="space-y-2 rounded-md border bg-background p-3 text-xs">
+    <div className="max-w-2xl space-y-2 rounded-md border bg-background p-3 text-xs">
       <p className="flex items-center gap-1.5 font-medium text-foreground">
         <Info className="h-3.5 w-3.5" /> How this rate is built
       </p>
