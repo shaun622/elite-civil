@@ -277,7 +277,7 @@ function CompanyTab() {
             value={name}
             disabled={!editable}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. BE Landscape Construction"
+            placeholder="e.g. Elite Civil"
           />
         </div>
         <div className="grid gap-2">

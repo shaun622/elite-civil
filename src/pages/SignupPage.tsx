@@ -8,7 +8,7 @@ export function SignupPage() {
       <div className="w-full max-w-md space-y-6">
         <Link to="/" className="flex flex-col items-center gap-1 text-center">
           <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            BE Landscapes
+            Elite Civil
           </span>
           <span className="text-2xl font-semibold tracking-tight">
             Retaining Wall Estimator

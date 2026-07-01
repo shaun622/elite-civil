@@ -10,7 +10,7 @@ export function LandingPage() {
       <main className="container py-24">
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            BE Landscapes
+            Elite Civil
           </p>
           <h1 className="mt-4 text-balance text-5xl font-semibold tracking-tight sm:text-6xl">
             Retaining Wall Estimator
@@ -65,7 +65,7 @@ export function LandingPage() {
 
       <footer className="border-t">
         <div className="container flex h-14 items-center justify-between text-xs text-muted-foreground">
-          <span>© BE Landscape Construction</span>
+          <span>© Elite Civil</span>
           <span>Australia &amp; New Zealand</span>
         </div>
       </footer>

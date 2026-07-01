@@ -20,7 +20,7 @@ export function Header() {
       <div className="container flex h-14 items-center justify-between">
         <Link to={user ? "/dashboard" : "/"} className="flex items-baseline gap-2">
           <span className="text-sm font-semibold tracking-tight">
-            BE Landscapes
+            Elite Civil
           </span>
           <span className="text-xs text-muted-foreground">
             — Retaining Wall Estimator

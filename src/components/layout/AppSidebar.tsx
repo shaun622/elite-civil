@@ -113,10 +113,10 @@ export function AppSidebar() {
     <aside className="hidden w-60 shrink-0 border-r bg-card lg:flex lg:flex-col">
       <div className="flex h-14 items-center gap-2 border-b px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
-          BE
+          EC
         </div>
         <div className="leading-tight">
-          <p className="text-sm font-semibold">BE Landscapes</p>
+          <p className="text-sm font-semibold">Elite Civil</p>
           <p className="text-[10px] text-muted-foreground">
             Retaining Wall Estimator
           </p>
@@ -212,7 +212,7 @@ export function AppSidebar() {
 
       <div className="border-t px-4 py-3">
         <p className="text-[10px] text-muted-foreground">
-          BE Landscape Construction
+          Elite Civil
         </p>
       </div>
     </aside>
