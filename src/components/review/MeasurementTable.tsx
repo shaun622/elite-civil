@@ -1,4 +1,11 @@
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Check,
   ChevronRight,
@@ -45,7 +52,8 @@ type Props = {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   onSave: (segment: WallSegment, patch: WallSegmentUpdate) => Promise<void>;
-  onAdd: () => Promise<void>;
+  /** Start drawing a new wall; the given lot is the group it joins. */
+  onAdd: (lot: string | null) => void;
   onReorder: (updates: ReorderUpdate[]) => void;
   drawingWall?: boolean;
   onDelete: (id: string) => Promise<void>;
@@ -305,7 +313,7 @@ export function MeasurementTable({
             variant="outline"
             size="sm"
             className="mt-4 gap-2"
-            onClick={() => void onAdd()}
+            onClick={() => onAdd(null)}
           >
             <Plus className="h-4 w-4" />
             {drawingWall ? "Cancel adding wall" : "Add a wall (N)"}
@@ -317,23 +325,12 @@ export function MeasurementTable({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2 px-2">
+      <div className="px-2">
         <p className="text-[11px] text-muted-foreground">
           Drag the grip to reorder, or across a group header to move a wall to
-          that lot. Click a wall to edit its RLs.
+          that lot. Click a wall to edit its RLs. Add walls under a group, or a
+          new group at the bottom.
         </p>
-        {!locked && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 gap-1.5 text-xs"
-            onClick={addGroup}
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-            New group
-          </Button>
-        )}
       </div>
 
       {/* Column headers — a leading spacer matches the row grip + card
@@ -370,57 +367,80 @@ export function MeasurementTable({
           strategy={verticalListSortingStrategy}
         >
           <div className="max-h-[52vh] space-y-1.5 overflow-y-auto pr-1">
-            {flatItems.map((item) =>
-              item.kind === "header" ? (
-                <GroupHeaderRow
-                  key={item.id}
-                  id={item.id}
-                  group={groups.find((g) => g.lot === item.lot) ?? null}
-                  lot={item.lot}
-                  locked={locked}
-                  onRename={(next) => {
-                    const g = groups.find((gr) => gr.lot === item.lot);
-                    if (g) renameGroup(g, next);
-                    else if (item.lot) {
-                      // Rename a still-empty pending group.
-                      setPendingGroups((prev) =>
-                        prev.map((p) => (p === item.lot ? (next ?? p) : p)),
-                      );
-                    }
-                  }}
-                />
-              ) : (
-                <SortableWall
-                  key={item.id}
-                  id={item.id}
-                  disabled={locked}
-                  dimmed={activeGroupWallIds.has(item.id)}
-                  registerRef={(el) => {
-                    if (el) rowRefs.current.set(item.id, el);
-                    else rowRefs.current.delete(item.id);
-                  }}
-                >
-                  <SegmentRow
-                    segment={item.segment}
-                    selected={item.segment.id === selectedSegmentId}
-                    hovered={item.segment.id === hoveredSegmentId}
-                    saving={savingId === item.segment.id}
-                    locked={locked}
-                    onSelect={() =>
-                      onSelect(
-                        item.segment.id === selectedSegmentId
-                          ? null
-                          : item.segment.id,
-                      )
-                    }
-                    onHoverEnter={() => onHover(item.segment.id)}
-                    onHoverLeave={() => onHover(null)}
-                    onSave={(patch) => onSave(item.segment, patch)}
-                    onDelete={() => onDelete(item.segment.id)}
-                  />
-                </SortableWall>
-              ),
-            )}
+            {flatItems.map((item, i) => {
+              // The last item of a group is either the final row overall or the
+              // row just before the next group header — that's where this
+              // group's "Add a wall" button goes.
+              const lastOfGroup =
+                i === flatItems.length - 1 ||
+                flatItems[i + 1].kind === "header";
+              const groupLot =
+                item.kind === "wall" ? (item.segment.lot ?? null) : item.lot;
+              return (
+                <Fragment key={item.id}>
+                  {item.kind === "header" ? (
+                    <GroupHeaderRow
+                      id={item.id}
+                      group={groups.find((g) => g.lot === item.lot) ?? null}
+                      lot={item.lot}
+                      locked={locked}
+                      onRename={(next) => {
+                        const g = groups.find((gr) => gr.lot === item.lot);
+                        if (g) renameGroup(g, next);
+                        else if (item.lot) {
+                          // Rename a still-empty pending group.
+                          setPendingGroups((prev) =>
+                            prev.map((p) =>
+                              p === item.lot ? (next ?? p) : p,
+                            ),
+                          );
+                        }
+                      }}
+                    />
+                  ) : (
+                    <SortableWall
+                      id={item.id}
+                      disabled={locked}
+                      dimmed={activeGroupWallIds.has(item.id)}
+                      registerRef={(el) => {
+                        if (el) rowRefs.current.set(item.id, el);
+                        else rowRefs.current.delete(item.id);
+                      }}
+                    >
+                      <SegmentRow
+                        segment={item.segment}
+                        selected={item.segment.id === selectedSegmentId}
+                        hovered={item.segment.id === hoveredSegmentId}
+                        saving={savingId === item.segment.id}
+                        locked={locked}
+                        onSelect={() =>
+                          onSelect(
+                            item.segment.id === selectedSegmentId
+                              ? null
+                              : item.segment.id,
+                          )
+                        }
+                        onHoverEnter={() => onHover(item.segment.id)}
+                        onHoverLeave={() => onHover(null)}
+                        onSave={(patch) => onSave(item.segment, patch)}
+                        onDelete={() => onDelete(item.segment.id)}
+                      />
+                    </SortableWall>
+                  )}
+
+                  {!locked && !drawingWall && lastOfGroup && (
+                    <button
+                      type="button"
+                      onClick={() => onAdd(groupLot)}
+                      className="ml-7 flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add a wall{groupLot ? ` to ${groupLot}` : ""}
+                    </button>
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
         </SortableContext>
 
@@ -468,18 +488,30 @@ export function MeasurementTable({
         </DragOverlay>
       </DndContext>
 
-      {!locked && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="mt-2 w-full gap-2 border border-dashed"
-          onClick={() => void onAdd()}
-        >
-          <Plus className="h-4 w-4" />
-          {drawingWall ? "Cancel adding wall" : "Add a wall (N)"}
-        </Button>
-      )}
+      {!locked &&
+        (drawingWall ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 w-full gap-2 border border-dashed"
+            onClick={() => onAdd(null)}
+          >
+            <Plus className="h-4 w-4" />
+            Cancel adding wall
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 w-full gap-2 border border-dashed"
+            onClick={addGroup}
+          >
+            <FolderPlus className="h-4 w-4" />
+            Add a new group
+          </Button>
+        ))}
     </div>
   );
 }

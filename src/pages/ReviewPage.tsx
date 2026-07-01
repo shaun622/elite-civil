@@ -40,6 +40,8 @@ export function ReviewPage() {
   const [calibDistance, setCalibDistance] = useState("");
   const [drawingWall, setDrawingWall] = useState(false);
   const [wallPoints, setWallPoints] = useState<[number, number][]>([]);
+  // Lot the wall being drawn should join (set by a group's "Add a wall").
+  const [pendingAddLot, setPendingAddLot] = useState<string | null>(null);
   // "Grab RLs" marquee mode + the OCR result awaiting confirmation.
   const [grabbingRls, setGrabbingRls] = useState(false);
   const [rlReading, setRlReading] = useState(false);
@@ -83,8 +85,13 @@ export function ReviewPage() {
   // Add a wall by hand — click two points on the drawing to place it.
   // Corners and refinements come afterwards via the vertex tools
   // (double-click the line to insert one, a handle to remove it).
-  async function toggleAddWall() {
-    setDrawingWall((d) => !d);
+  function toggleAddWall(lot: string | null = null) {
+    if (drawingWall) {
+      setDrawingWall(false);
+    } else {
+      setPendingAddLot(lot);
+      setDrawingWall(true);
+    }
     setWallPoints([]);
   }
 
@@ -113,6 +120,7 @@ export function ReviewPage() {
       label: "New wall",
       polyline: [p0, p],
       length_mm: lengthMm,
+      lot: pendingAddLot,
     });
     if (created) setSelectedSegmentId(created.id);
   }
@@ -206,7 +214,12 @@ export function ReviewPage() {
       if (e.key === "n" || e.key === "N") {
         if (calibrating) return;
         e.preventDefault();
-        setDrawingWall((d) => !d);
+        if (drawingWall) {
+          setDrawingWall(false);
+        } else {
+          setPendingAddLot(null);
+          setDrawingWall(true);
+        }
         setWallPoints([]);
         return;
       }
