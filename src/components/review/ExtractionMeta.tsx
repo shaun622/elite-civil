@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MousePointerClick } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,7 @@ export function ExtractionMeta({
       : Math.round(extraction.overall_confidence * 100);
 
   const [scaleInput, setScaleInput] = useState(extraction.scale_text ?? "");
+  const [showRatio, setShowRatio] = useState(false);
   useEffect(() => {
     setScaleInput(extraction.scale_text ?? "");
   }, [extraction.scale_text]);
@@ -111,42 +113,66 @@ export function ExtractionMeta({
         <p className="mt-0.5 text-sm font-medium tabular-nums">
           {currentReading}
         </p>
-        <div className="mt-1.5 flex items-center gap-2">
-          <Input
-            value={scaleInput}
-            disabled={locked || rescaling}
-            onChange={(e) => setScaleInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && changed) applyRescale();
-            }}
-            placeholder="e.g. 1:500"
-            className="h-8 w-32 font-mono"
-          />
-          {changed && !locked && (
+
+        {!locked && (
+          <>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Click <strong>Set points</strong>, then two points a known
+              distance apart on the drawing and enter that distance — the most
+              accurate way to recalibrate.
+            </p>
             <Button
               type="button"
+              variant="outline"
               size="sm"
-              className="h-8 shrink-0"
-              disabled={rescaling}
-              onClick={applyRescale}
+              className="mt-2 h-8 w-full gap-1.5"
+              onClick={onCalibrate}
             >
-              {rescaling ? "Rescaling…" : `Rescale to 1:${inputRatio}`}
+              <MousePointerClick className="h-3.5 w-3.5" />
+              Set points on the drawing
             </Button>
-          )}
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Changing the ratio recomputes every wall length for the new scale.
-        </p>
-        {!locked && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mt-2 h-7 w-full text-xs"
-            onClick={onCalibrate}
-          >
-            Recalibrate by distance on the drawing
-          </Button>
+
+            <button
+              type="button"
+              onClick={() => setShowRatio((s) => !s)}
+              className="mt-2 block text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              {showRatio
+                ? "Hide scale ratio"
+                : "Know the scale ratio? Enter it instead"}
+            </button>
+
+            {showRatio && (
+              <div className="mt-2 rounded-md border border-dashed bg-muted/30 p-2.5">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={scaleInput}
+                    disabled={rescaling}
+                    onChange={(e) => setScaleInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && changed) applyRescale();
+                    }}
+                    placeholder="e.g. 1:500"
+                    className="h-8 w-32 font-mono"
+                  />
+                  {changed && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 shrink-0"
+                      disabled={rescaling}
+                      onClick={applyRescale}
+                    >
+                      {rescaling ? "Rescaling…" : `Rescale to 1:${inputRatio}`}
+                    </Button>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Changing the ratio recomputes every wall length.
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
