@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
+import { Trash2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -6,10 +8,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useProject } from "@/hooks/useProjects";
+import { useOrg } from "@/hooks/useOrg";
 
 /**
  * Per-project Settings — edits the project's metadata (name, client,
@@ -19,7 +24,33 @@ import { useProject } from "@/hooks/useProjects";
  */
 export function ProjectSettingsPage() {
   const { id } = useParams<{ id: string }>();
-  const { project, loading, update } = useProject(id);
+  const { project, loading, update, remove } = useProject(id);
+  const { canManageMembers } = useOrg();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function onDelete() {
+    if (!project) return;
+    if (
+      !confirm(
+        `Delete "${project.name}"? This permanently removes the project and all its drawings and walls. This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await remove();
+      // Full reload so the sidebar's project list refetches too.
+      window.location.assign("/dashboard");
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Could not delete the project.",
+      );
+      setDeleting(false);
+    }
+  }
 
   if (!id) return <Navigate to="/dashboard" replace />;
   if (loading) {
@@ -151,6 +182,37 @@ export function ProjectSettingsPage() {
           </LabeledField>
         </CardContent>
       </Card>
+
+      {canManageMembers && (
+        <Card className="border-destructive/40">
+          <CardHeader>
+            <CardTitle className="text-base text-destructive">
+              Danger zone
+            </CardTitle>
+            <CardDescription>
+              Deleting a project permanently removes it and all of its drawings
+              and walls for the whole company. This can't be undone.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {deleteError && (
+              <Alert variant="destructive">
+                <AlertDescription>{deleteError}</AlertDescription>
+              </Alert>
+            )}
+            <Button
+              type="button"
+              variant="destructive"
+              className="gap-2"
+              disabled={deleting}
+              onClick={onDelete}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting…" : "Delete project"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
