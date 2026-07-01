@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Building, CreditCard, Loader2, User } from "lucide-react";
+import { Building, CreditCard, Loader2, User, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,12 +7,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrg } from "@/hooks/useOrg";
+import { changePassword } from "@/lib/api/profile";
 import {
-  changePassword,
-  getProfile,
-  updateProfile,
-  type ProfileRow,
-} from "@/lib/api/profile";
+  cancelInvite,
+  canManageMembers,
+  inviteMember,
+  listOrgMembers,
+  listPendingInvites,
+  removeMember,
+  updateMemberRole,
+  updateOrgBranding,
+  type OrgInvite,
+  type OrgMember,
+  type OrgRole,
+} from "@/lib/api/organization";
 import {
   loadBillingSnapshot,
   openStripeBillingPortal,
@@ -21,7 +30,7 @@ import {
 } from "@/lib/api/subscriptions";
 import { cn } from "@/lib/utils";
 
-type Tab = "profile" | "company" | "billing";
+type Tab = "profile" | "company" | "team" | "billing";
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -49,6 +58,12 @@ export function SettingsPage() {
               label="Company"
             />
             <TabButton
+              active={tab === "team"}
+              onClick={() => setTab("team")}
+              icon={<Users className="h-4 w-4" />}
+              label="Team"
+            />
+            <TabButton
               active={tab === "billing"}
               onClick={() => setTab("billing")}
               icon={<CreditCard className="h-4 w-4" />}
@@ -58,7 +73,8 @@ export function SettingsPage() {
 
           <div className="space-y-6">
             {tab === "profile" && <ProfileTab />}
-            {tab === "company" && user && <CompanyTab userId={user.id} />}
+            {tab === "company" && <CompanyTab />}
+            {tab === "team" && <TeamTab />}
             {tab === "billing" && user && <BillingTab userId={user.id} />}
           </div>
         </div>
@@ -178,9 +194,9 @@ function ProfileTab() {
   );
 }
 
-function CompanyTab({ userId }: { userId: string }) {
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [loading, setLoading] = useState(true);
+function CompanyTab() {
+  const { org, role, loading, refresh } = useOrg();
+  const editable = canManageMembers(role); // owner / admin
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
@@ -189,46 +205,10 @@ function CompanyTab({ userId }: { userId: string }) {
   const [done, setDone] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    getProfile(userId)
-      .then((p) => {
-        if (!active) return;
-        setProfile(p);
-        setName(p?.company_name ?? "");
-        setAddress(p?.company_address ?? "");
-        setLogoUrl(p?.company_logo_url ?? "");
-      })
-      .catch((err) => {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed to load profile.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [userId]);
-
-  async function onSave() {
-    setError(null);
-    setDone(null);
-    setSaving(true);
-    try {
-      const updated = await updateProfile(userId, {
-        company_name: name,
-        company_address: address,
-        company_logo_url: logoUrl,
-      });
-      setProfile(updated);
-      setDone("Saved.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  }
+    setName(org?.company_name ?? "");
+    setAddress(org?.company_address ?? "");
+    setLogoUrl(org?.company_logo_url ?? "");
+  }, [org]);
 
   if (loading) {
     return (
@@ -237,17 +217,45 @@ function CompanyTab({ userId }: { userId: string }) {
       </section>
     );
   }
+  if (!org) {
+    return (
+      <section className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
+        No company found for your account.
+      </section>
+    );
+  }
+
+  async function onSave() {
+    if (!org) return;
+    setError(null);
+    setDone(null);
+    setSaving(true);
+    try {
+      await updateOrgBranding(org.id, {
+        company_name: name,
+        company_address: address,
+        company_logo_url: logoUrl,
+      });
+      await refresh();
+      setDone("Saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const dirty =
-    (profile?.company_name ?? "") !== name ||
-    (profile?.company_address ?? "") !== address ||
-    (profile?.company_logo_url ?? "") !== logoUrl;
+    (org.company_name ?? "") !== name ||
+    (org.company_address ?? "") !== address ||
+    (org.company_logo_url ?? "") !== logoUrl;
 
   return (
     <section className="rounded-lg border bg-card p-6">
-      <h2 className="text-lg font-semibold">Company branding</h2>
+      <h2 className="text-lg font-semibold">Company profile</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Used in your branded PDF exports.
+        Shared by your whole team — used on branded PDF exports.
+        {!editable && " Only an owner or admin can edit it."}
       </p>
 
       <div className="mt-6 space-y-4">
@@ -267,6 +275,7 @@ function CompanyTab({ userId }: { userId: string }) {
           <Input
             id="company-name"
             value={name}
+            disabled={!editable}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. BE Landscape Construction"
           />
@@ -277,6 +286,7 @@ function CompanyTab({ userId }: { userId: string }) {
             id="company-address"
             rows={3}
             value={address}
+            disabled={!editable}
             onChange={(e) => setAddress(e.target.value)}
             placeholder="Street, suburb, state, postcode"
           />
@@ -286,20 +296,297 @@ function CompanyTab({ userId }: { userId: string }) {
           <Input
             id="company-logo"
             value={logoUrl}
+            disabled={!editable}
             onChange={(e) => setLogoUrl(e.target.value)}
             placeholder="https://…"
           />
           <p className="text-xs text-muted-foreground">
-            Direct image URL (PNG / JPG). In-app logo upload is on the
-            roadmap.
+            Direct image URL (PNG / JPG). In-app logo upload is on the roadmap.
           </p>
         </div>
 
-        <Button onClick={onSave} disabled={saving || !dirty}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
+        {editable && (
+          <Button onClick={onSave} disabled={saving || !dirty}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        )}
       </div>
     </section>
+  );
+}
+
+const ROLE_LABEL: Record<OrgRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  editor: "Editor",
+  viewer: "Viewer",
+};
+const ROLE_HELP: Record<OrgRole, string> = {
+  owner: "Full access + billing",
+  admin: "Manage team + edit everything (not billing)",
+  editor: "Create & edit takeoffs",
+  viewer: "Read-only",
+};
+
+function TeamTab() {
+  const { user } = useAuth();
+  const { org, role, loading: orgLoading } = useOrg();
+  const manage = canManageMembers(role);
+
+  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [invites, setInvites] = useState<OrgInvite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] =
+    useState<Exclude<OrgRole, "owner">>("editor");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [m, inv] = await Promise.all([
+        listOrgMembers(),
+        manage ? listPendingInvites() : Promise.resolve([] as OrgInvite[]),
+      ]);
+      setMembers(m);
+      setInvites(inv);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load the team.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!orgLoading) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgLoading, manage]);
+
+  async function onInvite(e: FormEvent) {
+    e.preventDefault();
+    if (!org || !user) return;
+    const email = inviteEmail.trim();
+    if (!email) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await inviteMember(org.id, user.id, email, inviteRole);
+      setInviteEmail("");
+      setNotice(
+        `Invited ${email} as ${ROLE_LABEL[inviteRole]}. They join when they sign in with that email.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send invite.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRoleChange(userId: string, next: OrgRole) {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateMemberRole(userId, next);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not change role.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRemove(userId: string, email: string | null) {
+    if (!confirm(`Remove ${email ?? "this member"} from the company?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await removeMember(userId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove member.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onCancelInvite(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await cancelInvite(id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not cancel invite.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (orgLoading || loading) {
+    return (
+      <section className="rounded-lg border bg-card p-6">
+        <Loader2 className="h-4 w-4 animate-spin" />
+      </section>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-lg border bg-card p-6">
+        <h2 className="text-lg font-semibold">Team members</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Everyone in {org?.company_name || org?.name || "your company"}.
+          {manage
+            ? " You can change roles and remove people."
+            : " Only an owner or admin can change these."}
+        </p>
+
+        {error && (
+          <Alert variant="destructive" className="mt-4">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <ul className="mt-5 divide-y">
+          {members.map((m) => {
+            const isSelf = m.user_id === user?.id;
+            const isOwner = m.role === "owner";
+            // Owner/admin may change anyone except the Owner; they can't demote
+            // the owner (also enforced by RLS) and can't promote to owner.
+            const canChange = manage && !isOwner;
+            return (
+              <li
+                key={m.user_id}
+                className="flex flex-wrap items-center gap-3 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {m.email ?? m.user_id}
+                    {isSelf && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        (you)
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {ROLE_HELP[m.role]}
+                  </p>
+                </div>
+
+                {canChange ? (
+                  <select
+                    value={m.role}
+                    disabled={busy}
+                    onChange={(e) =>
+                      onRoleChange(m.user_id, e.target.value as OrgRole)
+                    }
+                    className="h-8 rounded-md border bg-background px-2 text-sm"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                ) : (
+                  <Badge variant={isOwner ? "default" : "outline"}>
+                    {ROLE_LABEL[m.role]}
+                  </Badge>
+                )}
+
+                {canChange && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onRemove(m.user_id, m.email)}
+                    title="Remove from company"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      {manage && (
+        <section className="rounded-lg border bg-card p-6">
+          <h2 className="text-lg font-semibold">Invite a teammate</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            They get access when they sign in with this email. (Automatic invite
+            emails are coming — for now, tell them to sign up with this address.)
+          </p>
+
+          {notice && (
+            <Alert className="mt-4">
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
+          )}
+
+          <form onSubmit={onInvite} className="mt-4 flex flex-wrap items-end gap-2">
+            <div className="grid min-w-[220px] flex-1 gap-1.5">
+              <Label htmlFor="invite-email">Email</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="teammate@company.com"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="invite-role">Role</Label>
+              <select
+                id="invite-role"
+                value={inviteRole}
+                onChange={(e) =>
+                  setInviteRole(e.target.value as Exclude<OrgRole, "owner">)
+                }
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="admin">Admin</option>
+                <option value="editor">Editor</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </div>
+            <Button type="submit" disabled={busy || !inviteEmail.trim()}>
+              Invite
+            </Button>
+          </form>
+
+          {invites.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-sm font-semibold">Pending invites</h3>
+              <ul className="mt-2 divide-y">
+                {invites.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex items-center gap-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{inv.email}</span>
+                    <Badge variant="outline">{ROLE_LABEL[inv.role]}</Badge>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onCancelInvite(inv.id)}
+                      title="Cancel invite"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
   );
 }
 

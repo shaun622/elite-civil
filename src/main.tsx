@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "@/App";
 import { AuthProvider } from "@/hooks/useAuth";
+import { OrgProvider } from "@/hooks/useOrg";
 import "@/index.css";
 
 const rootEl = document.getElementById("root");
@@ -12,7 +13,9 @@ createRoot(rootEl).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <App />
+        <OrgProvider>
+          <App />
+        </OrgProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
