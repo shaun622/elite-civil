@@ -455,6 +455,7 @@ export function MeasurementTable({
                         onHoverLeave={() => onHover(null)}
                         onSave={(patch) => onSave(item.segment, patch)}
                         onDelete={() => onDelete(item.segment.id)}
+                        onAddToGroup={() => onAdd(item.segment.lot ?? null)}
                       />
                     </SortableWall>
                   )}
@@ -755,6 +756,7 @@ type SegmentRowProps = {
   onHoverLeave: () => void;
   onSave: (patch: WallSegmentUpdate) => Promise<void>;
   onDelete: () => Promise<void>;
+  onAddToGroup: () => void;
 };
 
 const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
@@ -770,6 +772,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
       onHoverLeave,
       onSave,
       onDelete,
+      onAddToGroup,
     },
     ref,
   ) {
@@ -1102,6 +1105,23 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
                   Confirm
                 </Button>
               ) : null}
+
+              {!locked && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToGroup();
+                  }}
+                  title="Add another wall to this group"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add wall
+                </Button>
+              )}
               {saving && (
                 <span className="inline-flex items-center gap-1 text-[11px]">
                   <Loader2 className="h-3 w-3 animate-spin" />

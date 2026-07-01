@@ -411,7 +411,11 @@ export function DrawingViewer({
         }}
         onMouseLeave={() => {
           setPreviewEnd(null);
-          if (marquee) setMarquee(null);
+          // If a marquee is in progress and the cursor leaves the canvas
+          // (e.g. dragging toward an edge), commit the box rather than losing
+          // it — finishMarquee's min-size guard drops accidental tiny boxes.
+          if (grabbingRls && marquee) finishMarquee();
+          else if (marquee) setMarquee(null);
         }}
       >
         <Layer listening={false}>
@@ -472,6 +476,9 @@ export function DrawingViewer({
                     !calibrating &&
                     !drawingWall &&
                     !grabbingRls
+                  }
+                  translucent={
+                    selected && !locked && !calibrating && !drawingWall
                   }
                   zoom={zoom}
                   mmPerPx={mmPerPx}
@@ -822,6 +829,7 @@ function SegmentOverlay({
   selected,
   hovered,
   editable,
+  translucent,
   zoom,
   mmPerPx,
   onClick,
@@ -837,6 +845,9 @@ function SegmentOverlay({
   selected: boolean;
   hovered: boolean;
   editable: boolean;
+  /** See through the wall (selected, incl. while grabbing RLs) so the RLs
+   *  underneath stay readable. Broader than `editable` (which excludes grab). */
+  translucent: boolean;
   zoom: number;
   mmPerPx: number | null;
   onClick: () => void;
@@ -922,7 +933,7 @@ function SegmentOverlay({
           <Line
             points={livePx}
             stroke="#ffffff"
-            opacity={editable ? 0.08 : emphasized ? 0.95 : 0.6}
+            opacity={translucent ? 0.08 : emphasized ? 0.95 : 0.6}
             strokeWidth={strokeWidth + (emphasized ? 5 : 3)}
             lineCap="butt"
             lineJoin="round"
@@ -931,7 +942,7 @@ function SegmentOverlay({
           <Line
             points={livePx}
             stroke={color}
-            opacity={editable ? 0.35 : emphasized ? 1 : 0.9}
+            opacity={translucent ? 0.35 : emphasized ? 1 : 0.9}
             strokeWidth={strokeWidth}
             lineCap="butt"
             lineJoin="round"
