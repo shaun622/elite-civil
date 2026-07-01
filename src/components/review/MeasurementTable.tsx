@@ -432,9 +432,9 @@ export function MeasurementTable({
                     <button
                       type="button"
                       onClick={() => onAdd(groupLot)}
-                      className="ml-7 flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                      className="ml-7 flex items-center justify-center gap-2 rounded-md border border-dashed border-emerald-300 bg-emerald-50/40 px-3 py-2 text-sm font-medium text-emerald-700 transition-colors hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-800"
                     >
-                      <Plus className="h-3 w-3" />
+                      <Plus className="h-4 w-4" />
                       Add a wall{groupLot ? ` to ${groupLot}` : ""}
                     </button>
                   )}
