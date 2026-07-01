@@ -8,11 +8,15 @@ import { AppSidebar } from "./AppSidebar";
  */
 export function AppLayout() {
   return (
-    <div className="flex min-h-screen flex-col bg-muted/20">
+    // Fixed-height shell: the Header + sidebar stay put and the main content
+    // scrolls internally. This (rather than a min-h-screen shell where the body
+    // scrolls) is what lets pages use `position: sticky` — e.g. the Review map
+    // staying in view while the wall list scrolls.
+    <div className="flex h-screen flex-col bg-muted/20">
       <Header />
-      <div className="flex flex-1">
+      <div className="flex min-h-0 flex-1">
         <AppSidebar />
-        <main className="min-w-0 flex-1 overflow-x-auto">
+        <main className="min-w-0 flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>
