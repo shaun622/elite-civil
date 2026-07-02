@@ -106,6 +106,8 @@ export const defaultConfig: ProjectConfig = {
     { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.12 },
     { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.11 },
   ],
+
+  heightBandEdges: [1.6, 3.0],
 };
 
 /** Default description for the Quotation page T&Cs. */

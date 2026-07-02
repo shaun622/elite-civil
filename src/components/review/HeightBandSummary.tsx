@@ -1,134 +1,97 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { formatLength } from "@/lib/format";
-import { embedmentOpts, roundHeightUp } from "@/lib/engine/calculations";
+import { embedmentOpts } from "@/lib/engine/calculations";
+import {
+  computeHeightBands,
+  normalizeBandEdges,
+  resolveBandEdges,
+  sameEdges,
+} from "@/lib/engine/heightBands";
+import { defaultConfig } from "@/lib/engine/defaults";
 import { useProject } from "@/hooks/useProjects";
-import type { WallSegment } from "@/types/db";
+import type { ProjectConfig, WallSegment } from "@/types/db";
 
 type Props = {
   segments: WallSegment[];
   projectId: string;
 };
 
-/** Default band edges (m) — the typical job split: 0–1.6, 1.6–3.0, 3.0+. */
-const DEFAULT_EDGES = [1.6, 3.0];
-
-function storageKey(projectId: string): string {
-  return `takeoffmate.heightBands.${projectId}`;
-}
-
-/** Positive, de-duplicated, ascending band edges. */
-function normalizeEdges(values: number[]): number[] {
-  const clean = values.filter((n) => Number.isFinite(n) && n > 0);
-  return [...new Set(clean)].sort((a, b) => a - b);
-}
-
-/** Last-used band edges for this project, falling back to the defaults. */
-function loadEdges(projectId: string): number[] {
-  try {
-    const raw = localStorage.getItem(storageKey(projectId));
-    if (raw != null) {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return normalizeEdges(
-          parsed.filter((n): n is number => typeof n === "number"),
-        );
-      }
-    }
-  } catch {
-    // ignore — fall back to the defaults
-  }
-  return [...DEFAULT_EDGES];
-}
-
-/** Index of the band a height (m) falls in: [0,e0), [e0,e1), … , [eLast,∞). */
-function bandIndex(heightM: number, edges: number[]): number {
-  for (let i = 0; i < edges.length; i++) {
-    if (heightM < edges[i]) return i;
-  }
-  return edges.length;
-}
-
-function bandLabel(i: number, edges: number[]): string {
-  if (edges.length === 0) return "All heights";
-  const lo = i === 0 ? 0 : edges[i - 1];
-  if (i >= edges.length) return `${lo} m +`;
-  return `${lo} – ${edges[i]} m`;
-}
-
 const COLS = "grid grid-cols-[1fr_44px_78px_70px] gap-2";
 
 /**
  * Quantity summary for the review screen — wall length + face area totalled
- * per height band, so a per-m² rate can later be attached to each band.
- * Band edges are adjustable and remembered per project (no dollars yet).
+ * per height band. Band edges and the embedment round-up (on/off + step) are
+ * saved on the project config, so they're shared with the whole team and drive
+ * the matching breakdown on the project Dashboard.
  */
 export function HeightBandSummary({ segments, projectId }: Props) {
-  const { project } = useProject(projectId);
-  // Match the engine's embedment round-up so this area agrees with Take Off's
-  // Eng m². Falls back to on/0.2 for legacy configs.
-  const roundOpts = useMemo(
-    () =>
-      project?.config
-        ? embedmentOpts(project.config)
-        : { enabled: true, incrementM: 0.2 },
-    [project?.config],
-  );
+  const { project, update } = useProject(projectId);
+  const config: ProjectConfig = project?.config ?? defaultConfig;
 
+  // Live embedment round-up settings (drive the area figures).
+  const roundOpts = useMemo(() => embedmentOpts(config), [config]);
+
+  // Local drafts for the edge inputs; committed to the config on blur so we
+  // don't write to the DB on every keystroke. Seeded once the project loads.
+  const seededRef = useRef(false);
   const [edgeDrafts, setEdgeDrafts] = useState<string[]>(() =>
-    loadEdges(projectId).map((n) => String(n)),
+    resolveBandEdges(config).map((n) => String(n)),
+  );
+  const [incrementDraft, setIncrementDraft] = useState<string>(() =>
+    String(roundOpts.incrementM),
   );
 
-  // The clean, sorted edges that actually drive the banding.
+  useEffect(() => {
+    if (seededRef.current || !project) return;
+    seededRef.current = true;
+    const cfg = project.config ?? defaultConfig;
+    setEdgeDrafts(resolveBandEdges(cfg).map((n) => String(n)));
+    setIncrementDraft(String(embedmentOpts(cfg).incrementM));
+  }, [project]);
+
+  // The clean, sorted edges that actually drive the banding (live, from drafts).
   const edges = useMemo(
-    () => normalizeEdges(edgeDrafts.map((s) => parseFloat(s))),
+    () => normalizeBandEdges(edgeDrafts.map((s) => parseFloat(s))),
     [edgeDrafts],
   );
 
-  const { bands, noHeight, totals } = useMemo(() => {
-    const bands = Array.from({ length: edges.length + 1 }, (_, i) => ({
-      label: bandLabel(i, edges),
-      count: 0,
-      lengthMm: 0,
-      areaM2: 0,
-    }));
-    const noHeight = { count: 0, lengthMm: 0 };
+  const { bands, noHeight, totals } = useMemo(
+    () => computeHeightBands(segments, edges, roundOpts),
+    [segments, edges, roundOpts],
+  );
 
-    for (const seg of segments) {
-      const lengthMm = seg.length_mm ?? 0;
-      if (seg.height_mm == null) {
-        noHeight.count += 1;
-        noHeight.lengthMm += lengthMm;
-        continue;
-      }
-      // Match the engine's embedment round-up so this m² agrees with the
-      // engineering m² on Take Off / Cost Breakdown.
-      const heightM = roundHeightUp(seg.height_mm / 1000, roundOpts);
-      const band = bands[bandIndex(heightM, edges)];
-      band.count += 1;
-      band.lengthMm += lengthMm;
-      band.areaM2 += (lengthMm / 1000) * heightM;
-    }
-
-    const totals = {
-      count: bands.reduce((s, b) => s + b.count, 0) + noHeight.count,
-      lengthMm: bands.reduce((s, b) => s + b.lengthMm, 0) + noHeight.lengthMm,
-      areaM2: bands.reduce((s, b) => s + b.areaM2, 0),
-    };
-    return { bands, noHeight, totals };
-  }, [segments, edges, roundOpts]);
-
-  function setEdges(drafts: string[]) {
-    setEdgeDrafts(drafts);
+  async function saveConfig(next: ProjectConfig) {
     try {
-      localStorage.setItem(
-        storageKey(projectId),
-        JSON.stringify(normalizeEdges(drafts.map((s) => parseFloat(s)))),
-      );
+      await update({ config: next });
     } catch {
-      // ignore — bands just won't be remembered next visit
+      // ignore — the value simply won't persist; UI already reflects the draft
     }
+  }
+
+  function commitEdges(drafts: string[]) {
+    const normalized = normalizeBandEdges(drafts.map((s) => parseFloat(s)));
+    if (sameEdges(resolveBandEdges(config), normalized)) return;
+    void saveConfig({ ...config, heightBandEdges: normalized });
+  }
+
+  function setRounding(enabled: boolean) {
+    if (enabled === roundOpts.enabled) return;
+    void saveConfig({
+      ...config,
+      engineering: { ...config.engineering, embedmentRoundUp: enabled },
+    });
+  }
+
+  function commitIncrement() {
+    const v = parseFloat(incrementDraft);
+    const inc = Number.isFinite(v) && v > 0 ? v : 0.2;
+    if (inc === roundOpts.incrementM) return;
+    void saveConfig({
+      ...config,
+      engineering: { ...config.engineering, embedmentIncrementM: inc },
+    });
   }
 
   if (segments.length === 0) return null;
@@ -137,18 +100,33 @@ export function HeightBandSummary({ segments, projectId }: Props) {
     <div className="rounded-lg border bg-card p-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">Summary by height band</h3>
-        <span
-          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+
+        {/* Rounding toggle + step — writes to the project config. */}
+        <button
+          type="button"
+          onClick={() => setRounding(!roundOpts.enabled)}
+          title="Toggle embedment round-up (also in Pricing & Performance → Engineering)"
+          className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
             roundOpts.enabled
-              ? "bg-amber-100 text-amber-800"
-              : "bg-muted text-muted-foreground"
+              ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+              : "bg-muted text-muted-foreground hover:bg-muted/70"
           }`}
-          title="Set in Pricing & Performance → Engineering"
         >
-          {roundOpts.enabled
-            ? `Rounding ON · ↑ ${roundOpts.incrementM} m`
-            : "Rounding OFF · actual heights"}
-        </span>
+          {roundOpts.enabled ? "Rounding ON" : "Rounding OFF · actual heights"}
+        </button>
+        {roundOpts.enabled && (
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span>↑ nearest</span>
+            <Input
+              inputMode="decimal"
+              value={incrementDraft}
+              onChange={(e) => setIncrementDraft(e.target.value)}
+              onBlur={commitIncrement}
+              className="h-6 w-12 text-right text-[11px] tabular-nums"
+            />
+            <span>m</span>
+          </div>
+        )}
       </div>
       <p className="mt-0.5 text-[11px] text-muted-foreground">
         {roundOpts.enabled ? (
@@ -161,12 +139,12 @@ export function HeightBandSummary({ segments, projectId }: Props) {
         ) : (
           <>
             Area = wall length × the actual measured height (embedment round-up
-            is off in Pricing &amp; Performance). Matches Take Off's “Eng m²”.
+            is off). Matches Take Off's “Eng m²”.
           </>
         )}
       </p>
 
-      {/* Adjustable band edges */}
+      {/* Adjustable band edges — saved to the project config */}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           Band edges (m)
@@ -177,16 +155,21 @@ export function HeightBandSummary({ segments, projectId }: Props) {
               inputMode="decimal"
               value={draft}
               onChange={(e) =>
-                setEdges(
+                setEdgeDrafts(
                   edgeDrafts.map((d, j) => (j === i ? e.target.value : d)),
                 )
               }
+              onBlur={() => commitEdges(edgeDrafts)}
               placeholder="m"
               className="h-7 w-14 text-right tabular-nums"
             />
             <button
               type="button"
-              onClick={() => setEdges(edgeDrafts.filter((_, j) => j !== i))}
+              onClick={() => {
+                const next = edgeDrafts.filter((_, j) => j !== i);
+                setEdgeDrafts(next);
+                commitEdges(next);
+              }}
               title="Remove this band edge"
               className="ml-0.5 text-muted-foreground hover:text-destructive"
             >

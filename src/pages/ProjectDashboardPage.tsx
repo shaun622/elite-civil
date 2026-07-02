@@ -2,6 +2,9 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
+import { embedmentOpts } from "@/lib/engine/calculations";
+import { computeHeightBands, resolveBandEdges } from "@/lib/engine/heightBands";
+import { formatLength } from "@/lib/format";
 import {
   Card,
   CardContent,
@@ -134,40 +137,85 @@ export function ProjectDashboardPage() {
         </Card>
       </div>
 
-      {/* Wall area by height — the m² the quote is priced on. */}
-      {hasWalls && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Wall area by height</CardTitle>
-            <CardDescription>
-              m² per height band — the figures the quote is priced on.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1.5 text-sm">
-            {bundle.quotationLines
-              .filter((l) => l.unit === "m2")
-              .map((l) => (
+      {/* Wall heights breakdown — walls, length and face area per configurable
+          band (same bands as the Measure/Review "Summary by height band"). */}
+      {hasWalls &&
+        (() => {
+          const round = embedmentOpts(config);
+          const { bands, noHeight, totals } = computeHeightBands(
+            walls,
+            resolveBandEdges(config),
+            round,
+          );
+          const cols = "grid grid-cols-[1fr_64px_116px_88px] gap-2";
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Wall heights breakdown
+                </CardTitle>
+                <CardDescription>
+                  Walls, length and face area per height band —{" "}
+                  {round.enabled
+                    ? `heights rounded up to ${round.incrementM} m (pricing basis)`
+                    : "actual measured heights"}
+                  . Adjust the bands on any Measure / Review page.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <div
-                  key={l.key}
-                  className="flex items-center justify-between"
+                  className={`${cols} px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground`}
                 >
-                  <span className="text-muted-foreground">
-                    {l.description}
-                  </span>
-                  <span className="font-medium tabular-nums">
-                    {l.qty.toFixed(1)} m²
-                  </span>
+                  <span>Band</span>
+                  <span className="text-right">Walls</span>
+                  <span className="text-right">Length</span>
+                  <span className="text-right">Area m²</span>
                 </div>
-              ))}
-            <div className="flex items-center justify-between border-t pt-1.5 font-semibold">
-              <span>Total</span>
-              <span className="tabular-nums">
-                {breakdown.totalM2.toFixed(1)} m²
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                {bands.map((b, i) => (
+                  <div
+                    key={i}
+                    className={`${cols} rounded px-2 py-1 text-sm tabular-nums ${
+                      i % 2 === 1 ? "bg-muted/40" : ""
+                    }`}
+                  >
+                    <span className="font-medium">{b.label}</span>
+                    <span className="text-right text-muted-foreground">
+                      {b.count}
+                    </span>
+                    <span className="text-right">
+                      {b.count > 0 ? formatLength(b.lengthMm) : "—"}
+                    </span>
+                    <span className="text-right">
+                      {b.count > 0 ? b.areaM2.toFixed(1) : "—"}
+                    </span>
+                  </div>
+                ))}
+                {noHeight.count > 0 && (
+                  <div
+                    className={`${cols} rounded bg-amber-50 px-2 py-1 text-sm tabular-nums text-amber-900`}
+                  >
+                    <span className="font-medium">Height not set</span>
+                    <span className="text-right">{noHeight.count}</span>
+                    <span className="text-right">
+                      {formatLength(noHeight.lengthMm)}
+                    </span>
+                    <span className="text-right">—</span>
+                  </div>
+                )}
+                <div
+                  className={`${cols} mt-1 border-t px-2 pt-1.5 text-sm font-semibold tabular-nums`}
+                >
+                  <span>Total</span>
+                  <span className="text-right">{totals.count}</span>
+                  <span className="text-right">
+                    {formatLength(totals.lengthMm)}
+                  </span>
+                  <span className="text-right">{totals.areaM2.toFixed(1)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
       {/* Per-stage breakdown */}
       {hasWalls && (

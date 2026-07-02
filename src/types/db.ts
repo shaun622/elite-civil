@@ -154,6 +154,10 @@ export interface ProjectConfig {
   engineering: EngineeringParams;
   admin: AdminCosts;
   extraOverBands: ExtraOverBand[];
+  /** Reporting-only: ascending height band edges (m) for the "Summary by
+   *  height band" breakdown on Review + Dashboard. Shared across the team.
+   *  Optional for back-compat: undefined = default 0–1.6 / 1.6–3.0 / 3.0+. */
+  heightBandEdges?: number[];
 }
 
 export type TrackingPhase =
