@@ -278,8 +278,11 @@ function SteelBody({
     <div className="border-t">
       {/* Order totals — the purchase quantities per post type, all lots. */}
       <div className="border-b bg-muted/20 p-3">
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Order totals — all lots
+        </p>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          What to order — every post summed by size &amp; length across all lots.
         </p>
         <LinesTable lines={totals} />
       </div>
@@ -288,6 +291,10 @@ function SteelBody({
       <div className="space-y-2 p-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           By lot (for delivery)
+        </p>
+        <p className="-mt-1 text-[11px] text-muted-foreground">
+          The same posts as the order totals above, split by location — don’t add
+          these on top.
         </p>
         {[...byLot.entries()].map(([lot, lotLines]) => {
           const posts = lotLines.reduce((s, l) => s + l.qty, 0);
