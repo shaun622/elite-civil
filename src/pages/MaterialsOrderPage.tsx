@@ -1,8 +1,8 @@
-import { Fragment, type ReactElement } from "react";
+import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { Printer } from "lucide-react";
+import { ChevronDown, ChevronRight, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -41,69 +41,90 @@ function formatQty(n: number, unit: string): string {
   return n.toFixed(0);
 }
 
-function LineRow({ line }: { line: MaterialOrderLine }): ReactElement {
+/** Sum lines of the same description (e.g. same post size + length) into one
+ *  "type total" row — the actual purchase quantity across every lot. */
+function aggregateByType(lines: MaterialOrderLine[]): MaterialOrderLine[] {
+  const m = new Map<string, MaterialOrderLine>();
+  for (const l of lines) {
+    const e = m.get(l.description);
+    if (e) {
+      e.qty += l.qty;
+      e.total += l.total;
+    } else {
+      m.set(l.description, { ...l, lot: undefined });
+    }
+  }
+  return [...m.values()];
+}
+
+function groupLinesByLot(
+  lines: MaterialOrderLine[],
+): Map<string, MaterialOrderLine[]> {
+  const m = new Map<string, MaterialOrderLine[]>();
+  for (const l of lines) {
+    const key = l.lot ?? "";
+    const bucket = m.get(key) ?? [];
+    bucket.push(l);
+    m.set(key, bucket);
+  }
+  return m;
+}
+
+function LinesTable({
+  lines,
+  showHeader = true,
+}: {
+  lines: MaterialOrderLine[];
+  showHeader?: boolean;
+}) {
   return (
-    <TableRow>
-      <TableCell>{line.description}</TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatQty(line.qty, line.unit)}
-      </TableCell>
-      <TableCell className="text-muted-foreground">{line.unit}</TableCell>
-      <TableCell className="text-right tabular-nums text-muted-foreground">
-        {formatCurrency(line.unitPrice)}
-      </TableCell>
-      <TableCell className="text-right font-medium tabular-nums">
-        {formatCurrency(line.total)}
-      </TableCell>
-    </TableRow>
+    <Table>
+      {showHeader && (
+        <TableHeader>
+          <TableRow>
+            <TableHead>Description</TableHead>
+            <TableHead className="w-24 text-right">Qty</TableHead>
+            <TableHead className="w-16">Unit</TableHead>
+            <TableHead className="w-28 text-right">Unit price</TableHead>
+            <TableHead className="w-32 text-right">Total</TableHead>
+          </TableRow>
+        </TableHeader>
+      )}
+      <TableBody>
+        {lines.map((l, i) => (
+          <TableRow key={i}>
+            <TableCell>{l.description}</TableCell>
+            <TableCell className="w-24 text-right tabular-nums">
+              {formatQty(l.qty, l.unit)}
+            </TableCell>
+            <TableCell className="w-16 text-muted-foreground">{l.unit}</TableCell>
+            <TableCell className="w-28 text-right tabular-nums text-muted-foreground">
+              {formatCurrency(l.unitPrice)}
+            </TableCell>
+            <TableCell className="w-32 text-right font-medium tabular-nums">
+              {formatCurrency(l.total)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
-/** Render a category's rows — sub-grouped by lot when the lines carry a lot
- *  (steel posts), so procurement can bundle deliveries per location. */
-function renderCategoryBody(
-  cat: string,
-  lines: MaterialOrderLine[],
-): ReactElement[] {
-  if (!lines.some((l) => l.lot)) {
-    return lines.map((l, i) => <LineRow key={`${cat}-${i}`} line={l} />);
-  }
-  const byLot = new Map<string, MaterialOrderLine[]>();
-  for (const l of lines) {
-    const key = l.lot ?? "";
-    const bucket = byLot.get(key) ?? [];
-    bucket.push(l);
-    byLot.set(key, bucket);
-  }
-  const rows: ReactElement[] = [];
-  let i = 0;
-  for (const [lot, lotLines] of byLot) {
-    rows.push(
-      <TableRow key={`${cat}-lot-${lot}`} className="hover:bg-transparent">
-        <TableCell
-          colSpan={5}
-          className="py-1 pl-6 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-        >
-          {lot ? `Lot ${lot}` : "No lot assigned"}
-        </TableCell>
-      </TableRow>,
-    );
-    for (const l of lotLines) {
-      rows.push(<LineRow key={`${cat}-${i++}`} line={l} />);
-    }
-  }
-  return rows;
-}
-
 /**
- * Materials Order — one consolidated procurement table, grouped into
- * category sections with subtotals and a grand total. Quantities come
- * from the engine's calculator; prices use the project's materialPrices.
+ * Materials Order — collapsible category sections with subtotals. Steel is
+ * split into an always-visible "Order totals (all lots)" table (the purchase
+ * quantities per post type) plus collapsible per-lot boxes for staging
+ * deliveries by location.
  */
 export function MaterialsOrderPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading } = useProject(id);
   const { walls, loading: wallsLoading } = useProjectWalls(id);
+  const [openCats, setOpenCats] = useState<Set<string>>(
+    () => new Set<string>(CATEGORY_ORDER),
+  );
+  const [openLots, setOpenLots] = useState<Set<string>>(() => new Set<string>());
 
   if (!id) return <Navigate to="/dashboard" replace />;
   if (projectLoading || wallsLoading) {
@@ -130,9 +151,30 @@ export function MaterialsOrderPage() {
     byCategory.set(line.category, bucket);
   }
   const cats = CATEGORY_ORDER.filter((c) => byCategory.has(c));
+  const steelLotKeys = [
+    ...groupLinesByLot(byCategory.get("Steel") ?? []).keys(),
+  ];
+
+  const toggleCat = (c: string) =>
+    setOpenCats((s) => {
+      const n = new Set(s);
+      n.has(c) ? n.delete(c) : n.add(c);
+      return n;
+    });
+  const toggleLot = (k: string) =>
+    setOpenLots((s) => {
+      const n = new Set(s);
+      n.has(k) ? n.delete(k) : n.add(k);
+      return n;
+    });
+  const expandAll = () => {
+    setOpenCats(new Set(cats));
+    setOpenLots(new Set(steelLotKeys));
+  };
+  const collapseAll = () => setOpenLots(new Set());
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="mx-auto max-w-5xl space-y-4 p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">
@@ -143,68 +185,145 @@ export function MaterialsOrderPage() {
             auto-calculated from take-off.
           </p>
         </div>
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="mr-2 h-4 w-4" />
-          Print
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="ghost" size="sm" onClick={expandAll}>
+            Expand all
+          </Button>
+          <Button variant="ghost" size="sm" onClick={collapseAll}>
+            Collapse all
+          </Button>
+          <Button variant="outline" onClick={() => window.print()}>
+            <Printer className="mr-2 h-4 w-4" />
+            Print
+          </Button>
+        </div>
       </div>
 
       {order.lines.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No materials yet. Add walls in the Take Off page.
-          </CardContent>
+        <Card className="py-12 text-center text-muted-foreground">
+          No materials yet. Add walls in the Take Off page.
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-24 text-right">Qty</TableHead>
-                  <TableHead className="w-16">Unit</TableHead>
-                  <TableHead className="w-28 text-right">Unit price</TableHead>
-                  <TableHead className="w-32 text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cats.map((cat) => {
-                  const lines = byCategory.get(cat) ?? [];
-                  const subtotal = lines.reduce((s, l) => s + l.total, 0);
-                  return (
-                    <Fragment key={cat}>
-                      <TableRow className="bg-muted/50 hover:bg-muted/50">
-                        <TableCell
-                          colSpan={4}
-                          className="py-1.5 text-xs font-semibold uppercase tracking-wide"
-                        >
-                          {cat}
-                        </TableCell>
-                        <TableCell className="py-1.5 text-right text-xs font-semibold tabular-nums">
-                          {formatCurrency(subtotal)}
-                        </TableCell>
-                      </TableRow>
-                      {renderCategoryBody(cat, lines)}
-                    </Fragment>
-                  );
-                })}
-                <TableRow className="border-t-2 bg-muted/30 font-semibold hover:bg-muted/30">
-                  <TableCell colSpan={4} className="py-2">
-                    Grand total
-                    <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      ex GST, at cost (no markup)
-                    </span>
-                  </TableCell>
-                  <TableCell className="py-2 text-right text-base tabular-nums">
-                    {formatCurrency(order.grandTotal)}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+        <>
+          {cats.map((cat) => {
+            const lines = byCategory.get(cat) ?? [];
+            const subtotal = lines.reduce((s, l) => s + l.total, 0);
+            const open = openCats.has(cat);
+            return (
+              <Card key={cat} className="overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => toggleCat(cat)}
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50"
+                >
+                  {open ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-semibold uppercase tracking-wide">
+                    {cat}
+                  </span>
+                  <span className="ml-auto text-sm font-semibold tabular-nums">
+                    {formatCurrency(subtotal)}
+                  </span>
+                </button>
+
+                {open &&
+                  (cat === "Steel" ? (
+                    <SteelBody
+                      lines={lines}
+                      openLots={openLots}
+                      toggleLot={toggleLot}
+                    />
+                  ) : (
+                    <div className="border-t">
+                      <LinesTable lines={lines} />
+                    </div>
+                  ))}
+              </Card>
+            );
+          })}
+
+          <Card className="flex items-center justify-between px-4 py-3">
+            <span className="font-semibold">
+              Grand total
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                ex GST, at cost (no markup)
+              </span>
+            </span>
+            <span className="text-base font-semibold tabular-nums">
+              {formatCurrency(order.grandTotal)}
+            </span>
+          </Card>
+        </>
       )}
+    </div>
+  );
+}
+
+function SteelBody({
+  lines,
+  openLots,
+  toggleLot,
+}: {
+  lines: MaterialOrderLine[];
+  openLots: Set<string>;
+  toggleLot: (k: string) => void;
+}) {
+  const totals = aggregateByType(lines);
+  const byLot = groupLinesByLot(lines);
+
+  return (
+    <div className="border-t">
+      {/* Order totals — the purchase quantities per post type, all lots. */}
+      <div className="border-b bg-muted/20 p-3">
+        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Order totals — all lots
+        </p>
+        <LinesTable lines={totals} />
+      </div>
+
+      {/* Per-lot breakdown — collapsible, for staging deliveries by location. */}
+      <div className="space-y-2 p-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          By lot (for delivery)
+        </p>
+        {[...byLot.entries()].map(([lot, lotLines]) => {
+          const posts = lotLines.reduce((s, l) => s + l.qty, 0);
+          const subtotal = lotLines.reduce((s, l) => s + l.total, 0);
+          const lotOpen = openLots.has(lot);
+          return (
+            <div key={lot} className="rounded-md border">
+              <button
+                type="button"
+                onClick={() => toggleLot(lot)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+              >
+                {lotOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                )}
+                <span className="text-sm font-medium">
+                  {lot ? `Lot ${lot}` : "No lot assigned"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {posts} posts
+                </span>
+                <span className="ml-auto text-sm font-medium tabular-nums">
+                  {formatCurrency(subtotal)}
+                </span>
+              </button>
+              {lotOpen && (
+                <div className="border-t">
+                  <LinesTable lines={lotLines} showHeader={false} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
