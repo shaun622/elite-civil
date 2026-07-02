@@ -70,8 +70,10 @@ export function HeightBandSummary({ segments, projectId }: Props) {
     }
   }
 
-  function commitEdges(drafts: string[]) {
-    const normalized = normalizeBandEdges(drafts.map((s) => parseFloat(s)));
+  function commitEdges(list: string[]) {
+    const normalized = normalizeBandEdges(list.map((s) => parseFloat(s)));
+    // Re-seed the inputs in clean, sorted order so the ranges read correctly.
+    setEdgeDrafts(normalized.map((n) => String(n)));
     if (sameEdges(resolveBandEdges(config), normalized)) return;
     void saveConfig({ ...config, heightBandEdges: normalized });
   }
@@ -144,47 +146,80 @@ export function HeightBandSummary({ segments, projectId }: Props) {
         )}
       </p>
 
-      {/* Adjustable band edges — saved to the project config */}
-      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Band edges (m)
-        </span>
-        {edgeDrafts.map((draft, i) => (
-          <div key={i} className="flex items-center">
-            <Input
-              inputMode="decimal"
-              value={draft}
-              onChange={(e) =>
-                setEdgeDrafts(
-                  edgeDrafts.map((d, j) => (j === i ? e.target.value : d)),
-                )
-              }
-              onBlur={() => commitEdges(edgeDrafts)}
-              placeholder="m"
-              className="h-7 w-14 text-right tabular-nums"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                const next = edgeDrafts.filter((_, j) => j !== i);
-                setEdgeDrafts(next);
-                commitEdges(next);
-              }}
-              title="Remove this band edge"
-              className="ml-0.5 text-muted-foreground hover:text-destructive"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => setEdgeDrafts((d) => [...d, ""])}
-          className="inline-flex items-center gap-0.5 text-[11px] text-primary underline-offset-2 hover:underline"
-        >
-          <Plus className="h-3 w-3" />
-          Add edge
-        </button>
+      {/* Height ranges — edit the upper limit of each range directly. Saved to
+          the project config (shared with the team + the Dashboard). */}
+      <div className="mt-3 rounded-md border bg-muted/30 p-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Height ranges — customise
+          </span>
+          <button
+            type="button"
+            onClick={() => setEdgeDrafts((d) => [...d, ""])}
+            className="inline-flex items-center gap-0.5 text-[11px] font-medium text-primary hover:underline"
+          >
+            <Plus className="h-3 w-3" />
+            Add range
+          </button>
+        </div>
+
+        <div className="mt-1.5 space-y-1">
+          {edgeDrafts.map((draft, i) => {
+            const lo = i === 0 ? 0 : parseFloat(edgeDrafts[i - 1]) || 0;
+            return (
+              <div key={i} className="flex items-center gap-1.5 text-sm">
+                <span className="w-9 text-right tabular-nums text-muted-foreground">
+                  {lo}
+                </span>
+                <span className="text-muted-foreground">–</span>
+                <Input
+                  inputMode="decimal"
+                  value={draft}
+                  onChange={(e) =>
+                    setEdgeDrafts(
+                      edgeDrafts.map((d, j) => (j === i ? e.target.value : d)),
+                    )
+                  }
+                  onBlur={() => commitEdges(edgeDrafts)}
+                  placeholder="m"
+                  className="h-7 w-16 text-right tabular-nums"
+                />
+                <span className="text-xs text-muted-foreground">m</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    commitEdges(edgeDrafts.filter((_, j) => j !== i))
+                  }
+                  title="Remove this range (merge it into the one above)"
+                  className="ml-auto text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            );
+          })}
+
+          {edgeDrafts.length > 0 ? (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span className="w-9 text-right tabular-nums">
+                {parseFloat(edgeDrafts[edgeDrafts.length - 1]) || 0}
+              </span>
+              <span>m and above</span>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No splits — all walls counted in one range. Add a range to split
+              by height.
+            </p>
+          )}
+        </div>
+
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Each row is a range — edit its upper limit. e.g. change{" "}
+          <span className="font-medium">1.6 – 3</span> to{" "}
+          <span className="font-medium">1.6 – 2.2</span> for a 1.6–2.2 m band,
+          then “Add range” for the next split.
+        </p>
       </div>
 
       {/* Per-band totals */}
