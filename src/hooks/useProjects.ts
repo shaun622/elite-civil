@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   archiveProject,
   createProject,
@@ -11,50 +16,91 @@ import {
 import type { Project, ProjectInsert, ProjectUpdate } from "@/types/db";
 import { useAuth } from "@/hooks/useAuth";
 
-type State = {
+// ---------------------------------------------------------------------------
+// Shared projects-list store. Every consumer of useProjects() (the sidebar,
+// the dashboard grid, the New Project dialog) reads from ONE store, so a
+// create/delete/refresh anywhere is reflected everywhere immediately — no
+// page reload needed. (useProject(), for a single project by id, is separate.)
+// ---------------------------------------------------------------------------
+
+type ListState = {
   projects: Project[] | null;
   loading: boolean;
   error: string | null;
 };
 
+let listState: ListState = { projects: null, loading: true, error: null };
+let loadedForUser: string | null = null;
+let inFlight = false;
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const fn of listeners) fn();
+}
+
+function setListState(patch: Partial<ListState>) {
+  listState = { ...listState, ...patch };
+  emit();
+}
+
+function subscribeList(cb: () => void) {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function getListSnapshot(): ListState {
+  return listState;
+}
+
+async function loadProjects() {
+  if (inFlight) return;
+  inFlight = true;
+  setListState({ loading: true, error: null });
+  try {
+    const projects = await listProjects();
+    setListState({ projects, loading: false, error: null });
+  } catch (err) {
+    setListState({
+      projects: null,
+      loading: false,
+      error: err instanceof Error ? err.message : "Failed to load projects.",
+    });
+  } finally {
+    inFlight = false;
+  }
+}
+
 export function useProjects() {
   const { user } = useAuth();
-  const [state, setState] = useState<State>({
-    projects: null,
-    loading: true,
-    error: null,
-  });
-
-  const refresh = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const projects = await listProjects();
-      setState({ projects, loading: false, error: null });
-    } catch (err) {
-      setState({
-        projects: null,
-        loading: false,
-        error: err instanceof Error ? err.message : "Failed to load projects.",
-      });
-    }
-  }, []);
+  const state = useSyncExternalStore(subscribeList, getListSnapshot);
 
   useEffect(() => {
-    if (!user) {
-      setState({ projects: null, loading: false, error: null });
+    const uid = user?.id ?? null;
+    if (!uid) {
+      // Logged out — clear the shared list so the next user starts fresh.
+      loadedForUser = null;
+      setListState({ projects: null, loading: false, error: null });
       return;
     }
-    void refresh();
-  }, [user, refresh]);
+    // Fetch once per signed-in user; cached across component mounts.
+    if (loadedForUser !== uid) {
+      loadedForUser = uid;
+      void loadProjects();
+    }
+  }, [user]);
+
+  const refresh = useCallback(async () => {
+    await loadProjects();
+  }, []);
 
   const create = useCallback(
     async (input: ProjectInsert) => {
       if (!user) throw new Error("Not signed in.");
       const next = await createProject(user.id, input);
-      setState((s) => ({
-        ...s,
-        projects: [next, ...(s.projects ?? [])],
-      }));
+      // Prepend to the shared list so every consumer sees it at once.
+      setListState({ projects: [next, ...(listState.projects ?? [])] });
       return next;
     },
     [user],
