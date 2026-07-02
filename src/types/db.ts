@@ -116,6 +116,7 @@ export interface PerformanceParams {
 
 export interface EngineeringParams {
   holeSize: number;
+  /** @deprecated No longer used — hole depth is now embedment + holeDepthOverEmbedmentM. */
   heightPlusFactor: number;
   postSizeRanges: PostSizeRange[];
   heightBelowThreshold: number;
@@ -128,6 +129,12 @@ export interface EngineeringParams {
   embedmentRoundUp?: boolean;
   /** The round-up step in metres (default 0.2). Optional for back-compat. */
   embedmentIncrementM?: number;
+  /** Steel post in-ground embedment as a ratio of the retained height.
+   *  1 = 1:1 (post length = 2× height). Optional for back-compat: undefined = 1. */
+  postEmbedmentRatio?: number;
+  /** Concrete post-hole depth over the in-ground embedment, in metres
+   *  (holeDepth = embedment + this). Optional for back-compat: undefined = 0.2. */
+  holeDepthOverEmbedmentM?: number;
 }
 
 export interface AdminCosts {

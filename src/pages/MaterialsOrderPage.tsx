@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, type ReactElement } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,60 @@ function formatCurrency(n: number): string {
 function formatQty(n: number, unit: string): string {
   if (unit === "m3" || unit === "LM") return n.toFixed(2);
   return n.toFixed(0);
+}
+
+function LineRow({ line }: { line: MaterialOrderLine }): ReactElement {
+  return (
+    <TableRow>
+      <TableCell>{line.description}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatQty(line.qty, line.unit)}
+      </TableCell>
+      <TableCell className="text-muted-foreground">{line.unit}</TableCell>
+      <TableCell className="text-right tabular-nums text-muted-foreground">
+        {formatCurrency(line.unitPrice)}
+      </TableCell>
+      <TableCell className="text-right font-medium tabular-nums">
+        {formatCurrency(line.total)}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** Render a category's rows — sub-grouped by lot when the lines carry a lot
+ *  (steel posts), so procurement can bundle deliveries per location. */
+function renderCategoryBody(
+  cat: string,
+  lines: MaterialOrderLine[],
+): ReactElement[] {
+  if (!lines.some((l) => l.lot)) {
+    return lines.map((l, i) => <LineRow key={`${cat}-${i}`} line={l} />);
+  }
+  const byLot = new Map<string, MaterialOrderLine[]>();
+  for (const l of lines) {
+    const key = l.lot ?? "";
+    const bucket = byLot.get(key) ?? [];
+    bucket.push(l);
+    byLot.set(key, bucket);
+  }
+  const rows: ReactElement[] = [];
+  let i = 0;
+  for (const [lot, lotLines] of byLot) {
+    rows.push(
+      <TableRow key={`${cat}-lot-${lot}`} className="hover:bg-transparent">
+        <TableCell
+          colSpan={5}
+          className="py-1 pl-6 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+        >
+          {lot ? `Lot ${lot}` : "No lot assigned"}
+        </TableCell>
+      </TableRow>,
+    );
+    for (const l of lotLines) {
+      rows.push(<LineRow key={`${cat}-${i++}`} line={l} />);
+    }
+  }
+  return rows;
 }
 
 /**
@@ -131,23 +185,7 @@ export function MaterialsOrderPage() {
                           {formatCurrency(subtotal)}
                         </TableCell>
                       </TableRow>
-                      {lines.map((l, i) => (
-                        <TableRow key={`${cat}-${i}`}>
-                          <TableCell>{l.description}</TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatQty(l.qty, l.unit)}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {l.unit}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums text-muted-foreground">
-                            {formatCurrency(l.unitPrice)}
-                          </TableCell>
-                          <TableCell className="text-right font-medium tabular-nums">
-                            {formatCurrency(l.total)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {renderCategoryBody(cat, lines)}
                     </Fragment>
                   );
                 })}

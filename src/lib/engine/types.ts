@@ -122,6 +122,8 @@ export interface MaterialOrderLine {
   unit: string;
   unitPrice: number;
   total: number;
+  /** Lot this line belongs to (steel posts only), for per-lot delivery bundling. */
+  lot?: string;
 }
 
 export interface MaterialsOrder {

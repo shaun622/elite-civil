@@ -88,6 +88,8 @@ export const defaultConfig: ProjectConfig = {
     defaultSleeperLength: 2.0,
     embedmentRoundUp: true,
     embedmentIncrementM: 0.2,
+    postEmbedmentRatio: 1.0,
+    holeDepthOverEmbedmentM: 0.2,
   },
 
   admin: {

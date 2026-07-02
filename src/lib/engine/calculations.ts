@@ -73,16 +73,6 @@ function getPostSize(
 }
 
 /**
- * Determine hole depth based on wall height. Replicates the array
- * formula in column X (height + buried factor, tier × 2).
- */
-function getHoleDepth(entry: WallEntry, config: ProjectConfig): number {
-  const tierMultiplier =
-    entry.type === "Upper" || entry.type === "Lower" ? 2 : 1;
-  return (entry.height + config.engineering.heightPlusFactor) * tierMultiplier;
-}
-
-/**
  * Calculate all derived values for a single wall entry. Replicates all
  * formulas in the Take off tab row.
  *
@@ -96,6 +86,7 @@ function getHoleDepth(entry: WallEntry, config: ProjectConfig): number {
 export function calculateWall(
   entry: WallEntry,
   config: ProjectConfig,
+  ctx?: { pairedLowerHeightM?: number },
 ): WallCalculated {
   const height = roundHeightUp(entry.height, embedmentOpts(config));
   const lengthLM = entry.lengthLM;
@@ -103,7 +94,27 @@ export function calculateWall(
   const baySize = getBaySize(height, config);
   const bays = lengthLM > 0 && baySize > 0 ? Math.ceil(lengthLM / baySize) : 0;
   const numberOfHoles = bays > 0 ? bays + 1 : 0;
-  const holeDepth = getHoleDepth({ ...entry, height }, config);
+
+  // Steel post length + in-ground embedment. A post embeds in-ground by
+  // `ratio × height` (1:1 by default → post = 2× height). An Upper-tier post
+  // runs the full upper height, down past its paired Lower tier, then embeds
+  // 1:1 of the LOWER height: post = upper + lower + ratio×lower. Falls back to
+  // the single-wall rule when an Upper has no paired Lower in its lot.
+  const ratio = config.engineering.postEmbedmentRatio ?? 1;
+  const holeExtra = config.engineering.holeDepthOverEmbedmentM ?? 0.2;
+  const pairedLowerH =
+    entry.type === "Upper" &&
+    ctx?.pairedLowerHeightM &&
+    ctx.pairedLowerHeightM > 0
+      ? ctx.pairedLowerHeightM
+      : null;
+  const embedmentDepth = ratio * (pairedLowerH ?? height);
+  const postLength =
+    pairedLowerH != null
+      ? height + pairedLowerH + embedmentDepth
+      : height + embedmentDepth;
+
+  const holeDepth = embedmentDepth + holeExtra;
   const holeSizeM = config.engineering.holeSize / 1000;
 
   const m2 = height * lengthLM;
@@ -124,9 +135,7 @@ export function calculateWall(
   const drillTimeHrs =
     (numberOfHoles * holeDepth * config.performance.timeToDrill1LM) / 60;
 
-  const tierMultiplier =
-    entry.type === "Upper" || entry.type === "Lower" ? 2 : 1;
-  const steelLength = height * tierMultiplier;
+  const steelLength = postLength;
 
   const pfcLength = steelLength;
   const pfcQty = lengthLM > 0 ? 1 : 0;
@@ -174,7 +183,22 @@ export function calculateAllWalls(
   walls: WallEntry[],
   config: ProjectConfig,
 ): WallCalculated[] {
-  return walls.map((w) => calculateWall(w, config));
+  // Pre-pass: tallest (rounded) Lower-tier height per lot, so an Upper-tier
+  // post can embed relative to the Lower tier it sits above (same lot).
+  const round = embedmentOpts(config);
+  const lowerHeightByLot = new Map<string, number>();
+  for (const w of walls) {
+    if (w.type !== "Lower") continue;
+    const h = roundHeightUp(w.height, round);
+    const cur = lowerHeightByLot.get(w.lot) ?? 0;
+    if (h > cur) lowerHeightByLot.set(w.lot, h);
+  }
+  return walls.map((w) =>
+    calculateWall(w, config, {
+      pairedLowerHeightM:
+        w.type === "Upper" ? lowerHeightByLot.get(w.lot) : undefined,
+    }),
+  );
 }
 
 /** Get unique lot count from wall entries. */
@@ -549,9 +573,17 @@ export function generateMaterialsOrder(
     });
   }
 
-  const postsBySize = new Map<
+  // Steel posts, grouped by lot + section size + length so each distinct post
+  // is ordered exactly and listed per lot (for bundling deliveries by location).
+  const postGroups = new Map<
     string,
-    { length: number; qty: number; pricePerMetre: number }
+    {
+      lot: string;
+      size: string;
+      length: number;
+      qty: number;
+      pricePerMetre: number;
+    }
   >();
   for (const w of calculated) {
     const info =
@@ -563,26 +595,36 @@ export function generateMaterialsOrder(
       ];
     const totalPosts = w.ucQty + w.pfcQty;
     if (totalPosts <= 0) continue;
-    const existing = postsBySize.get(info.postSize);
+    const lot = w.lot || "";
+    const key = `${lot}||${info.postSize}||${w.ucLength.toFixed(2)}`;
+    const existing = postGroups.get(key);
     if (existing) {
       existing.qty += totalPosts;
-      existing.length = Math.max(existing.length, w.ucLength);
     } else {
-      postsBySize.set(info.postSize, {
+      postGroups.set(key, {
+        lot,
+        size: info.postSize,
         length: w.ucLength,
         qty: totalPosts,
         pricePerMetre: info.pricePerMetre,
       });
     }
   }
-  for (const [size, info] of postsBySize) {
+  const sortedPosts = [...postGroups.values()].sort(
+    (a, b) =>
+      a.lot.localeCompare(b.lot, undefined, { numeric: true }) ||
+      a.size.localeCompare(b.size) ||
+      a.length - b.length,
+  );
+  for (const p of sortedPosts) {
     lines.push({
       category: "Steel",
-      description: `${size} posts (${info.length.toFixed(1)}m lengths)`,
-      qty: info.qty,
+      lot: p.lot || undefined,
+      description: `${p.size} posts (${p.length.toFixed(1)}m lengths)`,
+      qty: p.qty,
       unit: "EA",
-      unitPrice: info.pricePerMetre * info.length,
-      total: info.qty * info.pricePerMetre * info.length,
+      unitPrice: p.pricePerMetre * p.length,
+      total: p.qty * p.pricePerMetre * p.length,
     });
   }
 

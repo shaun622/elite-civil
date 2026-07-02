@@ -395,12 +395,21 @@ export function PricingPerfPage() {
                   onChange={(v) => setField("engineering", "holeSize", v)}
                 />
                 <NumberField
-                  label="Height + factor"
-                  unit="m buried"
+                  label="In-ground embedment ratio"
+                  unit=": 1 (1 = 1:1)"
                   step="0.1"
-                  value={config.engineering.heightPlusFactor}
+                  value={config.engineering.postEmbedmentRatio ?? 1}
                   onChange={(v) =>
-                    setField("engineering", "heightPlusFactor", v)
+                    setField("engineering", "postEmbedmentRatio", v)
+                  }
+                />
+                <NumberField
+                  label="Hole depth over embedment"
+                  unit="m"
+                  step="0.1"
+                  value={config.engineering.holeDepthOverEmbedmentM ?? 0.2}
+                  onChange={(v) =>
+                    setField("engineering", "holeDepthOverEmbedmentM", v)
                   }
                 />
               </CardContent>
