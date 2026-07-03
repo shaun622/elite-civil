@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,6 +32,32 @@ export function PricingPerfPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading, update } = useProject(id);
 
+  // Local draft so inputs stay responsive. Writing every keystroke straight to
+  // the DB (async) reverted the field before the change landed — which
+  // scrambled/reversed typed text. We edit the draft synchronously and persist
+  // on a short debounce instead.
+  const [draft, setDraft] = useState<ProjectConfig | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRef = useRef<ProjectConfig | null>(null);
+
+  useEffect(() => {
+    if (project) setDraft(structuredClone(project.config ?? defaultConfig));
+    // Re-seed only when the project identity changes, so debounced saves
+    // (which refresh `project`) don't clobber in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id]);
+
+  // Flush a pending save if the user leaves before the debounce fires.
+  useEffect(
+    () => () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        if (pendingRef.current) void update({ config: pendingRef.current });
+      }
+    },
+    [update],
+  );
+
   if (!id) return <Navigate to="/dashboard" replace />;
 
   if (loading) {
@@ -48,13 +75,20 @@ export function PricingPerfPage() {
     );
   }
 
-  const config: ProjectConfig = project.config ?? defaultConfig;
+  const config: ProjectConfig = draft ?? project.config ?? defaultConfig;
 
-  // Mutates one nested field then persists. structuredClone keeps the
-  // engine-compute path (which reads `project.config` as immutable) from
-  // accidentally sharing memory with React state.
+  // Update the draft synchronously (responsive inputs) and persist on a 500 ms
+  // debounce so the dashboard / cost / quote pages still follow along.
   function setConfig(next: ProjectConfig) {
-    void update({ config: next });
+    setDraft(next);
+    pendingRef.current = next;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      const cfg = pendingRef.current;
+      pendingRef.current = null;
+      if (cfg) void update({ config: cfg });
+    }, 500);
   }
 
   function setField<K extends keyof ProjectConfig>(
