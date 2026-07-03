@@ -39,10 +39,13 @@ export function sameEdges(a: number[], b: number[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
-/** Index of the band a height (m) falls in: [0,e0), [e0,e1), … , [eLast,∞). */
+/** Index of the band a height (m) falls in: (0,e0], (e0,e1], … , (eLast,∞).
+ *  A height exactly on an edge belongs to the LOWER band — the same rule the
+ *  quote (`> min && <= max`) and the post-size lookup use, so the band
+ *  summaries here always classify a wall the way it's priced. */
 function bandIndex(heightM: number, edges: number[]): number {
   for (let i = 0; i < edges.length; i++) {
-    if (heightM < edges[i]) return i;
+    if (heightM <= edges[i]) return i;
   }
   return edges.length;
 }
