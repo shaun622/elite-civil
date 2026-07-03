@@ -173,7 +173,10 @@ export function QuotationPage() {
             <Stat label="Lots" value={String(bundle.uniqueLotCount)} />
             <Stat
               label="Segments"
-              value={String(bundle.calculatedWalls.length)}
+              value={String(
+                new Set(bundle.calculatedWalls.map((w) => w.sourceId ?? w.id))
+                  .size,
+              )}
             />
           </div>
         </CardContent>

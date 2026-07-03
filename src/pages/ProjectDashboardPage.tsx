@@ -4,6 +4,7 @@ import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
 import { embedmentOpts } from "@/lib/engine/calculations";
 import { computeHeightBands, resolveBandEdges } from "@/lib/engine/heightBands";
+import { expandSegmentsByPricingBands } from "@/lib/engine/wallSections";
 import { formatLength } from "@/lib/format";
 import {
   Card,
@@ -143,7 +144,7 @@ export function ProjectDashboardPage() {
         (() => {
           const round = embedmentOpts(config);
           const { bands, noHeight, totals } = computeHeightBands(
-            walls,
+            expandSegmentsByPricingBands(walls, config),
             resolveBandEdges(config),
             round,
           );

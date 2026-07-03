@@ -20,6 +20,8 @@ import { HeightBandSummary } from "@/components/review/HeightBandSummary";
 import { ExtractionMeta } from "@/components/review/ExtractionMeta";
 import { WarningsPanel } from "@/components/review/WarningsPanel";
 import { useReview } from "@/hooks/useReview";
+import { useProject } from "@/hooks/useProjects";
+import { getEffectiveConfig } from "@/lib/engine/adapter";
 import { readRlsFromCrop } from "@/lib/api/readRls";
 import type { RlPair } from "@/types/db";
 
@@ -29,6 +31,8 @@ export function ReviewPage() {
     pageId: string;
   }>();
   const review = useReview(pageId);
+  const { project } = useProject(projectId);
+  const config = getEffectiveConfig(project);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
   );
@@ -667,6 +671,7 @@ export function ReviewPage() {
                 )}
                 <MeasurementTable
                   segments={review.bundle.segments}
+                  config={config}
                   selectedSegmentId={selectedSegmentId}
                   hoveredSegmentId={hoveredSegmentId}
                   savingId={review.savingId}

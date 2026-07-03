@@ -39,12 +39,21 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatLength, parseLength } from "@/lib/format";
 import { groupByLot } from "@/lib/wallGroups";
-import type { RlPair, WallSegment, WallSegmentUpdate } from "@/types/db";
+import type {
+  ProjectConfig,
+  RlPair,
+  WallSegment,
+  WallSegmentUpdate,
+} from "@/types/db";
+import { splitSegmentSections } from "@/lib/engine/wallSections";
 
 type ReorderUpdate = { id: string; sortOrder: number; lot?: string | null };
 
 type Props = {
   segments: WallSegment[];
+  /** Effective project config — used to show when a wall auto-splits into
+   *  pricing-band sections. */
+  config: ProjectConfig;
   selectedSegmentId: string | null;
   hoveredSegmentId: string | null;
   savingId: string | null;
@@ -133,6 +142,7 @@ function pairsEqual(a: RlPair[], b: RlPair[]): boolean {
 
 export function MeasurementTable({
   segments,
+  config,
   selectedSegmentId,
   hoveredSegmentId,
   savingId,
@@ -440,6 +450,7 @@ export function MeasurementTable({
                     >
                       <SegmentRow
                         segment={item.segment}
+                        config={config}
                         selected={item.segment.id === selectedSegmentId}
                         hovered={item.segment.id === hoveredSegmentId}
                         saving={savingId === item.segment.id}
@@ -747,6 +758,7 @@ function GroupHeaderRow({
 
 type SegmentRowProps = {
   segment: WallSegment;
+  config: ProjectConfig;
   selected: boolean;
   hovered: boolean;
   saving: boolean;
@@ -763,6 +775,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
   function SegmentRow(
     {
       segment,
+      config,
       selected,
       hovered,
       saving,
@@ -814,6 +827,14 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
     const areaM2 =
       heightUsedMm != null && segment.length_mm != null
         ? (segment.length_mm / 1000) * (heightUsedMm / 1000)
+        : null;
+
+    // When the RL stations span a pricing band edge, the engine quotes and
+    // orders this wall as separate sections — surface that here so the
+    // estimator can see the split without leaving the wall.
+    const pricingSections =
+      segment.length_mm != null && segment.length_mm > 0
+        ? splitSegmentSections(segment, config)
         : null;
 
     async function commit(patch: WallSegmentUpdate) {
@@ -1060,6 +1081,28 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
                 {areaM2 != null ? `${areaM2.toFixed(2)} m²` : "—"}
               </span>
             </div>
+
+            {/* Auto-split: RL stations span a pricing band edge, so pricing
+                and ordering treat this wall as separate sections. */}
+            {pricingSections && (
+              <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-[11px] text-sky-900">
+                <span className="font-medium">
+                  Splits into {pricingSections.length} sections for pricing:
+                </span>{" "}
+                {pricingSections
+                  .map(
+                    (s) =>
+                      `${(((segment.length_mm ?? 0) / 1000) * s.share).toFixed(1)} LM @ ${s.heightM.toFixed(2)} m (${s.pairCount} RL${s.pairCount === 1 ? "" : "s"})`,
+                  )
+                  .join(" + ")}
+                <span className="text-sky-700">
+                  {" "}
+                  — some RLs cross a pricing band, so the quote, posts and
+                  materials treat each section like its own wall. Type a
+                  height override to price it as one wall instead.
+                </span>
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-1.5 px-1 text-xs text-muted-foreground">
               {segment.user_added ? (

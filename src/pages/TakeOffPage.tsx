@@ -99,10 +99,14 @@ export function TakeOffPage() {
 
   const bundle = calculateBundle(walls, project);
   // Pair each WallCalculated back to its DB row so inline edits
-  // know which segment to update.
+  // know which segment to update. A wall whose RLs span a pricing band
+  // arrives as several sections (calc.id gets ::s<n>); each section row
+  // points back at the same segment via sourceId.
   const rows = bundle.calculatedWalls.map((calc) => ({
     calc,
-    segment: walls.find((w) => w.id === calc.id) as WallSegment,
+    segment: walls.find(
+      (w) => w.id === (calc.sourceId ?? calc.id),
+    ) as WallSegment,
   }));
 
   // Group rows by lot for display (walls already arrive in the persisted
@@ -118,10 +122,14 @@ export function TakeOffPage() {
   const totalEngM2 = rows.reduce((s, r) => s + r.calc.m2, 0);
   // Face m² uses the raw measured height (before 0.2 m rounding) — what
   // the wall actually looks like. Engineering m² (calc.m2) uses the
-  // rounded height and is what BE prices off.
-  const totalFaceM2 = rows.reduce((s, r) => {
-    const lengthM = (r.segment.length_mm ?? 0) / 1000;
-    const heightM = (r.segment.height_mm ?? 0) / 1000;
+  // rounded height and is what BE prices off. Summed per unique segment,
+  // since a band-split wall contributes several rows for one segment.
+  const uniqueSegments = [
+    ...new Map(rows.map((r) => [r.segment.id, r.segment])).values(),
+  ];
+  const totalFaceM2 = uniqueSegments.reduce((s, seg) => {
+    const lengthM = (seg.length_mm ?? 0) / 1000;
+    const heightM = (seg.height_mm ?? 0) / 1000;
     return s + lengthM * heightM;
   }, 0);
   const totalConcrete = rows.reduce((s, r) => s + r.calc.concreteM3, 0);
@@ -363,11 +371,17 @@ export function TakeOffPage() {
                       (s, r) => s + r.calc.lengthLM,
                       0,
                     );
-                    const gFace = group.walls.reduce(
-                      (s, r) =>
+                    // Face m² per unique segment — a band-split wall has
+                    // several rows pointing at the same segment.
+                    const gFace = [
+                      ...new Map(
+                        group.walls.map((r) => [r.segment.id, r.segment]),
+                      ).values(),
+                    ].reduce(
+                      (s, seg) =>
                         s +
-                        ((r.segment.length_mm ?? 0) / 1000) *
-                          ((r.segment.height_mm ?? 0) / 1000),
+                        ((seg.length_mm ?? 0) / 1000) *
+                          ((seg.height_mm ?? 0) / 1000),
                       0,
                     );
                     const gEng = group.walls.reduce((s, r) => s + r.calc.m2, 0);

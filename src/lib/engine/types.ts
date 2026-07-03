@@ -16,6 +16,9 @@ import type {
  */
 export interface WallEntry {
   id: string;
+  /** The DB WallSegment id this entry came from. Differs from `id` when a
+   *  wall auto-splits into per-pricing-band sections (id gets `::s<n>`). */
+  sourceId?: string;
   lot: string;
   type: WallType;
   wallDesign: WallDesign;

@@ -15,6 +15,7 @@
 
 import type { Project, ProjectConfig, WallSegment } from "@/types/db";
 import { defaultConfig } from "./defaults";
+import { splitSegmentSections } from "./wallSections";
 import {
   calculateAllWalls,
   calculateCostBreakdown,
@@ -50,6 +51,7 @@ export function segmentToEntry(seg: WallSegment): WallEntry | null {
 
   return {
     id: seg.id,
+    sourceId: seg.id,
     lot: seg.lot ?? "",
     type: seg.wall_type ?? "Single",
     wallDesign: seg.wall_design ?? "Super Sleeper",
@@ -59,12 +61,35 @@ export function segmentToEntry(seg: WallSegment): WallEntry | null {
   };
 }
 
-/** Convert many segments at once, dropping any that can't be used. */
-export function segmentsToEntries(segments: WallSegment[]): WallEntry[] {
+/**
+ * Convert many segments at once, dropping any that can't be used.
+ *
+ * A wall whose RL stations span a pricing band edge is auto-split into one
+ * entry per band (length apportioned by RL-pair share, height = that band's
+ * RL average) — the same result as drawing one wall per band, so posts and
+ * quote rates match the tall sections instead of the whole-wall average.
+ */
+export function segmentsToEntries(
+  segments: WallSegment[],
+  config: ProjectConfig,
+): WallEntry[] {
   const entries: WallEntry[] = [];
   for (const seg of segments) {
     const entry = segmentToEntry(seg);
-    if (entry) entries.push(entry);
+    if (!entry) continue;
+    const sections = splitSegmentSections(seg, config);
+    if (!sections) {
+      entries.push(entry);
+      continue;
+    }
+    sections.forEach((s, i) => {
+      entries.push({
+        ...entry,
+        id: `${seg.id}::s${i}`,
+        lengthLM: entry.lengthLM * s.share,
+        height: s.heightM,
+      });
+    });
   }
   return entries;
 }
@@ -105,7 +130,7 @@ export function calculateBundle(
   project: Pick<Project, "config" | "cost_overrides"> | null | undefined,
 ): EngineBundle {
   const config = getEffectiveConfig(project);
-  const entries = segmentsToEntries(segments);
+  const entries = segmentsToEntries(segments, config);
   const overrides = project?.cost_overrides ?? {};
   const calculatedWalls = calculateAllWalls(entries, config);
   const costBreakdown = calculateCostBreakdown(entries, config, overrides);

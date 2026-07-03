@@ -9,6 +9,10 @@ import {
   resolveBandEdges,
   sameEdges,
 } from "@/lib/engine/heightBands";
+import {
+  expandSegmentsByPricingBands,
+  splitSegmentSections,
+} from "@/lib/engine/wallSections";
 import { defaultConfig } from "@/lib/engine/defaults";
 import { useProject } from "@/hooks/useProjects";
 import type { ProjectConfig, WallSegment } from "@/types/db";
@@ -57,10 +61,16 @@ export function HeightBandSummary({ segments, projectId }: Props) {
     [edgeDrafts],
   );
 
-  const { bands, noHeight, totals } = useMemo(
-    () => computeHeightBands(segments, edges, roundOpts),
-    [segments, edges, roundOpts],
-  );
+  // Walls whose RLs span a pricing band are counted as their split sections
+  // (same as the quote / materials order), so the bands here reconcile with
+  // what actually gets priced and ordered.
+  const { bands, noHeight, totals, splitWallCount } = useMemo(() => {
+    const expanded = expandSegmentsByPricingBands(segments, config);
+    const splitWallCount = segments.filter((s) =>
+      splitSegmentSections(s, config),
+    ).length;
+    return { ...computeHeightBands(expanded, edges, roundOpts), splitWallCount };
+  }, [segments, config, edges, roundOpts]);
 
   async function saveConfig(next: ProjectConfig) {
     try {
@@ -273,6 +283,16 @@ export function HeightBandSummary({ segments, projectId }: Props) {
           <span className="text-right">{totals.areaM2.toFixed(1)}</span>
         </div>
       </div>
+
+      {splitWallCount > 0 && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {splitWallCount === 1
+            ? "1 wall has RLs spanning a pricing band and is"
+            : `${splitWallCount} walls have RLs spanning a pricing band and are`}{" "}
+          counted as separate sections — matching how the quote and materials
+          order price them.
+        </p>
+      )}
 
       {noHeight.count > 0 && (
         <p className="mt-2 text-[11px] text-amber-700">
