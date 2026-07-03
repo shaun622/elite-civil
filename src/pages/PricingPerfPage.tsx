@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProject } from "@/hooks/useProjects";
 import { POST_SIZE_OPTIONS, defaultConfig } from "@/lib/engine/defaults";
+import { defaultQuoteLabel } from "@/lib/engine/calculations";
 import type { CrewType, ProjectConfig } from "@/types/db";
 
 /**
@@ -678,15 +679,37 @@ export function PricingPerfPage() {
             <CardHeader>
               <CardTitle className="text-base">Extra Over Bands</CardTitle>
               <CardDescription>
-                Price multipliers by wall height range.
+                Price multipliers by wall height range. The quote label is what
+                prints on the Quotation for that band — leave it blank to use the
+                default range text.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="hidden gap-3 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:flex">
+                <span className="w-32">Band</span>
+                <span className="flex-1">Quote label (prints on the quote)</span>
+                <span className="w-20">Multiplier</span>
+                <span className="w-20" />
+              </div>
               {config.extraOverBands.map((band, i) => (
-                <div key={band.label} className="flex items-center gap-3">
+                <div
+                  key={band.label}
+                  className="flex flex-wrap items-center gap-3"
+                >
                   <label className="w-32 text-sm text-muted-foreground">
                     {band.label}
                   </label>
+                  <Input
+                    type="text"
+                    className="h-8 min-w-40 flex-1 text-sm"
+                    value={band.quoteLabel ?? ""}
+                    placeholder={defaultQuoteLabel(band)}
+                    onChange={(e) => {
+                      const next = structuredClone(config);
+                      next.extraOverBands[i].quoteLabel = e.target.value;
+                      setConfig(next);
+                    }}
+                  />
                   <Input
                     type="number"
                     step="0.01"
@@ -699,7 +722,7 @@ export function PricingPerfPage() {
                       setConfig(next);
                     }}
                   />
-                  <span className="text-xs text-muted-foreground">
+                  <span className="w-20 text-xs text-muted-foreground">
                     ({(band.multiplier * 100).toFixed(0)}% extra)
                   </span>
                 </div>

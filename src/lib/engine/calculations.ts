@@ -1,4 +1,4 @@
-import type { ProjectConfig } from "@/types/db";
+import type { ExtraOverBand, ProjectConfig } from "@/types/db";
 import type {
   WallEntry,
   WallCalculated,
@@ -41,6 +41,15 @@ export function embedmentOpts(config: ProjectConfig): {
     enabled: config.engineering.embedmentRoundUp ?? true,
     incrementM: config.engineering.embedmentIncrementM ?? 0.2,
   };
+}
+
+/** The auto Quotation label for an extra-over band, used when the band has no
+ *  custom `quoteLabel`. Shared by the engine and the Pricing & Performance
+ *  editor's placeholder so they never drift. */
+export function defaultQuoteLabel(band: ExtraOverBand): string {
+  if (/upper/i.test(band.label)) return "Upper 2 tier wall";
+  if (/lower/i.test(band.label)) return "Lower 2 tier wall";
+  return `Height ${band.heightMin}-${band.heightMax}m - Single Tier`;
 }
 
 /**
@@ -485,7 +494,7 @@ export function generateQuotationLines(
     const mult = tierBand?.multiplier ?? 0.12;
     pushLine(
       "upper-tier",
-      "Upper 2 tier wall",
+      tierBand?.quoteLabel?.trim() || "Upper 2 tier wall",
       m2_upper,
       "m2",
       getRate(mult),
@@ -497,7 +506,7 @@ export function generateQuotationLines(
     const mult = tierBand?.multiplier ?? 0.11;
     pushLine(
       "lower-tier",
-      "Lower 2 tier wall",
+      tierBand?.quoteLabel?.trim() || "Lower 2 tier wall",
       m2_lower,
       "m2",
       getRate(mult),
@@ -514,7 +523,7 @@ export function generateQuotationLines(
       .reduce((s, w) => s + w.m2, 0);
     if (m2InBand <= 0) continue;
 
-    const desc = `Height ${band.heightMin}-${band.heightMax}m - Single Tier`;
+    const desc = band.quoteLabel?.trim() || defaultQuoteLabel(band);
     pushLine(
       `single-${band.heightMin}-${band.heightMax}`,
       desc,

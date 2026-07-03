@@ -150,6 +150,10 @@ export interface ExtraOverBand {
   heightMin: number;
   heightMax: number;
   multiplier: number;
+  /** Custom text printed on the Quotation for this band. When blank, the
+   *  auto range ("Height 1.6-2.2m - Single Tier") is used. `label` is kept
+   *  for tier detection + config-editor identity and is unaffected. */
+  quoteLabel?: string;
 }
 
 export interface ProjectConfig {
