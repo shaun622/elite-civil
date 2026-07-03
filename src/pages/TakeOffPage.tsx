@@ -338,9 +338,9 @@ export function TakeOffPage() {
       {rows.length > 0 ? (
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+            <div>
+              <Table containerClassName="max-h-[75vh]">
+                <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:border-b [&_th]:bg-card">
                   <TableRow>
                     <TableHead className="w-16">Lot</TableHead>
                     <TableHead>Type</TableHead>
