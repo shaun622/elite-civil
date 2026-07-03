@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from "react-router-dom";
 import { AlertTriangle, Plus, ScanLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DraftInput } from "@/components/ui/draft-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -416,13 +417,11 @@ export function TakeOffPage() {
                       {group.walls.map(({ calc, segment }) => (
                         <TableRow key={calc.id}>
                       <TableCell>
-                        <Input
+                        <DraftInput
                           className="h-7 w-16 text-xs"
                           value={calc.lot ?? ""}
-                          onChange={(e) =>
-                            updateWall(segment.id, {
-                              lot: e.target.value,
-                            })
+                          onCommit={(v) =>
+                            updateWall(segment.id, { lot: v })
                           }
                         />
                       </TableCell>

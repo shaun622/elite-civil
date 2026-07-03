@@ -3,7 +3,7 @@ import { Navigate, useParams } from "react-router-dom";
 import { Printer, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { DraftInput } from "@/components/ui/draft-input";
 import {
   Table,
   TableBody,
@@ -165,17 +165,20 @@ export function CostBreakdownPage() {
                               {formatQty(l.qtyEstimated)}
                             </TableCell>
                             <TableCell className="text-right">
-                              <Input
+                              <DraftInput
                                 type="number"
                                 step="0.1"
                                 className={`ml-auto h-7 w-24 text-right text-xs ${
                                   isOverridden ? "border-primary" : ""
                                 }`}
                                 placeholder={formatQty(l.qtyEstimated)}
-                                value={l.qtyOverride ?? ""}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  if (v === "") {
+                                value={
+                                  l.qtyOverride !== undefined
+                                    ? String(l.qtyOverride)
+                                    : ""
+                                }
+                                onCommit={(v) => {
+                                  if (v.trim() === "") {
                                     setOverride(l.id, undefined);
                                   } else {
                                     const n = parseFloat(v);

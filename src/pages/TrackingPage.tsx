@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DraftInput } from "@/components/ui/draft-input";
 import {
   Table,
   TableBody,
@@ -329,74 +330,64 @@ export function TrackingPage() {
                             .map((e) => (
                               <TableRow key={e.id}>
                                 <TableCell>
-                                  <Input
+                                  <DraftInput
                                     type="date"
                                     className="h-7 w-36 text-xs"
                                     value={e.date}
-                                    onChange={(ev) =>
-                                      updateEntry(e.id, {
-                                        date: ev.target.value,
-                                      })
+                                    onCommit={(v) =>
+                                      updateEntry(e.id, { date: v })
                                     }
                                   />
                                 </TableCell>
                                 <TableCell>
-                                  <Input
+                                  <DraftInput
                                     className="h-7 w-32 text-xs"
                                     value={e.crew}
-                                    onChange={(ev) =>
-                                      updateEntry(e.id, {
-                                        crew: ev.target.value,
-                                      })
+                                    onCommit={(v) =>
+                                      updateEntry(e.id, { crew: v })
                                     }
                                   />
                                 </TableCell>
                                 <TableCell>
-                                  <Input
+                                  <DraftInput
                                     className="h-7 w-28 text-xs"
                                     value={e.machine}
-                                    onChange={(ev) =>
-                                      updateEntry(e.id, {
-                                        machine: ev.target.value,
-                                      })
+                                    onCommit={(v) =>
+                                      updateEntry(e.id, { machine: v })
                                     }
                                   />
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Input
+                                  <DraftInput
                                     type="number"
                                     step="0.5"
                                     className="h-7 w-20 text-right text-xs"
-                                    value={e.hours}
-                                    onChange={(ev) =>
+                                    value={String(e.hours)}
+                                    onCommit={(v) =>
                                       updateEntry(e.id, {
-                                        hours:
-                                          parseFloat(ev.target.value) || 0,
+                                        hours: parseFloat(v) || 0,
                                       })
                                     }
                                   />
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Input
+                                  <DraftInput
                                     type="number"
                                     className="h-7 w-20 text-right text-xs"
-                                    value={e.quantity}
-                                    onChange={(ev) =>
+                                    value={String(e.quantity)}
+                                    onCommit={(v) =>
                                       updateEntry(e.id, {
-                                        quantity:
-                                          parseFloat(ev.target.value) || 0,
+                                        quantity: parseFloat(v) || 0,
                                       })
                                     }
                                   />
                                 </TableCell>
                                 <TableCell>
-                                  <Input
+                                  <DraftInput
                                     className="h-7 text-xs"
                                     value={e.notes}
-                                    onChange={(ev) =>
-                                      updateEntry(e.id, {
-                                        notes: ev.target.value,
-                                      })
+                                    onCommit={(v) =>
+                                      updateEntry(e.id, { notes: v })
                                     }
                                   />
                                 </TableCell>

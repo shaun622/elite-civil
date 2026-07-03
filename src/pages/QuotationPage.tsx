@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DraftInput } from "@/components/ui/draft-input";
 import { Separator } from "@/components/ui/separator";
 import {
   Table,
@@ -314,47 +315,41 @@ export function QuotationPage() {
                 {extras.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
-                      <Input
+                      <DraftInput
                         className="h-8 text-sm"
                         placeholder="e.g. Tree removal at lot 503"
                         value={item.description}
-                        onChange={(e) =>
-                          patchExtra(item.id, { description: e.target.value })
+                        onCommit={(v) =>
+                          patchExtra(item.id, { description: v })
                         }
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
+                      <DraftInput
                         type="number"
                         step="0.1"
                         className="h-8 w-16 text-right text-sm"
-                        value={item.qty}
-                        onChange={(e) =>
-                          patchExtra(item.id, {
-                            qty: parseFloat(e.target.value) || 0,
-                          })
+                        value={String(item.qty)}
+                        onCommit={(v) =>
+                          patchExtra(item.id, { qty: parseFloat(v) || 0 })
                         }
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
+                      <DraftInput
                         className="h-8 w-16 text-sm"
                         value={item.unit}
-                        onChange={(e) =>
-                          patchExtra(item.id, { unit: e.target.value })
-                        }
+                        onCommit={(v) => patchExtra(item.id, { unit: v })}
                       />
                     </TableCell>
                     <TableCell>
-                      <Input
+                      <DraftInput
                         type="number"
                         step="0.01"
                         className="h-8 w-28 text-right text-sm"
-                        value={item.rate}
-                        onChange={(e) =>
-                          patchExtra(item.id, {
-                            rate: parseFloat(e.target.value) || 0,
-                          })
+                        value={String(item.rate)}
+                        onCommit={(v) =>
+                          patchExtra(item.id, { rate: parseFloat(v) || 0 })
                         }
                       />
                     </TableCell>

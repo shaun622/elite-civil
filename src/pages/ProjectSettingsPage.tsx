@@ -9,9 +9,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DraftInput, DraftTextarea } from "@/components/ui/draft-input";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { useProject } from "@/hooks/useProjects";
@@ -102,94 +101,66 @@ export function ProjectSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <LabeledField label="Project name">
-            <Input
+            <DraftInput
               value={project.name}
-              onChange={(e) => void update({ name: e.target.value })}
+              onCommit={(v) => void update({ name: v })}
             />
           </LabeledField>
           <LabeledField label="Quote number">
-            <Input
+            <DraftInput
               placeholder="e.g. Q1428"
               value={project.quote_number ?? ""}
-              onChange={(e) =>
-                void update({
-                  quote_number: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ quote_number: v || null })}
             />
           </LabeledField>
 
           <Separator />
 
           <LabeledField label="Client">
-            <Input
+            <DraftInput
               placeholder="e.g. Winslow"
               value={project.client_name ?? ""}
-              onChange={(e) =>
-                void update({
-                  client_name: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ client_name: v || null })}
             />
           </LabeledField>
           <LabeledField label="Contact name">
-            <Input
+            <DraftInput
               placeholder="e.g. Bala Krishnan"
               value={project.contact_name ?? ""}
-              onChange={(e) =>
-                void update({
-                  contact_name: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ contact_name: v || null })}
             />
           </LabeledField>
           <LabeledField label="Contact email">
-            <Input
+            <DraftInput
               type="email"
               placeholder="e.g. contact@example.com"
               value={project.contact_email ?? ""}
-              onChange={(e) =>
-                void update({
-                  contact_email: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ contact_email: v || null })}
             />
           </LabeledField>
           <LabeledField label="Site address">
-            <Input
+            <DraftInput
               placeholder="e.g. Lot 12 Riverbend Drive"
               value={project.site_address ?? ""}
-              onChange={(e) =>
-                void update({
-                  site_address: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ site_address: v || null })}
             />
           </LabeledField>
 
           <Separator />
 
           <LabeledField label="Project description (T&Cs preamble)">
-            <Textarea
+            <DraftTextarea
               className="min-h-[80px]"
               value={project.description ?? ""}
-              onChange={(e) =>
-                void update({
-                  description: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ description: v || null })}
             />
           </LabeledField>
           <LabeledField label="Notes">
-            <Textarea
+            <DraftTextarea
               className="min-h-[60px]"
               placeholder="Internal notes (not shown to clients)"
               value={project.notes ?? ""}
-              onChange={(e) =>
-                void update({
-                  notes: e.target.value || null,
-                })
-              }
+              onCommit={(v) => void update({ notes: v || null })}
             />
           </LabeledField>
         </CardContent>
