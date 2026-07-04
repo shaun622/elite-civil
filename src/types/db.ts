@@ -20,10 +20,43 @@ export interface Project {
   tracking_entries: TrackingEntry[];
   /** Custom quote line items added during quote review. */
   extra_over_items: ExtraOverItem[];
-  /** Per-cost-line manual overrides — keyed by `CostDetailLine.id`. */
+  /** Per-cost-line manual overrides — keyed by `CostDetailLine.id`. Also holds
+   *  the quote's numeric per-line overrides ("quote_rate:" / "quote_qty:"). */
   cost_overrides: Record<string, number>;
+  /** Display-only overrides for the customer-facing Quotation (custom line
+   *  text / hidden / added lines, editable summary + boilerplate). Never feeds
+   *  the engine. */
+  quote_overrides: QuoteOverrides;
   created_at: string;
   updated_at: string;
+}
+
+/** A user-added Quotation line rendered inside the pricing schedule (separate
+ *  from Extra Over items). Display-only. */
+export interface QuoteCustomLine {
+  id: string;
+  description: string;
+  qty: number;
+  unit: string;
+  rate: number;
+}
+
+/** Everything non-numeric the estimator can override on the Quotation. All
+ *  optional; an unset field falls back to the engine value / hardcoded default. */
+export interface QuoteOverrides {
+  /** Per engine-line overrides, keyed by `QuotationLineItem.key`. */
+  lines?: Record<string, { description?: string; hidden?: boolean }>;
+  /** User-added rows shown in the main pricing schedule. */
+  customLines?: QuoteCustomLine[];
+  /** The blurb under "Pricing schedule". */
+  scheduleDescription?: string;
+  /** Text overrides for the Wall summary stats. */
+  summary?: { totalM2?: string; lots?: string; segments?: string };
+  /** Long boilerplate sections (plain text); unset = hardcoded default layout. */
+  designParams?: string;
+  terms?: string;
+  inclusions?: string;
+  exclusions?: string;
 }
 
 export type ProjectInsert = {
@@ -52,6 +85,7 @@ export type ProjectUpdate = Partial<{
   tracking_entries: TrackingEntry[];
   extra_over_items: ExtraOverItem[];
   cost_overrides: Record<string, number>;
+  quote_overrides: QuoteOverrides;
 }>;
 
 /* ============================================================

@@ -96,10 +96,13 @@ export interface RateBreakdown {
 }
 
 export interface QuotationLineItem {
-  /** Stable key for a manual rate override (cost_overrides["quote_rate:<key>"]). */
+  /** Stable key for a manual rate/qty override (cost_overrides["quote_rate:<key>"]
+   *  / ["quote_qty:<key>"]). */
   key: string;
   description: string;
   qty: number;
+  /** The engine-computed qty, before any manual quote_qty override. */
+  qtyEstimated: number;
   unit: string;
   rate: number;
   total: number;
@@ -107,6 +110,8 @@ export interface QuotationLineItem {
   rateBreakdown?: RateBreakdown;
   /** True when this line's rate came from a manual override, not the engine. */
   rateOverridden?: boolean;
+  /** True when this line's qty came from a manual override, not the engine. */
+  qtyOverridden?: boolean;
 }
 
 export type MaterialCategory =

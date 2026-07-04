@@ -59,3 +59,22 @@
     font-variation-settings: "opsz" 32;
   }
 }
+
+/* Printing (used by the Quotation "Print / save PDF"): drop the app shell and
+ * render editable fields as plain text, not input boxes. */
+@media print {
+  header,
+  aside {
+    display: none !important;
+  }
+  input,
+  textarea {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    resize: none !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}

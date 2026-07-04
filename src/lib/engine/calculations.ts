@@ -434,20 +434,28 @@ export function generateQuotationLines(
     computedRate: number,
     rateBreakdown?: RateBreakdown,
   ) => {
-    const ovr = overrides[`quote_rate:${key}`];
-    const overridden =
-      typeof ovr === "number" && Number.isFinite(ovr) && ovr >= 0;
-    const rate = overridden ? ovr : computedRate;
+    const rateOvr = overrides[`quote_rate:${key}`];
+    const rateOverridden =
+      typeof rateOvr === "number" && Number.isFinite(rateOvr) && rateOvr >= 0;
+    const rate = rateOverridden ? rateOvr : computedRate;
+
+    const qtyOvr = overrides[`quote_qty:${key}`];
+    const qtyOverridden =
+      typeof qtyOvr === "number" && Number.isFinite(qtyOvr) && qtyOvr >= 0;
+    const finalQty = qtyOverridden ? qtyOvr : qty;
+
     lines.push({
       key,
       description,
-      qty,
+      qty: finalQty,
+      qtyEstimated: qty,
       unit,
       rate,
-      total: qty * rate,
+      total: finalQty * rate,
       // The breakdown explains the computed rate; drop it once overridden.
-      rateBreakdown: overridden ? undefined : rateBreakdown,
-      rateOverridden: overridden,
+      rateBreakdown: rateOverridden ? undefined : rateBreakdown,
+      rateOverridden,
+      qtyOverridden,
     });
   };
 
