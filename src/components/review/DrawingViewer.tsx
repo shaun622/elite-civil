@@ -1,18 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import {
   Circle,
   Group,
   Image as KonvaImage,
+  Label,
   Layer,
   Line,
   Rect,
   Stage,
+  Tag,
   Text,
 } from "react-konva";
 import type Konva from "konva";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bboxToPixels, pointsToPixels } from "@/lib/coord";
+import { bandColor, bandIndex } from "@/lib/engine/heightBands";
+import { pairBandSpans, type BandSpan } from "@/lib/engine/wallSections";
+import { roundHeightUp } from "@/lib/engine/calculations";
 import type {
   Bbox,
   DimensionLabel,
@@ -62,6 +73,19 @@ type Props = {
     base64: string,
     bbox: [number, number, number, number],
   ) => void;
+  /** Colour walls by height band. When `sections` is on, a wall whose RL
+   *  stations span bands is multi-coloured along its length. Null = off. */
+  bandView?: {
+    edges: number[];
+    roundOpts: { enabled: boolean; incrementM: number };
+    colors: string[];
+    sections: boolean;
+  } | null;
+  /** Show a length + m² badge on each wall. */
+  badges?: boolean;
+  /** Parent-owned ref; the viewer assigns a fn that returns a PNG data URL of
+   *  the current stage framing (for the printable summary). */
+  snapshotFnRef?: MutableRefObject<(() => string | null) | null>;
 };
 
 export function DrawingViewer({
@@ -85,6 +109,9 @@ export function DrawingViewer({
   onWallPointClick,
   grabbingRls = false,
   onRlCrop,
+  bandView = null,
+  badges = false,
+  snapshotFnRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -136,6 +163,23 @@ export function DrawingViewer({
     setContainerSize({ width: rect.width, height: rect.height });
     return () => obs.disconnect();
   }, []);
+
+  // Expose a stage → PNG snapshot to the parent (used for the printable
+  // summary). Captures the current framing; image loads CORS-anonymous so the
+  // canvas isn't tainted.
+  useEffect(() => {
+    if (!snapshotFnRef) return;
+    snapshotFnRef.current = () => {
+      try {
+        return stageRef.current?.toDataURL({ pixelRatio: 2 }) ?? null;
+      } catch {
+        return null;
+      }
+    };
+    return () => {
+      snapshotFnRef.current = null;
+    };
+  }, [snapshotFnRef]);
 
   const fitZoom = useMemo(() => {
     if (
@@ -452,9 +496,29 @@ export function DrawingViewer({
               const selected = seg.id === selectedSegmentId;
               const hovered = seg.id === hoveredSegmentId;
               // Purple while a manually-added wall is still unconfirmed;
-              // Confirm turns it blue (and un-confirm turns it back).
-              const color =
+              // Confirm turns it blue (and un-confirm turns it back). When the
+              // height-band view is on, the wall is coloured by its band.
+              let color =
                 seg.user_added && !seg.confirmed ? COLOR_USER : COLOR_WALL;
+              if (bandView && seg.height_mm != null) {
+                color = bandColor(
+                  bandIndex(
+                    roundHeightUp(seg.height_mm / 1000, bandView.roundOpts),
+                    bandView.edges,
+                  ),
+                );
+              }
+              const spans = bandView?.sections
+                ? pairBandSpans(seg, bandView.edges, bandView.roundOpts)
+                : null;
+              const badgeText =
+                badges && seg.length_mm != null
+                  ? `${(seg.length_mm / 1000).toFixed(1)} m${
+                      seg.height_mm != null
+                        ? ` · ${((seg.length_mm / 1000) * (seg.height_mm / 1000)).toFixed(1)} m²`
+                        : ""
+                    }`
+                  : null;
               const polylinePx = pointsToPixels(
                 seg.polyline,
                 imageWidth,
@@ -468,6 +532,9 @@ export function DrawingViewer({
                   imageWidth={imageWidth}
                   imageHeight={imageHeight}
                   color={color}
+                  spans={spans}
+                  spanColors={bandView?.colors}
+                  badgeText={badgeText}
                   selected={selected}
                   hovered={hovered}
                   editable={
@@ -731,6 +798,50 @@ function flatPolylineLength(pts: number[]): number {
   return total;
 }
 
+/** The [x,y] point at `target` arc-length along a flat polyline. */
+function pointAtLength(flat: number[], target: number): [number, number] {
+  if (flat.length < 2) return [0, 0];
+  let acc = 0;
+  for (let k = 2; k + 1 < flat.length; k += 2) {
+    const ax = flat[k - 2];
+    const ay = flat[k - 1];
+    const bx = flat[k];
+    const by = flat[k + 1];
+    const segLen = Math.hypot(bx - ax, by - ay);
+    if (acc + segLen >= target) {
+      const t = segLen > 0 ? (target - acc) / segLen : 0;
+      return [ax + t * (bx - ax), ay + t * (by - ay)];
+    }
+    acc += segLen;
+  }
+  return [flat[flat.length - 2], flat[flat.length - 1]];
+}
+
+/** The sub-polyline covering [startFrac, endFrac] of a flat polyline's arc
+ *  length — interpolated boundary points plus any interior vertices between. */
+function slicePolylineByFractions(
+  flat: number[],
+  startFrac: number,
+  endFrac: number,
+): number[] {
+  const total = flatPolylineLength(flat);
+  if (total <= 0 || flat.length < 4) return flat.slice();
+  const startLen = Math.max(0, startFrac * total);
+  const endLen = Math.min(total, endFrac * total);
+  const [sx, sy] = pointAtLength(flat, startLen);
+  const out: number[] = [sx, sy];
+  let acc = 0;
+  for (let k = 0; k + 1 < flat.length; k += 2) {
+    if (k >= 2) {
+      acc += Math.hypot(flat[k] - flat[k - 2], flat[k + 1] - flat[k - 1]);
+    }
+    if (acc > startLen && acc < endLen) out.push(flat[k], flat[k + 1]);
+  }
+  const [ex, ey] = pointAtLength(flat, endLen);
+  out.push(ex, ey);
+  return out;
+}
+
 function flatToPairs(flat: number[]): [number, number][] {
   const out: [number, number][] = [];
   for (let k = 0; k + 1 < flat.length; k += 2) {
@@ -826,6 +937,9 @@ function SegmentOverlay({
   imageWidth,
   imageHeight,
   color,
+  spans,
+  spanColors,
+  badgeText,
   selected,
   hovered,
   editable,
@@ -842,6 +956,11 @@ function SegmentOverlay({
   imageWidth: number;
   imageHeight: number;
   color: string;
+  /** Positional band spans for multi-colouring a wall (null = single colour). */
+  spans?: BandSpan[] | null;
+  spanColors?: string[];
+  /** length + m² badge text (null = no badge). */
+  badgeText?: string | null;
   selected: boolean;
   hovered: boolean;
   editable: boolean;
@@ -869,6 +988,7 @@ function SegmentOverlay({
 
   const livePx = drag ?? polylinePx;
   const minEdge = Math.min(imageWidth, imageHeight);
+  const sectioned = !!(spans && spans.length > 1 && spanColors);
   const strokeWidth = emphasized
     ? Math.max(minEdge / 280, 4)
     : Math.max(minEdge / 620, 2.2);
@@ -939,10 +1059,14 @@ function SegmentOverlay({
             lineJoin="round"
             listening={false}
           />
+          {/* Base line stays the interactive hit target; when sectioned it's
+              invisible (opacity 0) and the per-band spans paint over it. */}
           <Line
             points={livePx}
             stroke={color}
-            opacity={translucent ? 0.35 : emphasized ? 1 : 0.9}
+            opacity={
+              sectioned ? 0 : translucent ? 0.35 : emphasized ? 1 : 0.9
+            }
             strokeWidth={strokeWidth}
             lineCap="butt"
             lineJoin="round"
@@ -957,6 +1081,23 @@ function SegmentOverlay({
             onMouseLeave={onHoverLeave}
             hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
           />
+          {sectioned &&
+            spans!.map((sp, i) => (
+              <Line
+                key={`span-${i}`}
+                points={slicePolylineByFractions(
+                  livePx,
+                  sp.startFrac,
+                  sp.endFrac,
+                )}
+                stroke={spanColors![sp.band % spanColors!.length]}
+                opacity={translucent ? 0.35 : emphasized ? 1 : 0.9}
+                strokeWidth={strokeWidth}
+                lineCap="butt"
+                lineJoin="round"
+                listening={false}
+              />
+            ))}
           {editable &&
             flatToPairs(livePx).map(([hx, hy], i) => (
               <Circle
@@ -992,6 +1133,36 @@ function SegmentOverlay({
           {dragPoint && (
             <Crosshair x={dragPoint.x} y={dragPoint.y} zoom={zoom} />
           )}
+          {badgeText &&
+            (() => {
+              const total = flatPolylineLength(livePx);
+              const [mx, my] = pointAtLength(livePx, total / 2);
+              const bsize = Math.max(11, Math.min(22, minEdge / 70));
+              return (
+                <Label
+                  x={mx}
+                  y={my - bsize * 1.7}
+                  listening={false}
+                  opacity={translucent ? 0.5 : 1}
+                >
+                  <Tag
+                    fill="#ffffff"
+                    opacity={0.9}
+                    cornerRadius={3}
+                    shadowColor="#000"
+                    shadowBlur={2}
+                    shadowOpacity={0.3}
+                  />
+                  <Text
+                    text={badgeText}
+                    fontSize={bsize}
+                    fontStyle="bold"
+                    fill="#111827"
+                    padding={3}
+                  />
+                </Label>
+              );
+            })()}
         </>
       )}
       {segment.label_bbox && (

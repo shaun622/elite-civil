@@ -8,6 +8,7 @@ import {
   normalizeBandEdges,
   resolveBandEdges,
   sameEdges,
+  type HeightBand,
 } from "@/lib/engine/heightBands";
 import {
   expandSegmentsByPricingBands,
@@ -23,6 +24,83 @@ type Props = {
 };
 
 const COLS = "grid grid-cols-[1fr_44px_78px_70px] gap-2";
+
+/**
+ * The per-band totals table (Band / Walls / Length / Area m²). Shared by the
+ * review summary and the printable height-band export so they never drift.
+ * Pass `colors` to prefix each band with its drawing colour (doubles as the
+ * legend on the printout).
+ */
+export function BandSummaryTable({
+  bands,
+  noHeight,
+  totals,
+  colors,
+}: {
+  bands: HeightBand[];
+  noHeight: { count: number; lengthMm: number };
+  totals: { count: number; lengthMm: number; areaM2: number };
+  colors?: string[];
+}) {
+  return (
+    <div>
+      <div
+        className={`${COLS} px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground`}
+      >
+        <span>Band</span>
+        <span className="text-right">Walls</span>
+        <span className="text-right">Length</span>
+        <span className="text-right">Area m²</span>
+      </div>
+
+      {bands.map((b, i) => (
+        <div
+          key={i}
+          className={`${COLS} rounded px-2 py-1 text-sm tabular-nums ${
+            i % 2 === 1 ? "bg-muted/40" : ""
+          }`}
+        >
+          <span className="flex items-center gap-1.5 font-medium">
+            {colors && (
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: colors[i % colors.length] }}
+              />
+            )}
+            {b.label}
+          </span>
+          <span className="text-right text-muted-foreground">{b.count}</span>
+          <span className="text-right">
+            {b.count > 0 ? formatLength(b.lengthMm) : "—"}
+          </span>
+          <span className="text-right">
+            {b.count > 0 ? b.areaM2.toFixed(1) : "—"}
+          </span>
+        </div>
+      ))}
+
+      {noHeight.count > 0 && (
+        <div
+          className={`${COLS} rounded bg-amber-50 px-2 py-1 text-sm tabular-nums text-amber-900`}
+        >
+          <span className="font-medium">Height not set</span>
+          <span className="text-right">{noHeight.count}</span>
+          <span className="text-right">{formatLength(noHeight.lengthMm)}</span>
+          <span className="text-right">—</span>
+        </div>
+      )}
+
+      <div
+        className={`${COLS} mt-1 border-t px-2 pt-1.5 text-sm font-semibold tabular-nums`}
+      >
+        <span>Total</span>
+        <span className="text-right">{totals.count}</span>
+        <span className="text-right">{formatLength(totals.lengthMm)}</span>
+        <span className="text-right">{totals.areaM2.toFixed(1)}</span>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Quantity summary for the review screen — wall length + face area totalled
@@ -234,54 +312,7 @@ export function HeightBandSummary({ segments, projectId }: Props) {
 
       {/* Per-band totals */}
       <div className="mt-3">
-        <div
-          className={`${COLS} px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground`}
-        >
-          <span>Band</span>
-          <span className="text-right">Walls</span>
-          <span className="text-right">Length</span>
-          <span className="text-right">Area m²</span>
-        </div>
-
-        {bands.map((b, i) => (
-          <div
-            key={i}
-            className={`${COLS} rounded px-2 py-1 text-sm tabular-nums ${
-              i % 2 === 1 ? "bg-muted/40" : ""
-            }`}
-          >
-            <span className="font-medium">{b.label}</span>
-            <span className="text-right text-muted-foreground">{b.count}</span>
-            <span className="text-right">
-              {b.count > 0 ? formatLength(b.lengthMm) : "—"}
-            </span>
-            <span className="text-right">
-              {b.count > 0 ? b.areaM2.toFixed(1) : "—"}
-            </span>
-          </div>
-        ))}
-
-        {noHeight.count > 0 && (
-          <div
-            className={`${COLS} rounded bg-amber-50 px-2 py-1 text-sm tabular-nums text-amber-900`}
-          >
-            <span className="font-medium">Height not set</span>
-            <span className="text-right">{noHeight.count}</span>
-            <span className="text-right">
-              {formatLength(noHeight.lengthMm)}
-            </span>
-            <span className="text-right">—</span>
-          </div>
-        )}
-
-        <div
-          className={`${COLS} mt-1 border-t px-2 pt-1.5 text-sm font-semibold tabular-nums`}
-        >
-          <span>Total</span>
-          <span className="text-right">{totals.count}</span>
-          <span className="text-right">{formatLength(totals.lengthMm)}</span>
-          <span className="text-right">{totals.areaM2.toFixed(1)}</span>
-        </div>
+        <BandSummaryTable bands={bands} noHeight={noHeight} totals={totals} />
       </div>
 
       {splitWallCount > 0 && (

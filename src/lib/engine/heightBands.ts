@@ -4,6 +4,22 @@ import { roundHeightUp } from "./calculations";
 /** Default band edges (m) — the typical job split: 0–1.6, 1.6–3.0, 3.0+. */
 export const DEFAULT_HEIGHT_BAND_EDGES = [1.6, 3.0];
 
+/** Colour per band, low→high, cycled if there are more bands than colours.
+ *  Used to colour walls on the drawing and the matching legend. */
+export const BAND_COLORS = [
+  "#10b981", // green   — lowest band
+  "#f59e0b", // amber
+  "#ef4444", // red
+  "#8b5cf6", // violet
+  "#0ea5e9", // sky
+  "#ec4899", // pink
+];
+
+/** The colour for band index `i` (cycles the palette for many bands). */
+export function bandColor(i: number): string {
+  return BAND_COLORS[i % BAND_COLORS.length];
+}
+
 export interface HeightBand {
   label: string;
   count: number;
@@ -43,7 +59,7 @@ export function sameEdges(a: number[], b: number[]): boolean {
  *  A height exactly on an edge belongs to the LOWER band — the same rule the
  *  quote (`> min && <= max`) and the post-size lookup use, so the band
  *  summaries here always classify a wall the way it's priced. */
-function bandIndex(heightM: number, edges: number[]): number {
+export function bandIndex(heightM: number, edges: number[]): number {
   for (let i = 0; i < edges.length; i++) {
     if (heightM <= edges[i]) return i;
   }

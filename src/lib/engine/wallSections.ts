@@ -1,5 +1,6 @@
 import type { ProjectConfig, WallSegment } from "@/types/db";
 import { embedmentOpts, roundHeightUp } from "./calculations";
+import { bandIndex } from "./heightBands";
 
 /* ============================================================
  * Auto-split a drawn wall into per-pricing-band sections.
@@ -86,6 +87,48 @@ export function splitSegmentSections(
       heightM: hs.reduce((s, h) => s + h, 0) / hs.length,
       pairCount: hs.length,
     }));
+}
+
+/** A contiguous stretch of a wall (as a fraction of its length) that falls in
+ *  one height band — for multi-colouring a wall along its length. */
+export interface BandSpan {
+  startFrac: number;
+  endFrac: number;
+  band: number;
+}
+
+/**
+ * Positional band spans along a wall from its RL stations, IN ORDER (station
+ * order = position along the wall). Each pair is an equal share of the length;
+ * consecutive same-band pairs merge into one span. Uses the given DISPLAY band
+ * `edges` (not the pricing edges), so it matches the on-drawing legend. Returns
+ * null when there's nothing to split: a manual height override, <2 usable
+ * pairs, or every station in one band (caller colours the whole wall).
+ */
+export function pairBandSpans(
+  seg: Pick<WallSegment, "rl_pairs" | "height_override_mm">,
+  edges: number[],
+  roundOpts: { enabled: boolean; incrementM: number },
+): BandSpan[] | null {
+  if (seg.height_override_mm != null) return null;
+  const heights = (seg.rl_pairs ?? [])
+    .map((p) => p.top - p.bottom)
+    .filter((h) => Number.isFinite(h) && h > 0);
+  if (heights.length < 2 || edges.length === 0) return null;
+
+  const bands = heights.map((h) => bandIndex(roundHeightUp(h, roundOpts), edges));
+  if (bands.every((b) => b === bands[0])) return null;
+
+  const n = heights.length;
+  const spans: BandSpan[] = [];
+  let start = 0;
+  for (let i = 1; i <= n; i++) {
+    if (i === n || bands[i] !== bands[start]) {
+      spans.push({ startFrac: start / n, endFrac: i / n, band: bands[start] });
+      start = i;
+    }
+  }
+  return spans.length > 1 ? spans : null;
 }
 
 /** Expand segments into per-section pseudo-segments (length_mm/height_mm) so

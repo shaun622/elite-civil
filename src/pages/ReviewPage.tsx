@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -7,6 +7,7 @@ import {
   Loader2,
   Lock,
   MousePointerClick,
+  Printer,
   Unlock,
   X,
 } from "lucide-react";
@@ -16,12 +17,24 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { DrawingViewer } from "@/components/review/DrawingViewer";
 import { MeasurementTable } from "@/components/review/MeasurementTable";
-import { HeightBandSummary } from "@/components/review/HeightBandSummary";
+import {
+  HeightBandSummary,
+  BandSummaryTable,
+} from "@/components/review/HeightBandSummary";
 import { ExtractionMeta } from "@/components/review/ExtractionMeta";
 import { WarningsPanel } from "@/components/review/WarningsPanel";
 import { useReview } from "@/hooks/useReview";
 import { useProject } from "@/hooks/useProjects";
 import { getEffectiveConfig } from "@/lib/engine/adapter";
+import {
+  BAND_COLORS,
+  bandColor,
+  bandLabel,
+  computeHeightBands,
+  resolveBandEdges,
+} from "@/lib/engine/heightBands";
+import { embedmentOpts } from "@/lib/engine/calculations";
+import { expandSegmentsByPricingBands } from "@/lib/engine/wallSections";
 import { readRlsFromCrop } from "@/lib/api/readRls";
 import type { RlPair } from "@/types/db";
 
@@ -33,6 +46,12 @@ export function ReviewPage() {
   const review = useReview(pageId);
   const { project } = useProject(projectId);
   const config = getEffectiveConfig(project);
+  // Client-facing drawing view toggles (ephemeral — not persisted).
+  const [bandColorsOn, setBandColorsOn] = useState(false);
+  const [sectionsOn, setSectionsOn] = useState(true);
+  const [badgesOn, setBadgesOn] = useState(false);
+  const [printSnapshot, setPrintSnapshot] = useState<string | null>(null);
+  const snapshotFnRef = useRef<(() => string | null) | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
     null,
   );
@@ -274,8 +293,44 @@ export function ReviewPage() {
       .find((s) => s.id === selectedSegmentId)
       ?.label?.trim() || "this wall";
 
+  const edges = useMemo(() => resolveBandEdges(config), [config]);
+  const roundOpts = useMemo(() => embedmentOpts(config), [config]);
+  const bandView = bandColorsOn
+    ? { edges, roundOpts, colors: BAND_COLORS, sections: sectionsOn }
+    : null;
+
+  const segments = review.bundle?.segments ?? [];
+  // Band table for the printout — counts sections when the sections toggle is
+  // on, so the printed summary matches exactly what the drawing shows.
+  const printBands = useMemo(
+    () =>
+      computeHeightBands(
+        sectionsOn ? expandSegmentsByPricingBands(segments, config) : segments,
+        edges,
+        roundOpts,
+      ),
+    [segments, sectionsOn, config, edges, roundOpts],
+  );
+
+  function handlePrintSummary() {
+    setPrintSnapshot(snapshotFnRef.current?.() ?? "");
+  }
+  // Once the snapshot is captured (and rendered into the print section), fire
+  // the browser print dialog, then clear it when printing finishes.
+  useEffect(() => {
+    if (printSnapshot == null) return;
+    const done = () => setPrintSnapshot(null);
+    window.addEventListener("afterprint", done);
+    const t = window.setTimeout(() => window.print(), 150);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("afterprint", done);
+    };
+  }, [printSnapshot]);
+
   return (
-    <main className="flex flex-1 flex-col px-6 py-6">
+    <>
+    <main className="flex flex-1 flex-col px-6 py-6 print:hidden">
         <div className="flex items-center justify-between gap-3">
           <Link
             to={`/projects/${projectId}/drawings`}
@@ -625,6 +680,39 @@ export function ReviewPage() {
                       )}
                     </div>
                   )}
+                {/* Client-facing view toggles + print. */}
+                <div className="mb-2 flex flex-wrap items-center gap-2 print:hidden">
+                  <ToggleChip
+                    active={bandColorsOn}
+                    onClick={() => setBandColorsOn((v) => !v)}
+                  >
+                    Height colours
+                  </ToggleChip>
+                  <ToggleChip
+                    active={sectionsOn}
+                    disabled={!bandColorsOn}
+                    onClick={() => setSectionsOn((v) => !v)}
+                  >
+                    Sections
+                  </ToggleChip>
+                  <ToggleChip
+                    active={badgesOn}
+                    onClick={() => setBadgesOn((v) => !v)}
+                  >
+                    Badges · length &amp; m²
+                  </ToggleChip>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto h-8 gap-1.5"
+                    onClick={handlePrintSummary}
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                    Print summary
+                  </Button>
+                </div>
+
                 <div className="h-[78vh] min-h-[480px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
@@ -647,8 +735,31 @@ export function ReviewPage() {
                     onWallPointClick={addWallPoint}
                     grabbingRls={grabbingRls}
                     onRlCrop={onRlCrop}
+                    bandView={bandView}
+                    badges={badgesOn}
+                    snapshotFnRef={snapshotFnRef}
                   />
                 </div>
+
+                {bandColorsOn && (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground print:hidden">
+                    <span className="font-medium text-foreground">Height:</span>
+                    {Array.from({ length: edges.length + 1 }, (_, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5">
+                        <span
+                          className="h-2.5 w-2.5 rounded-sm"
+                          style={{ backgroundColor: bandColor(i) }}
+                        />
+                        {bandLabel(i, edges)}
+                      </span>
+                    ))}
+                    {sectionsOn && (
+                      <span className="italic">
+                        walls that span bands are shown in parts
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4 lg:col-span-2">
@@ -693,5 +804,71 @@ export function ReviewPage() {
           </>
         )}
     </main>
+
+    {/* Print-only client summary: the drawing as framed + the band table. */}
+    {review.bundle && (
+      <div className="hidden p-6 print:block">
+        <div className="text-xl font-bold">
+          {project?.name ?? "Retaining walls"}
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Page {review.bundle.page.page_number} — walls by height
+          {project?.client_name ? ` · ${project.client_name}` : ""}
+        </p>
+        {printSnapshot && (
+          <img
+            src={printSnapshot}
+            alt="Drawing — walls coloured by height"
+            className="mb-4 w-full rounded border"
+          />
+        )}
+        <h2 className="mb-1 text-base font-semibold">
+          Summary by height band
+        </h2>
+        <BandSummaryTable
+          bands={printBands.bands}
+          noHeight={printBands.noHeight}
+          totals={printBands.totals}
+          colors={BAND_COLORS}
+        />
+        {printBands.noHeight.count > 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {printBands.noHeight.count} wall
+            {printBands.noHeight.count === 1 ? "" : "s"} without a set height
+            are excluded from the area totals.
+          </p>
+        )}
+      </div>
+    )}
+    </>
+  );
+}
+
+function ToggleChip({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+        disabled ? "cursor-not-allowed opacity-40 " : ""
+      }${
+        active
+          ? "border-foreground bg-foreground text-background"
+          : "border-border bg-background text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
