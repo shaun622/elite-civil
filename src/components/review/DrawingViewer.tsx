@@ -17,7 +17,7 @@ import {
   Tag,
   Text,
 } from "react-konva";
-import type Konva from "konva";
+import Konva from "konva";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bboxToPixels, pointsToPixels } from "@/lib/coord";
@@ -83,6 +83,9 @@ type Props = {
   } | null;
   /** Show a length + m² badge on each wall. */
   badges?: boolean;
+  /** Render the background plan in greyscale so wall colours stand out on
+   *  drawings that are themselves heavily coloured. */
+  grayscale?: boolean;
   /** Parent-owned ref; the viewer assigns a fn that returns a PNG data URL of
    *  the current stage framing (for the printable summary). */
   snapshotFnRef?: MutableRefObject<(() => string | null) | null>;
@@ -111,10 +114,12 @@ export function DrawingViewer({
   onRlCrop,
   bandView = null,
   badges = false,
+  grayscale = false,
   snapshotFnRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
+  const bgImageRef = useRef<Konva.Image | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
@@ -163,6 +168,21 @@ export function DrawingViewer({
     setContainerSize({ width: rect.width, height: rect.height });
     return () => obs.disconnect();
   }, []);
+
+  // Greyscale the background plan on demand (Konva filters need the node
+  // cached). Re-applied whenever a new page image loads while the toggle is on.
+  useEffect(() => {
+    const node = bgImageRef.current;
+    if (!node) return;
+    if (grayscale) {
+      node.filters([Konva.Filters.Grayscale]);
+      node.cache();
+    } else {
+      node.filters([]);
+      node.clearCache();
+    }
+    node.getLayer()?.batchDraw();
+  }, [image, grayscale]);
 
   // Expose a stage → PNG snapshot to the parent (used for the printable
   // summary). Captures the current framing; image loads CORS-anonymous so the
@@ -464,7 +484,12 @@ export function DrawingViewer({
       >
         <Layer listening={false}>
           {image && (
-            <KonvaImage image={image} width={imageWidth} height={imageHeight} />
+            <KonvaImage
+              ref={bgImageRef}
+              image={image}
+              width={imageWidth}
+              height={imageHeight}
+            />
           )}
         </Layer>
 
@@ -1053,7 +1078,17 @@ function SegmentOverlay({
           <Line
             points={livePx}
             stroke="#ffffff"
-            opacity={translucent ? 0.08 : emphasized ? 0.95 : 0.6}
+            // Stronger halo in height-band view so band colours read on
+            // busy/coloured plans.
+            opacity={
+              translucent
+                ? 0.08
+                : emphasized
+                  ? 0.95
+                  : spanColors
+                    ? 0.9
+                    : 0.6
+            }
             strokeWidth={strokeWidth + (emphasized ? 5 : 3)}
             lineCap="butt"
             lineJoin="round"

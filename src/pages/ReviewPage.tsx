@@ -50,6 +50,7 @@ export function ReviewPage() {
   const [bandColorsOn, setBandColorsOn] = useState(false);
   const [sectionsOn, setSectionsOn] = useState(true);
   const [badgesOn, setBadgesOn] = useState(false);
+  const [bwDrawingOn, setBwDrawingOn] = useState(false);
   const [printSnapshot, setPrintSnapshot] = useState<string | null>(null);
   const snapshotFnRef = useRef<(() => string | null) | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(
@@ -701,6 +702,12 @@ export function ReviewPage() {
                   >
                     Badges · length &amp; m²
                   </ToggleChip>
+                  <ToggleChip
+                    active={bwDrawingOn}
+                    onClick={() => setBwDrawingOn((v) => !v)}
+                  >
+                    B&amp;W drawing
+                  </ToggleChip>
                   <Button
                     type="button"
                     variant="outline"
@@ -737,6 +744,7 @@ export function ReviewPage() {
                     onRlCrop={onRlCrop}
                     bandView={bandView}
                     badges={badgesOn}
+                    grayscale={bwDrawingOn}
                     snapshotFnRef={snapshotFnRef}
                   />
                 </div>
