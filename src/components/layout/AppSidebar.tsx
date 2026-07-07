@@ -1,6 +1,12 @@
+import { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
+  ArrowDownAZ,
+  ArrowDownUp,
+  ArrowDownZA,
   Calculator,
+  ChevronDown,
+  ChevronRight,
   ClipboardCheck,
   DollarSign,
   FileText,
@@ -20,6 +26,18 @@ import { deleteProject } from "@/lib/api/projects";
 import type { Project } from "@/types/db";
 import { cn } from "@/lib/utils";
 
+type ProjectSort = "recent" | "name-asc" | "name-desc";
+
+const SORT_KEY = "takeoffmate.projectSort";
+const COLLAPSE_KEY = "takeoffmate.projectsCollapsed";
+const PROJECT_CAP = 10;
+
+const NEXT_SORT: Record<ProjectSort, ProjectSort> = {
+  recent: "name-asc",
+  "name-asc": "name-desc",
+  "name-desc": "recent",
+};
+
 /**
  * App sidebar — nav for the active project (Dashboard, Take Off, Measure
  * from PDF, Pricing, Cost Breakdown, Materials, Quotation, Tracking,
@@ -35,6 +53,61 @@ export function AppSidebar() {
   const params = useParams<{ id?: string; projectId?: string }>();
   const activeProjectId = params.id ?? params.projectId;
   const location = useLocation();
+
+  const [sort, setSort] = useState<ProjectSort>(() => {
+    const v = localStorage.getItem(SORT_KEY);
+    return v === "name-asc" || v === "name-desc" ? v : "recent";
+  });
+  const [collapsed, setCollapsed] = useState<boolean>(
+    () => localStorage.getItem(COLLAPSE_KEY) === "1",
+  );
+  const [showAll, setShowAll] = useState(false);
+
+  function cycleSort() {
+    setSort((s) => {
+      const next = NEXT_SORT[s];
+      try {
+        localStorage.setItem(SORT_KEY, next);
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  const sorted = useMemo(() => {
+    const list = projects ?? [];
+    if (sort === "recent") return list;
+    const dir = sort === "name-asc" ? 1 : -1;
+    return [...list].sort(
+      (a, b) =>
+        dir * a.name.localeCompare(b.name, undefined, { numeric: true }),
+    );
+  }, [projects, sort]);
+  const visible = showAll ? sorted : sorted.slice(0, PROJECT_CAP);
+  const SortIcon =
+    sort === "name-asc"
+      ? ArrowDownAZ
+      : sort === "name-desc"
+        ? ArrowDownZA
+        : ArrowDownUp;
+  const sortTitle =
+    sort === "name-asc"
+      ? "Name A–Z — click for Z–A"
+      : sort === "name-desc"
+        ? "Name Z–A — click for most recent"
+        : "Most recent — click to sort A–Z";
 
   async function onDeleteProject(e: React.MouseEvent, project: Project) {
     e.preventDefault();
@@ -155,65 +228,120 @@ export function AppSidebar() {
         )}
 
         <div className="space-y-0.5">
-          <div className="flex items-center justify-between px-2 pb-1">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Projects
-            </p>
-            <Link
-              to="/dashboard"
-              title="All projects / create"
-              className="text-muted-foreground hover:text-foreground"
-            >
-              <Plus className="h-3 w-3" />
-            </Link>
-          </div>
-          {projects?.map((project) => {
-            const active = project.id === activeProjectId;
-            return (
-              <div
-                key={project.id}
+          <div className="flex items-center justify-between gap-1 px-2 pb-1">
+            <div className="flex min-w-0 items-center gap-0.5">
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                title={collapsed ? "Show projects" : "Hide projects"}
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <Link
+                to="/dashboard"
+                title="View all projects"
+                className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              >
+                Projects
+                {sorted.length > 0 && (
+                  <span className="ml-1 normal-case tracking-normal text-muted-foreground/70">
+                    ({sorted.length})
+                  </span>
+                )}
+              </Link>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                onClick={cycleSort}
+                title={sortTitle}
                 className={cn(
-                  "group flex items-center rounded-md pr-1 transition-colors",
-                  active ? "bg-muted" : "hover:bg-muted/50",
+                  "rounded p-0.5 hover:text-foreground",
+                  sort === "recent"
+                    ? "text-muted-foreground"
+                    : "text-foreground",
                 )}
               >
-                <Link
-                  to={`/projects/${project.id}`}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm",
-                    active
-                      ? "font-medium text-foreground"
-                      : "text-muted-foreground group-hover:text-foreground",
-                  )}
-                >
-                  <FolderOpen className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{project.name}</span>
-                </Link>
-                {canManageMembers && (
-                  <button
-                    type="button"
-                    onClick={(e) => void onDeleteProject(e, project)}
-                    title="Delete project"
-                    className="hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+                <SortIcon className="h-3.5 w-3.5" />
+              </button>
+              <Link
+                to="/dashboard"
+                title="All projects / create"
+                className="rounded p-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <Plus className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+
+          {!collapsed && (
+            <>
+              {visible.map((project) => {
+                const active = project.id === activeProjectId;
+                return (
+                  <div
+                    key={project.id}
+                    className={cn(
+                      "group flex items-center rounded-md pr-1 transition-colors",
+                      active ? "bg-muted" : "hover:bg-muted/50",
+                    )}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          {projects && projects.length === 0 && (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">
-              No projects yet.
-            </p>
+                    <Link
+                      to={`/projects/${project.id}`}
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-sm",
+                        active
+                          ? "font-medium text-foreground"
+                          : "text-muted-foreground group-hover:text-foreground",
+                      )}
+                    >
+                      <FolderOpen className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{project.name}</span>
+                    </Link>
+                    {canManageMembers && (
+                      <button
+                        type="button"
+                        onClick={(e) => void onDeleteProject(e, project)}
+                        title="Delete project"
+                        className="hidden shrink-0 rounded p-1 text-muted-foreground hover:text-destructive group-hover:block"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {sorted.length === 0 && (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                  No projects yet.
+                </p>
+              )}
+              {sorted.length > PROJECT_CAP && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="w-full rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                >
+                  {showAll
+                    ? "Show less"
+                    : `Show all (${sorted.length})`}
+                </button>
+              )}
+            </>
           )}
         </div>
       </nav>
 
-      <div className="border-t px-4 py-3">
-        <p className="text-[10px] text-muted-foreground">
-          Elite Civil
-        </p>
+      <div className="flex items-center justify-between gap-2 border-t px-4 py-3 text-[10px] text-muted-foreground">
+        <span>Elite Civil</span>
+        <span className="tabular-nums" title="Build version">
+          v{__APP_VERSION__}
+        </span>
       </div>
     </aside>
   );

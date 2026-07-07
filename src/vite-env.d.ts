@@ -8,3 +8,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** Build version (date·shortSha) injected by Vite `define`. */
+declare const __APP_VERSION__: string;
