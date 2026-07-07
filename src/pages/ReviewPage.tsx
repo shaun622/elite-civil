@@ -754,10 +754,14 @@ export function ReviewPage() {
                     <span className="font-medium text-foreground">Height:</span>
                     {Array.from({ length: edges.length + 1 }, (_, i) => (
                       <span key={i} className="inline-flex items-center gap-1.5">
-                        <span
-                          className="h-2.5 w-2.5 rounded-sm"
-                          style={{ backgroundColor: bandColor(i) }}
-                        />
+                        {/* SVG chip (not a CSS background) so it also prints. */}
+                        <svg
+                          viewBox="0 0 10 10"
+                          className="h-2.5 w-2.5"
+                          aria-hidden
+                        >
+                          <rect width="10" height="10" rx="2" fill={bandColor(i)} />
+                        </svg>
                         {bandLabel(i, edges)}
                       </span>
                     ))}

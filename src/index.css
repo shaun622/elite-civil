@@ -63,6 +63,12 @@
 /* Printing (used by the Quotation "Print / save PDF"): drop the app shell and
  * render editable fields as plain text, not input boxes. */
 @media print {
+  /* Keep colours (row tints, highlights) in print where the browser honours
+   * it — Safari/Chrome otherwise strip CSS backgrounds by default. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
   header,
   aside {
     display: none !important;

@@ -62,10 +62,21 @@ export function BandSummaryTable({
         >
           <span className="flex items-center gap-1.5 font-medium">
             {colors && (
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                style={{ backgroundColor: colors[i % colors.length] }}
-              />
+              // Inline SVG rather than a background-coloured span: browsers
+              // (Safari especially) strip CSS backgrounds when printing, but
+              // SVG fills are content and always print.
+              <svg
+                viewBox="0 0 10 10"
+                className="h-2.5 w-2.5 shrink-0"
+                aria-hidden
+              >
+                <rect
+                  width="10"
+                  height="10"
+                  rx="2"
+                  fill={colors[i % colors.length]}
+                />
+              </svg>
             )}
             {b.label}
           </span>
