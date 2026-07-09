@@ -1,5 +1,13 @@
 export type ProjectStatus = "draft" | "active" | "archived";
 
+/** Where a project sits in the takeoff → quote → won/lost workflow. */
+export type TakeoffStatus =
+  | "not_started"
+  | "in_progress"
+  | "quoted"
+  | "won"
+  | "lost";
+
 export interface Project {
   id: string;
   user_id: string;
@@ -30,6 +38,12 @@ export interface Project {
   /** Optional target/due date for the takeoff (ISO date), shown on the
    *  projects table. Nullable. */
   due_date: string | null;
+  /** Takeoff workflow status; null = not started. */
+  takeoff_status: TakeoffStatus | null;
+  /** Structured site address (site_address holds the street line). */
+  site_city: string | null;
+  site_state: string | null;
+  site_postcode: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -66,11 +80,15 @@ export type ProjectInsert = {
   name: string;
   client_name?: string | null;
   site_address?: string | null;
+  site_city?: string | null;
+  site_state?: string | null;
+  site_postcode?: string | null;
   notes?: string | null;
   quote_number?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
   description?: string | null;
+  due_date?: string | null;
   config?: ProjectConfig | null;
 };
 
@@ -78,6 +96,9 @@ export type ProjectUpdate = Partial<{
   name: string;
   client_name: string | null;
   site_address: string | null;
+  site_city: string | null;
+  site_state: string | null;
+  site_postcode: string | null;
   notes: string | null;
   status: ProjectStatus;
   quote_number: string | null;
@@ -90,6 +111,7 @@ export type ProjectUpdate = Partial<{
   cost_overrides: Record<string, number>;
   quote_overrides: QuoteOverrides;
   due_date: string | null;
+  takeoff_status: TakeoffStatus | null;
 }>;
 
 /* ============================================================
