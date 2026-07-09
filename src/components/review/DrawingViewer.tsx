@@ -185,21 +185,45 @@ export function DrawingViewer({
   }, [image, grayscale]);
 
   // Expose a stage → PNG snapshot to the parent (used for the printable
-  // summary). Captures the current framing; image loads CORS-anonymous so the
-  // canvas isn't tainted.
+  // summary). Always captures the WHOLE page (not the on-screen zoom/pan): we
+  // momentarily drive the stage to the full image at 1:1, draw, capture, then
+  // restore the user's framing — synchronously, so nothing repaints on screen.
+  // Image loads CORS-anonymous so the canvas isn't tainted.
   useEffect(() => {
     if (!snapshotFnRef) return;
     snapshotFnRef.current = () => {
+      const stage = stageRef.current;
+      if (!stage) return null;
+      const prev = {
+        width: stage.width(),
+        height: stage.height(),
+        scaleX: stage.scaleX(),
+        scaleY: stage.scaleY(),
+        x: stage.x(),
+        y: stage.y(),
+      };
       try {
-        return stageRef.current?.toDataURL({ pixelRatio: 2 }) ?? null;
+        const maxSide = Math.max(imageWidth, imageHeight) || 1;
+        // Cap the export to ~2400px on the long edge so big plans stay light.
+        const pixelRatio = Math.min(2, Math.max(0.5, 2400 / maxSide));
+        stage.size({ width: imageWidth, height: imageHeight });
+        stage.scale({ x: 1, y: 1 });
+        stage.position({ x: 0, y: 0 });
+        stage.draw();
+        return stage.toDataURL({ pixelRatio });
       } catch {
         return null;
+      } finally {
+        stage.size({ width: prev.width, height: prev.height });
+        stage.scale({ x: prev.scaleX, y: prev.scaleY });
+        stage.position({ x: prev.x, y: prev.y });
+        stage.draw();
       }
     };
     return () => {
       snapshotFnRef.current = null;
     };
-  }, [snapshotFnRef]);
+  }, [snapshotFnRef, imageWidth, imageHeight]);
 
   const fitZoom = useMemo(() => {
     if (
