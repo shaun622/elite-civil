@@ -103,6 +103,14 @@ export async function listProjectWalls(
   return (legacy ?? []) as WallSegment[];
 }
 
+/** Every wall the caller can see (RLS-scoped to their org) in one query, for
+ *  computing per-project quote totals on the projects list without N fetches. */
+export async function listAllWalls(): Promise<WallSegment[]> {
+  const { data, error } = await supabase.from("wall_segments").select("*");
+  if (error) throw error;
+  return (data ?? []) as WallSegment[];
+}
+
 /**
  * Persist a drag-reorder / regroup: each entry sets a wall's new
  * `sort_order` and (when moved into another lot group) its `lot`.

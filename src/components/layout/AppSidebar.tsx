@@ -4,6 +4,7 @@ import {
   ArrowDownAZ,
   ArrowDownUp,
   ArrowDownZA,
+  BookOpen,
   Calculator,
   ChevronDown,
   ChevronRight,
@@ -13,12 +14,15 @@ import {
   FolderOpen,
   LayoutDashboard,
   PackageSearch,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Ruler,
   ScanLine,
   Settings,
   Trash2,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useProjects } from "@/hooks/useProjects";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/hooks/useOrg";
@@ -30,6 +34,7 @@ type ProjectSort = "recent" | "name-asc" | "name-desc";
 
 const SORT_KEY = "takeoffmate.projectSort";
 const COLLAPSE_KEY = "takeoffmate.projectsCollapsed";
+const SIDEBAR_KEY = "takeoffmate.sidebarCollapsed";
 const PROJECT_CAP = 10;
 
 const NEXT_SORT: Record<ProjectSort, ProjectSort> = {
@@ -62,6 +67,21 @@ export function AppSidebar() {
     () => localStorage.getItem(COLLAPSE_KEY) === "1",
   );
   const [showAll, setShowAll] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem(SIDEBAR_KEY) === "1",
+  );
+
+  function toggleSidebar() {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   function cycleSort() {
     setSort((s) => {
@@ -183,19 +203,75 @@ export function AppSidebar() {
   if (!user) return null;
 
   return (
-    <aside className="hidden w-60 shrink-0 border-r bg-card lg:flex lg:flex-col">
-      <div className="flex h-14 items-center gap-2 border-b px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
+    <aside
+      className={cn(
+        "hidden shrink-0 border-r bg-card transition-[width] duration-150 lg:flex lg:flex-col",
+        sidebarCollapsed ? "w-14" : "w-60",
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-14 items-center border-b",
+          sidebarCollapsed ? "justify-center px-0" : "gap-2 px-4",
+        )}
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
           EC
         </div>
-        <div className="leading-tight">
-          <p className="text-sm font-semibold">Elite Civil</p>
-          <p className="text-[10px] text-muted-foreground">
-            Retaining Wall Estimator
-          </p>
-        </div>
+        {!sidebarCollapsed && (
+          <>
+            <div className="leading-tight">
+              <p className="text-sm font-semibold">Elite Civil</p>
+              <p className="text-[10px] text-muted-foreground">
+                Retaining Wall Estimator
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title="Collapse sidebar"
+              className="ml-auto rounded p-1 text-muted-foreground hover:text-foreground"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </>
+        )}
       </div>
 
+      {sidebarCollapsed ? (
+        <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+          <RailLink
+            to="/dashboard"
+            title="Projects"
+            icon={FolderOpen}
+            active={location.pathname === "/dashboard"}
+          />
+          {navItems.map(({ title, to, icon }) => (
+            <RailLink
+              key={title}
+              to={to}
+              title={title}
+              icon={icon}
+              active={isActiveRoute(location.pathname, to)}
+            />
+          ))}
+          <RailLink
+            to="/help"
+            title="Documentation"
+            icon={BookOpen}
+            active={location.pathname === "/help"}
+          />
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            title="Expand sidebar"
+            className="mt-auto rounded p-2 text-muted-foreground hover:text-foreground"
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </nav>
+      ) : (
+        <>
       <nav className="flex-1 overflow-y-auto p-2">
         {navItems.length > 0 ? (
           <div className="mb-4 space-y-0.5">
@@ -335,6 +411,22 @@ export function AppSidebar() {
             </>
           )}
         </div>
+
+        <div className="mt-4 border-t pt-2">
+          <Link
+            to="/help"
+            title="Documentation"
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+              location.pathname === "/help"
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+            )}
+          >
+            <BookOpen className="h-4 w-4" />
+            Documentation
+          </Link>
+        </div>
       </nav>
 
       <div className="flex items-center justify-between gap-2 border-t px-4 py-3 text-[10px] text-muted-foreground">
@@ -343,7 +435,37 @@ export function AppSidebar() {
           v{__APP_VERSION__}
         </span>
       </div>
+        </>
+      )}
     </aside>
+  );
+}
+
+function RailLink({
+  to,
+  title,
+  icon: Icon,
+  active,
+}: {
+  to: string;
+  title: string;
+  icon: LucideIcon;
+  active: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      title={title}
+      aria-label={title}
+      className={cn(
+        "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
+        active
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </Link>
   );
 }
 

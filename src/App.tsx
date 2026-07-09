@@ -16,6 +16,7 @@ import { ReviewPage } from "@/pages/ReviewPage";
 import { WallMeasurePage } from "@/pages/WallMeasurePage";
 import { PricingPage } from "@/pages/PricingPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { HelpPage } from "@/pages/HelpPage";
 import { VectorProbePage } from "@/pages/dev/VectorProbePage";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -39,6 +40,7 @@ export function App() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/help" element={<HelpPage />} />
 
         {/* Project-scoped — BE Landscapes nav lives under each project */}
         <Route path="/projects/:id" element={<ProjectDashboardPage />} />

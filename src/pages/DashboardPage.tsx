@@ -1,24 +1,114 @@
-import { Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { BookOpen, FileUp, PlayCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ProjectCard } from "@/components/projects/ProjectCard";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
+import { ProjectsTable } from "@/components/projects/ProjectsTable";
+import { VirtualTour } from "@/components/onboarding/VirtualTour";
 import { useProjects } from "@/hooks/useProjects";
+import { useProjectValues } from "@/hooks/useProjectValues";
+import { useOrg } from "@/hooks/useOrg";
+import { useAuth } from "@/hooks/useAuth";
+
+const TOUR_SEEN_KEY = "takeoffmate.tourSeen";
 
 export function DashboardPage() {
   const { projects, loading, error } = useProjects();
+  const { values, loading: valuesLoading } = useProjectValues(projects);
+  const { org } = useOrg();
+  const { user } = useAuth();
+  const [tourOpen, setTourOpen] = useState(false);
+
   const hasProjects = (projects?.length ?? 0) > 0;
+  const heading = org?.company_name || org?.name || "Your projects";
+
+  // Show the tour once per browser for a fresh user.
+  useEffect(() => {
+    if (localStorage.getItem(TOUR_SEEN_KEY) !== "1") {
+      setTourOpen(true);
+      try {
+        localStorage.setItem(TOUR_SEEN_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
 
   return (
-    <main className="container py-10">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+    <main className="container space-y-6 py-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Welcome back{user?.email ? `, ${user.email}` : ""}.
+        </p>
+      </div>
+
+      {/* CTA */}
+      <Card>
+        <CardContent className="flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <FileUp className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <h2 className="font-semibold">Ready to get your takeoff done?</h2>
+              <p className="text-sm text-muted-foreground">
+                Upload drawings and price your retaining walls.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <NewProjectDialog
+              trigger={
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create project
+                </Button>
+              }
+            />
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => setTourOpen(true)}
+            >
+              How it works
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick actions */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => setTourOpen(true)}
+        >
+          <PlayCircle className="h-4 w-4" />
+          Take virtual tour
+        </Button>
+        <Button variant="outline" size="sm" className="gap-2" asChild>
+          <Link to="/help">
+            <BookOpen className="h-4 w-4" />
+            Documentation
+          </Link>
+        </Button>
+      </div>
+
+      {/* Projects */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Group drawings and takeoffs by client or site.
+            <h2 className="text-lg font-semibold tracking-tight">
+              Your projects
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Manage your takeoff projects.
             </p>
           </div>
-
           <NewProjectDialog
             trigger={
               <Button className="gap-2">
@@ -30,25 +120,18 @@ export function DashboardPage() {
         </div>
 
         {error && (
-          <Alert variant="destructive" className="mb-6">
+          <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
         {loading && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-32 animate-pulse rounded-lg border bg-card"
-              />
-            ))}
-          </div>
+          <div className="h-64 animate-pulse rounded-lg border bg-card" />
         )}
 
         {!loading && !hasProjects && (
           <div className="rounded-lg border border-dashed bg-card p-12 text-center">
-            <h2 className="text-lg font-semibold">No projects yet</h2>
+            <h3 className="text-lg font-semibold">No projects yet</h3>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
               Create your first project to start uploading drawings and
               extracting measurements.
@@ -67,12 +150,15 @@ export function DashboardPage() {
         )}
 
         {!loading && hasProjects && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projects!.map((p) => (
-              <ProjectCard key={p.id} project={p} />
-            ))}
-          </div>
+          <ProjectsTable
+            projects={projects!}
+            values={values}
+            valuesLoading={valuesLoading}
+          />
         )}
+      </div>
+
+      <VirtualTour open={tourOpen} onOpenChange={setTourOpen} />
     </main>
   );
 }

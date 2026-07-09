@@ -27,6 +27,9 @@ export interface Project {
    *  text / hidden / added lines, editable summary + boilerplate). Never feeds
    *  the engine. */
   quote_overrides: QuoteOverrides;
+  /** Optional target/due date for the takeoff (ISO date), shown on the
+   *  projects table. Nullable. */
+  due_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +89,7 @@ export type ProjectUpdate = Partial<{
   extra_over_items: ExtraOverItem[];
   cost_overrides: Record<string, number>;
   quote_overrides: QuoteOverrides;
+  due_date: string | null;
 }>;
 
 /* ============================================================
