@@ -21,6 +21,7 @@ import Konva from "konva";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bboxToPixels, pointsToPixels } from "@/lib/coord";
+import { WallInfoCard } from "@/components/review/WallInfoCard";
 import { bandColor, bandIndex } from "@/lib/engine/heightBands";
 import { pairBandSpans, type BandSpan } from "@/lib/engine/wallSections";
 import { roundHeightUp } from "@/lib/engine/calculations";
@@ -89,6 +90,12 @@ type Props = {
   /** Parent-owned ref; the viewer assigns a fn that returns a PNG data URL of
    *  the current stage framing (for the printable summary). */
   snapshotFnRef?: MutableRefObject<(() => string | null) | null>;
+  /** Band edges + rounding so the clicked-wall info card can show the height
+   *  band. Passed regardless of whether band colours are toggled on. */
+  bandMeta?: {
+    edges: number[];
+    roundOpts: { enabled: boolean; incrementM: number };
+  };
 };
 
 export function DrawingViewer({
@@ -116,6 +123,7 @@ export function DrawingViewer({
   badges = false,
   grayscale = false,
   snapshotFnRef,
+  bandMeta,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -123,6 +131,10 @@ export function DrawingViewer({
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
+  // True only while the Stage itself is being panned. The origin state updates
+  // at drag-end, so we hide the wall info card mid-pan (it would otherwise
+  // float detached from the wall) and snap it back on release.
+  const [panning, setPanning] = useState(false);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [layers, setLayers] = useState<LayerToggle>({
     dimensions: true,
@@ -361,6 +373,14 @@ export function DrawingViewer({
     };
   }
 
+  function onDragStart(e: Konva.KonvaEventObject<DragEvent>) {
+    // Only the Stage's own pan hides the card. Drag-start bubbles, so a wall
+    // endpoint handle's drag also fires this — ignore those, or the card would
+    // vanish on every handle drag and never come back.
+    if (e.target !== stageRef.current) return;
+    setPanning(true);
+  }
+
   function onDragEnd(e: Konva.KonvaEventObject<DragEvent>) {
     // Only the Stage's own pan moves the origin. Drag-end events bubble, so a
     // wall endpoint handle's drag also fires this — ignore those, or the
@@ -371,6 +391,7 @@ export function DrawingViewer({
     // matches what we just stored in React state.
     e.target.position(next);
     setOrigin(next);
+    setPanning(false);
   }
 
   /** Pointer position in image-pixel coords (undoing pan + zoom). */
@@ -418,6 +439,19 @@ export function DrawingViewer({
     [segments, selectedSegmentId],
   );
 
+  // Anchor the wall info card at the selected wall's midpoint, converted from
+  // image pixels to container pixels (same transform as the pan-to-wall code).
+  const selectedSeg =
+    segments.find((s) => s.id === selectedSegmentId) ?? null;
+  let infoAnchor: { x: number; y: number } | null = null;
+  if (selectedSeg) {
+    const flat = pointsToPixels(selectedSeg.polyline, imageWidth, imageHeight);
+    if (flat.length >= 4) {
+      const [mx, my] = pointAtLength(flat, flatPolylineLength(flat) / 2);
+      infoAnchor = { x: mx * zoom + origin.x, y: my * zoom + origin.y };
+    }
+  }
+
   if (containerSize.width === 0) {
     return (
       <div ref={containerRef} className="h-full min-h-[400px] w-full" />
@@ -442,6 +476,7 @@ export function DrawingViewer({
         scaleY={zoom}
         draggable={!grabbingRls}
         onWheel={onWheel}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         style={{
           background: "#1f2937",
@@ -764,6 +799,28 @@ export function DrawingViewer({
         <div className="pointer-events-none absolute bottom-3 left-3 rounded-md border bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm">
           {Math.round(zoom * 100)}%
         </div>
+
+        {selectedSeg &&
+          infoAnchor &&
+          !panning &&
+          !calibrating &&
+          !drawingWall &&
+          !grabbingRls &&
+          infoAnchor.x > -40 &&
+          infoAnchor.x < containerSize.width + 40 &&
+          infoAnchor.y > -40 &&
+          infoAnchor.y < containerSize.height + 40 && (
+            <WallInfoCard
+              segment={selectedSeg}
+              edges={bandMeta?.edges ?? []}
+              roundOpts={
+                bandMeta?.roundOpts ?? { enabled: false, incrementM: 0 }
+              }
+              anchor={infoAnchor}
+              containerSize={containerSize}
+              onClose={() => onSelectSegment(null)}
+            />
+          )}
       </div>
     </div>
   );

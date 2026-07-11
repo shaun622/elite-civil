@@ -746,6 +746,7 @@ export function ReviewPage() {
                     badges={badgesOn}
                     grayscale={bwDrawingOn}
                     snapshotFnRef={snapshotFnRef}
+                    bandMeta={{ edges, roundOpts }}
                   />
                 </div>
 
