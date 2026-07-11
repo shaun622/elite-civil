@@ -33,6 +33,7 @@ export function LandingPage() {
         <HowItWorks />
         <FeatureGrid />
         <TakeoffShowcase />
+        <ModulesShowcase />
         <QuoteShowcase />
         <CtaBand />
       </main>
@@ -524,6 +525,218 @@ function HowItWorks() {
         </div>
       </div>
     </section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Modules showcase                                                     */
+/* ------------------------------------------------------------------ */
+
+function ModulesShowcase() {
+  return (
+    <section id="modules" className="scroll-mt-20 border-t">
+      <div className="container py-20 sm:py-24">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+            From takeoff to order
+          </p>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            One takeoff drives the whole estimate
+          </h2>
+          <p className="mt-4 text-muted-foreground">
+            Measure once. The take off, pricing, cost breakdown and materials
+            order all read from the same walls, so a change in one place flows
+            through the lot.
+          </p>
+        </div>
+
+        <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+          {/* 1. Take-Off */}
+          <ModuleCard
+            n={1}
+            icon={Ruler}
+            title="Take-Off"
+            lead="Every wall in one sortable table: lot, length, height, design and post size."
+          >
+            <table className="w-full tabular-nums">
+              <thead>
+                <tr className="border-b border-slate-200 bg-sky-100/60 text-[10px] uppercase tracking-wide text-sky-900">
+                  <th className="px-1.5 py-1 text-left font-semibold">Wall</th>
+                  <th className="px-1.5 py-1 text-left font-semibold">Lot</th>
+                  <th className="px-1.5 py-1 text-right font-semibold">L (m)</th>
+                  <th className="px-1.5 py-1 text-right font-semibold">H (m)</th>
+                  <th className="px-1.5 py-1 text-right font-semibold">m²</th>
+                </tr>
+              </thead>
+              <tbody className="text-slate-600">
+                <tr className="border-b border-slate-200/70">
+                  <td className="px-1.5 py-1 font-medium text-foreground">B1</td>
+                  <td className="px-1.5 py-1">14</td>
+                  <td className="px-1.5 py-1 text-right">18.6</td>
+                  <td className="px-1.5 py-1 text-right">1.2</td>
+                  <td className="px-1.5 py-1 text-right">22.3</td>
+                </tr>
+                <tr className="border-b border-slate-200/70 bg-sky-50">
+                  <td className="px-1.5 py-1 font-medium text-foreground">B2</td>
+                  <td className="px-1.5 py-1">15</td>
+                  <td className="px-1.5 py-1 text-right">16.2</td>
+                  <td className="px-1.5 py-1 text-right">1.8</td>
+                  <td className="px-1.5 py-1 text-right font-semibold text-sky-700">
+                    29.2
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-1.5 py-1 font-medium text-foreground">B3</td>
+                  <td className="px-1.5 py-1">16</td>
+                  <td className="px-1.5 py-1 text-right">9.4</td>
+                  <td className="px-1.5 py-1 text-right">2.4</td>
+                  <td className="px-1.5 py-1 text-right">22.6</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-slate-300 font-semibold text-foreground">
+                  <td className="px-1.5 py-1" colSpan={4}>
+                    60 walls total
+                  </td>
+                  <td className="px-1.5 py-1 text-right">1,137 m²</td>
+                </tr>
+              </tfoot>
+            </table>
+          </ModuleCard>
+
+          {/* 2. Pricing engine */}
+          <ModuleCard
+            n={2}
+            icon={DollarSign}
+            title="Pricing engine"
+            lead="Your crew rates, machine time and margins price the whole job. Change a number and everything reprices."
+          >
+            <div className="space-y-1.5">
+              <StatRow label="Drilling crew" value="$95 /hr" />
+              <StatRow label="Machine and operator" value="$180 /hr" />
+              <StatRow label="Markup" value="15%" />
+              <StatRow label="Margin" value="20%" />
+            </div>
+            <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
+              <StatRow
+                label="Quote rate"
+                value="$218.76 /m²"
+                labelClass="font-medium text-foreground"
+                valueClass="font-semibold text-sky-700"
+              />
+              <StatRow
+                label="Total ex GST"
+                value="$248,730"
+                labelClass="font-semibold text-foreground"
+                valueClass="font-semibold text-blue-700"
+              />
+            </div>
+          </ModuleCard>
+
+          {/* 3. Cost Breakdown */}
+          <ModuleCard
+            n={3}
+            icon={Calculator}
+            title="Cost Breakdown"
+            lead="See where the money goes before you commit to a price."
+          >
+            <div className="space-y-1.5">
+              <StatRow label="Drilling" value="$21,420" />
+              <StatRow label="Posting" value="$44,780" />
+              <StatRow label="Wall building" value="$84,350" />
+              <StatRow label="Backfill and gravel" value="$23,490" />
+              <StatRow label="Engineering" value="$6,200" />
+            </div>
+            <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
+              <StatRow
+                label="Cost total"
+                value="$180,240"
+                labelClass="font-semibold text-foreground"
+                valueClass="font-semibold text-foreground"
+              />
+              <StatRow label="Cost per m²" value="$158.52" />
+              <StatRow
+                label="Quote"
+                value="$248,730"
+                labelClass="font-medium text-foreground"
+                valueClass="font-semibold text-blue-700"
+              />
+            </div>
+          </ModuleCard>
+
+          {/* 4. Materials Order */}
+          <ModuleCard
+            n={4}
+            icon={PackageSearch}
+            title="Materials Order"
+            lead="Purchase quantities counted from the walls, split per lot for staged deliveries."
+          >
+            <div className="space-y-1.5">
+              <StatRow label="Galvanised steel posts" value="358" />
+              <StatRow label="Super Sleepers 2.0 m" value="2,845" />
+              <StatRow label="Post hole concrete" value="39 m³" />
+              <StatRow label="Drainage gravel" value="310 t" />
+            </div>
+            <p className="mt-2 border-t border-slate-200 pt-2 text-[11px] text-muted-foreground">
+              Split across 35 lots for delivery staging.
+            </p>
+          </ModuleCard>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ModuleCard({
+  n,
+  icon: Icon,
+  title,
+  lead,
+  children,
+}: {
+  n: number;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  lead: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative rounded-2xl border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
+      <span className="bg-brand-gradient absolute -top-3.5 left-6 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-white shadow-sm">
+        {n}
+      </span>
+      <div className="flex items-start gap-3">
+        <span className="bg-brand-gradient flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-sm">
+          <Icon className="h-5 w-5" />
+        </span>
+        <div>
+          <h3 className="font-semibold">{title}</h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">{lead}</p>
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl border bg-slate-50/70 p-3 text-xs">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function StatRow({
+  label,
+  value,
+  labelClass = "text-slate-600",
+  valueClass = "text-slate-700",
+}: {
+  label: string;
+  value: string;
+  labelClass?: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={labelClass}>{label}</span>
+      <span className={`tabular-nums ${valueClass}`}>{value}</span>
+    </div>
   );
 }
 
