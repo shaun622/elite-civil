@@ -233,7 +233,7 @@ export function HeightBandSummary({ segments, projectId }: Props) {
         {roundOpts.enabled ? (
           <>
             Area = wall length × height, with heights rounded up to the nearest{" "}
-            {roundOpts.incrementM} m for post embedment — the pricing basis.
+            {roundOpts.incrementM} m for post embedment (the pricing basis).
             Matches Take Off's “Eng m²” (the lot headers above show the
             un-rounded area).
           </>
@@ -250,7 +250,7 @@ export function HeightBandSummary({ segments, projectId }: Props) {
       <div className="mt-3 rounded-md border bg-muted/30 p-2.5">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Height ranges — customise
+            Height ranges: customise
           </span>
           <button
             type="button"
@@ -307,14 +307,14 @@ export function HeightBandSummary({ segments, projectId }: Props) {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No splits — all walls counted in one range. Add a range to split
+              No splits: all walls counted in one range. Add a range to split
               by height.
             </p>
           )}
         </div>
 
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Each row is a range — edit its upper limit. e.g. change{" "}
+          Each row is a range. Edit its upper limit. e.g. change{" "}
           <span className="font-medium">1.6 – 3</span> to{" "}
           <span className="font-medium">1.6 – 2.2</span> for a 1.6–2.2 m band,
           then “Add range” for the next split.
@@ -331,7 +331,7 @@ export function HeightBandSummary({ segments, projectId }: Props) {
           {splitWallCount === 1
             ? "1 wall has RLs spanning a pricing band and is"
             : `${splitWallCount} walls have RLs spanning a pricing band and are`}{" "}
-          counted as separate sections — matching how the quote and materials
+          counted as separate sections, matching how the quote and materials
           order price them.
         </p>
       )}
@@ -339,9 +339,9 @@ export function HeightBandSummary({ segments, projectId }: Props) {
       {noHeight.count > 0 && (
         <p className="mt-2 text-[11px] text-amber-700">
           {noHeight.count === 1
-            ? "1 wall has no height yet"
-            : `${noHeight.count} walls have no height yet`}{" "}
-          — enter its Top/Bottom RLs to include it in the area total.
+            ? "1 wall has no height yet."
+            : `${noHeight.count} walls have no height yet.`}{" "}
+          Enter its Top/Bottom RLs to include it in the area total.
         </p>
       )}
 
@@ -358,8 +358,8 @@ export function HeightBandSummary({ segments, projectId }: Props) {
         const remaining = total - confirmedCount;
         return (
           <p className="mt-2 text-[11px] text-amber-700">
-            {remaining} {remaining === 1 ? "wall" : "walls"} not yet confirmed
-            — verify each before quoting.
+            {remaining} {remaining === 1 ? "wall" : "walls"} not yet confirmed.
+            Verify each before quoting.
           </p>
         );
       })()}

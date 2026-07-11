@@ -156,7 +156,7 @@ export function ProjectDashboardPage() {
                   Wall heights breakdown
                 </CardTitle>
                 <CardDescription>
-                  Walls, length and face area per height band —{" "}
+                  Walls, length and face area per height band:{" "}
                   {round.enabled
                     ? `heights rounded up to ${round.incrementM} m (pricing basis)`
                     : "actual measured heights"}

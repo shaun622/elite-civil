@@ -324,8 +324,8 @@ export function TakeOffPage() {
             <div className="text-sm">
               <p className="font-medium">Walls over 4 m flagged</p>
               <p className="mt-0.5 text-muted-foreground">
-                BE doesn't typically install retaining walls over 4 m high —
-                this quote will use the largest available post size, but a
+                BE doesn't typically install retaining walls over 4 m high.
+                This quote will use the largest available post size, but a
                 more cost-effective system (block / concrete crib / soldier
                 pile) is usually recommended at this height. Consider quoting
                 an alternative.
@@ -352,10 +352,10 @@ export function TakeOffPage() {
                         (the input has its own px-3 internal padding). */}
                     <TableHead className="pr-5 text-right">LM</TableHead>
                     <TableHead className="pr-5 text-right">Height</TableHead>
-                    <TableHead className="text-right" title="Wall face area — length × raw height">
+                    <TableHead className="text-right" title="Wall face area: length × raw height">
                       Face m²
                     </TableHead>
-                    <TableHead className="text-right" title="Length × rounded height — what the engine prices off">
+                    <TableHead className="text-right" title="Length × rounded height: what the engine prices off">
                       Eng m²
                     </TableHead>
                     <TableHead className="text-right">Concrete</TableHead>

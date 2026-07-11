@@ -493,7 +493,7 @@ export function QuotationPage() {
                 onClick={restoreAllHidden}
                 className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
-                {hiddenCount} hidden line{hiddenCount === 1 ? "" : "s"} — restore
+                {hiddenCount} hidden line{hiddenCount === 1 ? "" : "s"}: restore
                 all
               </button>
             )}
@@ -843,7 +843,7 @@ export function QuotationPage() {
                 "Import or export of fill material",
                 "Disposal of spoil offsite",
                 "Bulk earthworks or trimming beyond standard tolerances",
-                "Additional drainage material beyond allowance — 300 mm behind sleeper, 3 m³ per 10 m²",
+                "Additional drainage material beyond allowance: 300 mm behind sleeper, 3 m³ per 10 m²",
               ]}
             />
             <BulletBlock
@@ -1082,7 +1082,7 @@ function EditableQty({
         onClick={start}
         title={
           line.qtyOverridden
-            ? "Manual qty — click to edit"
+            ? "Manual qty, click to edit"
             : "Click to set a manual qty"
         }
         className={cn(
@@ -1158,7 +1158,7 @@ function EditableRate({
         onClick={start}
         title={
           line.rateOverridden
-            ? "Manual rate — click to edit"
+            ? "Manual rate, click to edit"
             : (rateTip ?? "Click to set a manual rate")
         }
         className={cn(
@@ -1468,7 +1468,7 @@ Materials & earthworks:
 - Import or export of fill material
 - Disposal of spoil offsite
 - Bulk earthworks or trimming beyond standard tolerances
-- Additional drainage material beyond allowance — 300 mm behind sleeper, 3 m³ per 10 m²
+- Additional drainage material beyond allowance: 300 mm behind sleeper, 3 m³ per 10 m²
 
 Plant & equipment:
 - Concrete pumping

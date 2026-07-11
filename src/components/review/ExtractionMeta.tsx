@@ -118,7 +118,7 @@ export function ExtractionMeta({
           <>
             <p className="mt-2 text-[11px] text-muted-foreground">
               Click <strong>Set points</strong>, then two points a known
-              distance apart on the drawing and enter that distance — the most
+              distance apart on the drawing and enter that distance, the most
               accurate way to recalibrate.
             </p>
             <Button

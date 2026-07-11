@@ -180,7 +180,7 @@ export function ReviewPage() {
         setRlError(
           numbers.length === 1
             ? `Only read one number (${numbers[0]}). Box both the top and bottom RL.`
-            : "Couldn't read two numbers in that box — try again, tighter around the two RLs.",
+            : "Couldn't read two numbers in that box. Try again, tighter around the two RLs.",
         );
         return;
       }
@@ -344,7 +344,7 @@ export function ReviewPage() {
             to={`/projects/${projectId}/takeoff`}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
-            Done — back to Take Off →
+            Done. Back to Take Off →
           </Link>
         </div>
 
@@ -438,7 +438,7 @@ export function ReviewPage() {
                   <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-violet-300 bg-violet-50 p-3 text-xs">
                     <span className="font-medium text-violet-900">
                       {calibPoints.length < 2
-                        ? `Click two points a known distance apart on the drawing — ${calibPoints.length}/2`
+                        ? `Click two points a known distance apart on the drawing (${calibPoints.length}/2)`
                         : "Enter the real distance between the two points:"}
                     </span>
                     {calibPoints.length === 2 && (
@@ -519,8 +519,8 @@ export function ReviewPage() {
                             Grab RLs from drawing
                           </Button>
                           <span className="text-[11px] text-muted-foreground">
-                            Box the top + bottom level numbers for this wall —
-                            we read them and set the height.
+                            Box the top + bottom level numbers for this wall.
+                            We read them and set the height.
                           </span>
                         </div>
                       )}
@@ -629,7 +629,7 @@ export function ReviewPage() {
                                   </button>
                                   {h < 0 && (
                                     <span className="text-[11px] text-amber-700">
-                                      negative — swap?
+                                      negative, swap?
                                     </span>
                                   )}
                                 </>
@@ -824,13 +824,13 @@ export function ReviewPage() {
           {project?.name ?? "Retaining walls"}
         </div>
         <p className="mb-4 text-sm text-muted-foreground">
-          Page {review.bundle.page.page_number} — walls by height
+          Page {review.bundle.page.page_number}: walls by height
           {project?.client_name ? ` · ${project.client_name}` : ""}
         </p>
         {printSnapshot && (
           <img
             src={printSnapshot}
-            alt="Drawing — walls coloured by height"
+            alt="Drawing with walls coloured by height"
             className="mb-4 w-full rounded border"
           />
         )}

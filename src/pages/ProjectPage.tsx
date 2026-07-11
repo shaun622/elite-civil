@@ -79,7 +79,7 @@ export function ProjectPage() {
             to={`/projects/${id}/takeoff`}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           >
-            Done — back to Take Off →
+            Done. Back to Take Off →
           </Link>
         </div>
 

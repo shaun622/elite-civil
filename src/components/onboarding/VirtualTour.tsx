@@ -29,7 +29,7 @@ const STEPS: Step[] = [
   {
     icon: Sparkles,
     title: "Welcome to Elite Civil",
-    body: "Price retaining walls straight from a PDF plan — measure the walls, set the heights, and generate a materials order and a customer quote in minutes.",
+    body: "Price retaining walls straight from a PDF plan: measure the walls, set the heights, and generate a materials order and a customer quote in minutes.",
   },
   {
     icon: FolderPlus,
@@ -49,7 +49,7 @@ const STEPS: Step[] = [
   {
     icon: Ruler,
     title: "4 · Take Off & Pricing",
-    body: "Every wall’s posts, concrete, sleepers and hours are calculated. Tune your rates, margins and engineering settings in Pricing & Performance — per project.",
+    body: "Every wall’s posts, concrete, sleepers and hours are calculated. Tune your rates, margins and engineering settings in Pricing & Performance, per project.",
   },
   {
     icon: FileText,
@@ -59,7 +59,7 @@ const STEPS: Step[] = [
   {
     icon: PackageSearch,
     title: "6 · Materials Order",
-    body: "A procurement list of steel posts, concrete, sleepers and more — grouped per lot for delivery, with per-type totals so you can order in one go.",
+    body: "A procurement list of steel posts, concrete, sleepers and more, grouped per lot for delivery, with per-type totals so you can order in one go.",
   },
   {
     icon: Users,

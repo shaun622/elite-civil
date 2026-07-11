@@ -246,7 +246,7 @@ async function persistRescale(
     const oldRatio = parseScaleRatio(extraction.scale_text);
     if (!oldRatio) {
       throw new Error(
-        "This page has no calibration to rescale from — re-measure it from the PDF instead.",
+        "This page has no calibration to rescale from. Re-measure it from the PDF instead.",
       );
     }
     factor = newMmPerPx / (MM_PER_PX_PER_SCALE * oldRatio);

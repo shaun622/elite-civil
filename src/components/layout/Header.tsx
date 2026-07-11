@@ -18,12 +18,15 @@ export function Header() {
   return (
     <header className="border-b">
       <div className="container flex h-14 items-center justify-between">
-        <Link to={user ? "/dashboard" : "/"} className="flex items-baseline gap-2">
+        <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2">
+          <span className="bg-brand-gradient flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-white shadow-sm">
+            EC
+          </span>
           <span className="text-sm font-semibold tracking-tight">
             Elite Civil
           </span>
-          <span className="text-xs text-muted-foreground">
-            — Retaining Wall Estimator
+          <span className="hidden text-xs text-muted-foreground sm:inline">
+            Retaining Wall Estimator
           </span>
         </Link>
 

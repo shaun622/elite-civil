@@ -93,7 +93,7 @@ export function HelpPage() {
             </P>
             <UL
               items={[
-                "Calibrate the scale — click two points a known distance apart and enter the real distance. Everything measures off this.",
+                "Calibrate the scale: click two points a known distance apart and enter the real distance. Everything measures off this.",
                 "Trace each wall along its line; the length is read from the plan.",
                 "You can drag wall endpoints, add or delete vertices, and rename or regroup walls into lots.",
               ]}
@@ -103,20 +103,20 @@ export function HelpPage() {
           <Section id="review" title="Walls & RLs">
             <P>
               Heights come from the reduced levels (RLs) on the plan. Select a
-              wall and use <B>Grab RLs</B> — box the top and bottom level numbers
+              wall and use <B>Grab RLs</B>: box the top and bottom level numbers
               and we read them and set the height. You can pick which two numbers
               are the top/bottom, or swap them.
             </P>
             <P>
               If a wall's stations cross a height band (e.g. mostly under 1.6 m
               but part of it over), it's <B>split automatically</B> into sections
-              for pricing — the same as if you'd drawn two walls. Type a manual
+              for pricing, the same as if you'd drawn two walls. Type a manual
               height to override and price it as one wall.
             </P>
             <P>
               The “Summary by height band” panel totals walls, length and area
               per band. You set the bands (ranges) and the embedment round-up
-              there — they're saved on the project and shared with your team.
+              there. They're saved on the project and shared with your team.
             </P>
           </Section>
 
@@ -139,7 +139,7 @@ export function HelpPage() {
               This is the project's rate card: labour and machine rates,
               material prices, engineering (post sizes, hole depth, embedment
               ratio), performance (crew speeds) and admin (markup, margin). Every
-              downstream number — cost, materials, quote — reads from here.
+              downstream number (cost, materials, quote) reads from here.
             </P>
             <P>
               <B>Extra Over Bands</B> set the per-height-band price multiplier and
@@ -159,8 +159,8 @@ export function HelpPage() {
 
           <Section id="materials" title="Materials Order">
             <P>
-              A procurement list — concrete, steel posts, fence brackets,
-              sleepers, gravel and more — priced at cost. Each category is a
+              A procurement list (concrete, steel posts, fence brackets,
+              sleepers, gravel and more) priced at cost. Each category is a
               collapsible section. Steel shows an <B>order total per post type</B>{" "}
               (size + length) across the whole job, plus a per-lot breakdown so
               you can stage deliveries by location.
@@ -169,8 +169,8 @@ export function HelpPage() {
 
           <Section id="quotation" title="Quotation">
             <P>
-              The customer-facing quote. Everything is editable and display-only
-              — nothing here changes your take-off or cost figures:
+              The customer-facing quote. Everything is editable and display-only.
+              Nothing here changes your take-off or cost figures:
             </P>
             <UL
               items={[
@@ -192,7 +192,7 @@ export function HelpPage() {
             </P>
             <P>
               <B>Print summary</B> captures the whole drawing (regardless of your
-              zoom) plus the height-band table — a tidy sheet to send a client.
+              zoom) plus the height-band table, a tidy sheet to send a client.
             </P>
           </Section>
 
@@ -219,7 +219,7 @@ export function HelpPage() {
             </P>
             <P>
               <B>Colours don't print.</B> We render them so they print on every
-              browser — if a chip is ever missing, make sure you're on the latest
+              browser. If a chip is ever missing, make sure you're on the latest
               version (bottom of the sidebar).
             </P>
           </Section>

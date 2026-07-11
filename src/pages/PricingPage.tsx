@@ -78,7 +78,7 @@ export function PricingPage() {
 
       <main className="container py-16">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
             Pricing
           </p>
           <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -86,7 +86,7 @@ export function PricingPage() {
           </h1>
           <p className="mt-5 text-balance text-base text-muted-foreground sm:text-lg">
             Pay only for the volume you need. Every plan includes the full
-            extraction + review workflow and exports — the only difference is
+            extraction + review workflow and exports. The only difference is
             the monthly drawing budget and storage cap.
           </p>
         </div>
@@ -96,10 +96,16 @@ export function PricingPage() {
             <div
               key={tier.id}
               className={cn(
-                "flex flex-col rounded-lg border bg-card p-6",
-                tier.highlight && "border-foreground shadow-lg",
+                "relative flex flex-col rounded-2xl border bg-card p-6",
+                tier.highlight &&
+                  "border-sky-300 shadow-lg shadow-sky-900/10 ring-1 ring-sky-200",
               )}
             >
+              {tier.highlight && (
+                <span className="bg-brand-gradient absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white shadow-sm">
+                  Most popular
+                </span>
+              )}
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 {tier.name}
               </h3>
@@ -120,7 +126,7 @@ export function PricingPage() {
               <ul className="mt-4 space-y-2 text-sm">
                 {tier.features.map((f) => (
                   <li key={f} className="flex items-start gap-2">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
                     <span>{f}</span>
                   </li>
                 ))}
@@ -139,7 +145,7 @@ export function PricingPage() {
 
         <p className="mx-auto mt-10 max-w-xl text-center text-xs text-muted-foreground">
           All prices in AUD. Cancel anytime. Trial converts only if you
-          explicitly upgrade — your card is never auto-charged.
+          explicitly upgrade. Your card is never auto-charged.
         </p>
       </main>
     </div>

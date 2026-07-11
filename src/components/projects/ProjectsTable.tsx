@@ -222,7 +222,7 @@ export function ProjectsTable({
               className={cn(
                 "rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-40",
                 !archived && statusFilter === val
-                  ? "bg-foreground text-background"
+                  ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >

@@ -116,7 +116,7 @@ export function AppSidebar() {
           sidebarCollapsed ? "justify-center px-0" : "gap-2 px-4",
         )}
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-foreground text-[11px] font-bold text-background">
+        <div className="bg-brand-gradient flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white shadow-sm">
           EC
         </div>
         {!sidebarCollapsed && (
@@ -221,7 +221,7 @@ export function AppSidebar() {
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
                         active
-                          ? "bg-muted font-medium text-foreground"
+                          ? "bg-primary/10 font-medium text-accent-foreground"
                           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                       )}
                     >
@@ -267,7 +267,7 @@ function MenuLink({
       className={cn(
         "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
         active
-          ? "bg-muted font-medium text-foreground"
+          ? "bg-primary/10 font-medium text-accent-foreground"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
     >
@@ -296,7 +296,7 @@ function RailLink({
       className={cn(
         "flex h-9 w-9 items-center justify-center rounded-md transition-colors",
         active
-          ? "bg-muted text-foreground"
+          ? "bg-primary/10 text-primary"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
       )}
     >

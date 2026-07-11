@@ -217,7 +217,7 @@ export async function saveVectorWalls(opts: {
       user_id: userId,
       source_id: `vec_${i + 1}`,
       label: wall.lotName
-        ? `Lot ${wall.lotName} — ${wall.typeLabel}`
+        ? `Lot ${wall.lotName} · ${wall.typeLabel}`
         : `${wall.typeLabel} wall ${n}`,
       length_mm: Math.round(wall.lengthMm),
       height_mm: rlPairsAvgHeightMm(wall.rlPairs),
@@ -227,7 +227,7 @@ export async function saveVectorWalls(opts: {
       label_bbox: null,
       source_dimension_ids: [],
       confidence: 0.9,
-      notes: `${wall.typeLabel} — length measured from PDF vector geometry.`,
+      notes: `${wall.typeLabel}: length measured from PDF vector geometry.`,
       user_added: false,
       // Map the AI-read lot label onto the BE Landscapes `lot` column
       // so it shows up immediately in the Take Off table. Wall type /

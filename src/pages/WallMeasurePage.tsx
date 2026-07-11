@@ -788,7 +788,7 @@ export function WallMeasurePage() {
     const usingPicks = pickedPathIndices.size > 0;
     if (!usingPicks && wallTypes.length === 0) {
       setError(
-        "Add at least one wall type — pick a colour, click a wall on the drawing, or use the per-wall picker.",
+        "Add at least one wall type: pick a colour, click a wall on the drawing, or use the per-wall picker.",
       );
       return;
     }
@@ -889,7 +889,7 @@ export function WallMeasurePage() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
-                    title="Zoom out (—)"
+                    title="Zoom out (-)"
                     onClick={() =>
                       setZoom((z) => Math.max(0.25, +(z / 1.25).toFixed(3)))
                     }
@@ -988,7 +988,7 @@ export function WallMeasurePage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   Click <strong>Set points</strong>, then click two points a
                   known distance apart on the drawing (a scale bar is ideal)
-                  and enter that distance — the most accurate way to
+                  and enter that distance. It's the most accurate way to
                   calibrate.
                 </p>
 
@@ -1031,7 +1031,7 @@ export function WallMeasurePage() {
                         ? "Click the first point on the drawing."
                         : calibPoints.length === 1
                           ? "Now click the second point."
-                          : "Two points set — enter the distance below."}
+                          : "Two points set. Enter the distance below."}
                     </p>
                   </>
                 )}
@@ -1076,7 +1076,7 @@ export function WallMeasurePage() {
                   <div className="mt-3 rounded-md border border-dashed bg-muted/30 p-3">
                     <p className="text-[11px] text-muted-foreground">
                       If the title block lists a ratio (e.g. 1:500) you can use
-                      it — but clicking a known distance above is usually more
+                      it, but clicking a known distance above is usually more
                       accurate.
                     </p>
                     <div className="mt-2.5 grid gap-1.5">
@@ -1277,11 +1277,11 @@ export function WallMeasurePage() {
                 disabled={saving || mmPerPx === null}
                 title={
                   mmPerPx === null
-                    ? "Calibrate the scale first — the manually drawn walls still need a real length."
+                    ? "Calibrate the scale first: the manually drawn walls still need a real length."
                     : "Save the calibration and open Review so you can draw each wall by hand."
                 }
               >
-                Skip — add walls manually in Review
+                Skip and add walls manually in Review
               </Button>
               <p className="text-[11px] text-muted-foreground">
                 Use this when every wall is drawn the same colour and the

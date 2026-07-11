@@ -41,7 +41,7 @@ export function ExportDialog({
         setError(
           reviewedOnly
             ? "No reviewed pages yet. Confirm at least one review or untick the filter."
-            : "Nothing to export — no extracted pages in this project.",
+            : "Nothing to export: no extracted pages in this project.",
         );
         return;
       }
@@ -88,7 +88,7 @@ export function ExportDialog({
             <FormatCard
               icon={<FileSpreadsheet className="h-5 w-5" />}
               label="CSV"
-              description="Spreadsheet-ready data — one row per wall segment."
+              description="Spreadsheet-ready data, one row per wall segment."
               selected={format === "csv"}
               onSelect={() => setFormat("csv")}
             />

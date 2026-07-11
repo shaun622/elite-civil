@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,7 +88,7 @@ export function LoginForm() {
             : "Send magic link"}
       </Button>
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="text-center text-sm">
         <button
           type="button"
           onClick={() => {
@@ -100,12 +100,6 @@ export function LoginForm() {
         >
           {mode === "password" ? "Use magic link" : "Use password"}
         </button>
-        <Link
-          to="/signup"
-          className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Create an account
-        </Link>
       </div>
     </form>
   );

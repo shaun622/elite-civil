@@ -46,23 +46,29 @@ export function DashboardPage() {
       </div>
 
       {/* CTA */}
-      <Card>
-        <CardContent className="flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <FileUp className="h-5 w-5 text-foreground" />
+      <Card className="bg-brand-gradient overflow-hidden border-0 text-white shadow-md">
+        <CardContent className="relative flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center">
+          {/* soft glow accents */}
+          <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-sky-200/20 blur-3xl" />
+          <div className="relative flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-inset ring-white/25">
+              <FileUp className="h-5 w-5 text-white" />
             </div>
             <div>
               <h2 className="font-semibold">Ready to get your takeoff done?</h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-sky-100">
                 Upload drawings and price your retaining walls.
               </p>
             </div>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="relative flex shrink-0 gap-2">
             <NewProjectDialog
               trigger={
-                <Button className="gap-2">
+                <Button
+                  variant="secondary"
+                  className="gap-2 bg-white text-blue-700 shadow-sm hover:bg-sky-50"
+                >
                   <Plus className="h-4 w-4" />
                   Create project
                 </Button>
@@ -70,7 +76,7 @@ export function DashboardPage() {
             />
             <Button
               variant="outline"
-              className="gap-2"
+              className="gap-2 border-white/40 bg-transparent text-white hover:bg-white/10 hover:text-white"
               onClick={() => setTourOpen(true)}
             >
               How it works

@@ -730,7 +730,7 @@ function GroupHeaderRow({
           <span
             title={
               avgDiffers
-                ? "Length-weighted average height — raw RL average, then the adjusted average actually used in the m² after manual edits"
+                ? "Length-weighted average height: raw RL average, then the adjusted average actually used in the m² after manual edits"
                 : "Length-weighted average wall height for this lot"
             }
           >
@@ -961,9 +961,9 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
             )}
             title={
               segment.height_override_mm != null
-                ? `Manual height${avgMm != null ? ` — RL average ${formatLength(avgMm)} m` : ""}`
+                ? `Manual height${avgMm != null ? ` (RL average ${formatLength(avgMm)} m)` : ""}`
                 : segment.height_mm != null && !segment.confirmed
-                  ? "Auto-derived from RLs — confirm the wall once you've verified"
+                  ? "Auto-derived from RLs. Confirm the wall once you've verified"
                   : "Average of the per-pair RL heights"
             }
           >
@@ -993,7 +993,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
               title={
                 segment.confirmed
                   ? "Un-confirm wall"
-                  : "Confirm wall — RLs verified"
+                  : "Confirm wall (RLs verified)"
               }
             >
               <Check className="h-3.5 w-3.5" />
@@ -1063,9 +1063,9 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
                       )}
                     </>
                   ) : avgMm != null ? (
-                    <>tracking RL average — type to override</>
+                    <>tracking RL average, type to override</>
                   ) : (
-                    <>no RLs yet — enter a height, or add RL pairs above</>
+                    <>no RLs yet: enter a height, or add RL pairs above</>
                   )}
                 </span>
               </div>
@@ -1096,8 +1096,8 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
                   )
                   .join(" + ")}
                 <span className="text-sky-700">
-                  {" "}
-                  — some RLs cross a pricing band, so the quote, posts and
+                  {". "}
+                  Some RLs cross a pricing band, so the quote, posts and
                   materials treat each section like its own wall. Type a
                   height override to price it as one wall instead.
                 </span>
@@ -1142,7 +1142,7 @@ const SegmentRow = forwardRef<HTMLDivElement, SegmentRowProps>(
                     e.stopPropagation();
                     void commit({ confirmed: true });
                   }}
-                  title="Mark this wall as confirmed — RLs verified"
+                  title="Mark this wall as confirmed (RLs verified)"
                 >
                   <Check className="h-3.5 w-3.5" />
                   Confirm

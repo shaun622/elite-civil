@@ -386,7 +386,7 @@ export function PricingPerfPage() {
               <CardTitle className="text-base">Embedment round-up</CardTitle>
               <CardDescription>
                 Round each wall height up to a whole sleeper (200 mm) so the
-                extra becomes in-ground embedment — this is the m² pricing basis
+                extra becomes in-ground embedment. This is the m² pricing basis
                 (Take Off's “Eng m²” and the Review height-band summary). Turn
                 it off to price on the actual measured height.
               </CardDescription>
@@ -714,7 +714,7 @@ export function PricingPerfPage() {
               <CardTitle className="text-base">Extra Over Bands</CardTitle>
               <CardDescription>
                 Price multipliers by wall height range. The quote label is what
-                prints on the Quotation for that band — leave it blank to use the
+                prints on the Quotation for that band. Leave it blank to use the
                 default range text.
               </CardDescription>
             </CardHeader>

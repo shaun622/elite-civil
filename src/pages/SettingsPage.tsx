@@ -254,7 +254,7 @@ function CompanyTab() {
     <section className="rounded-lg border bg-card p-6">
       <h2 className="text-lg font-semibold">Company profile</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Shared by your whole team — used on branded PDF exports.
+        Shared by your whole team and used on branded PDF exports.
         {!editable && " Only an owner or admin can edit it."}
       </p>
 
@@ -519,7 +519,7 @@ function TeamTab() {
           <h2 className="text-lg font-semibold">Invite a teammate</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             They get access when they sign in with this email. (Automatic invite
-            emails are coming — for now, tell them to sign up with this address.)
+            emails are coming. For now, tell them to sign up with this address.)
           </p>
 
           {notice && (
@@ -723,7 +723,7 @@ function BillingTab({ userId }: { userId: string }) {
         <h2 className="text-lg font-semibold">Change plan</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Stripe handles billing. Upgrading opens a secure Stripe Checkout
-          page — your card never touches our servers.
+          page. Your card never touches our servers.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-3">

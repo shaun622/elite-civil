@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,16 +76,6 @@ export function SignupForm() {
       <Button type="submit" className="w-full" disabled={submitting}>
         {submitting ? "Creating account…" : "Create account"}
       </Button>
-
-      <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <Link
-          to="/login"
-          className="text-foreground underline-offset-4 hover:underline"
-        >
-          Sign in
-        </Link>
-      </p>
     </form>
   );
 }
