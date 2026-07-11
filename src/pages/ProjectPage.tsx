@@ -31,7 +31,7 @@ export function ProjectPage() {
     remove: removeDrawing,
     uploadStage,
     uploadError,
-  } = useDrawings(id);
+  } = useDrawings(project?.id);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);

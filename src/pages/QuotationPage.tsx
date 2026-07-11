@@ -64,7 +64,7 @@ const DEFAULT_SCHEDULE_BLURB =
 export function QuotationPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading, update } = useProject(id);
-  const { walls, loading: wallsLoading } = useProjectWalls(id);
+  const { walls, loading: wallsLoading } = useProjectWalls(project?.id);
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
 
   if (!id) return <Navigate to="/dashboard" replace />;

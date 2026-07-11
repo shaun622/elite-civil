@@ -12,6 +12,9 @@ export interface Project {
   id: string;
   user_id: string;
   name: string;
+  /** URL slug derived from the name, unique within the organisation. Null on
+   *  legacy rows created before the slug migration + backfill. */
+  slug: string | null;
   client_name: string | null;
   site_address: string | null;
   status: ProjectStatus;

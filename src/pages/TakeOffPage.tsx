@@ -79,7 +79,7 @@ export function TakeOffPage() {
     addWall,
     updateWall,
     removeWall,
-  } = useProjectWalls(id);
+  } = useProjectWalls(project?.id);
   const [draft, setDraft] = useState<NewWallDraft>(emptyDraft());
 
   if (!id) return <Navigate to="/dashboard" replace />;

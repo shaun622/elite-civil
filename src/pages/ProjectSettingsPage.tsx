@@ -166,7 +166,7 @@ export function ProjectSettingsPage() {
         </CardContent>
       </Card>
 
-      {canManageMembers && id && <AccessCard projectId={id} />}
+      {canManageMembers && <AccessCard projectId={project.id} />}
 
       {canManageMembers && (
         <Card className="border-destructive/40">

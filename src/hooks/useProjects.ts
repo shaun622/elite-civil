@@ -137,35 +137,38 @@ export function useProject(id: string | undefined) {
     void load();
   }, [id, load]);
 
+  // Mutations run against the RESOLVED project's UUID, never the raw URL
+  // segment (which is a slug once the slug migration lands — feeding a slug
+  // into the API helpers' .eq("id", ...) would fail on the uuid column).
   const update = useCallback(
     async (patch: ProjectUpdate) => {
-      if (!id) throw new Error("No project id.");
-      const next = await updateProject(id, patch);
+      if (!project) throw new Error("Project not loaded.");
+      const next = await updateProject(project.id, patch);
       setProject(next);
       return next;
     },
-    [id],
+    [project],
   );
 
   const archive = useCallback(async () => {
-    if (!id) throw new Error("No project id.");
-    const next = await archiveProject(id);
+    if (!project) throw new Error("Project not loaded.");
+    const next = await archiveProject(project.id);
     setProject(next);
     return next;
-  }, [id]);
+  }, [project]);
 
   const restore = useCallback(async () => {
-    if (!id) throw new Error("No project id.");
-    const next = await restoreProject(id);
+    if (!project) throw new Error("Project not loaded.");
+    const next = await restoreProject(project.id);
     setProject(next);
     return next;
-  }, [id]);
+  }, [project]);
 
   const remove = useCallback(async () => {
-    if (!id) throw new Error("No project id.");
-    await deleteProject(id);
+    if (!project) throw new Error("Project not loaded.");
+    await deleteProject(project.id);
     setProject(null);
-  }, [id]);
+  }, [project]);
 
   return { project, loading, error, refresh: load, update, archive, restore, remove };
 }

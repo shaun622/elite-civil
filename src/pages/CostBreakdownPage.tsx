@@ -52,7 +52,7 @@ function formatQty(n: number): string {
 export function CostBreakdownPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading, update } = useProject(id);
-  const { walls, loading: wallsLoading } = useProjectWalls(id);
+  const { walls, loading: wallsLoading } = useProjectWalls(project?.id);
 
   if (!id) return <Navigate to="/dashboard" replace />;
   if (projectLoading || wallsLoading) {

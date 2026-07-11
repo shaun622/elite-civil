@@ -8,7 +8,7 @@ export function ProjectCard({ project }: { project: Project }) {
   const isArchived = project.status === "archived";
   return (
     <Link
-      to={`/projects/${project.id}`}
+      to={`/projects/${project.slug ?? project.id}`}
       className="group block rounded-lg outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <Card className="h-full transition-colors group-hover:border-foreground/20">

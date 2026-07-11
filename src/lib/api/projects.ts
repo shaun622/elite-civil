@@ -1,8 +1,35 @@
 import { supabase } from "@/lib/supabase";
 import type { Project, ProjectInsert, ProjectUpdate } from "@/types/db";
 import { defaultConfig, DEFAULT_PROJECT_DESCRIPTION } from "@/lib/engine/defaults";
+import { slugify } from "@/lib/slug";
 
 const TABLE = "projects";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A slug for `name` unique within the caller's org (RLS scopes the lookup).
+ *  Returns null if the slug column isn't there yet (pre-migration) so project
+ *  creation keeps working until the SQL is applied. */
+async function generateUniqueSlug(name: string): Promise<string | null> {
+  const base = slugify(name) || "project";
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("slug")
+    .ilike("slug", `${base}%`);
+  if (error) return null; // slug column not migrated yet
+  const taken = new Set(
+    (data ?? [])
+      .map((r) => (r as { slug: string | null }).slug)
+      .filter((s): s is string => !!s),
+  );
+  if (!taken.has(base)) return base;
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base}-${i}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
 
 function normalize(input: ProjectInsert | ProjectUpdate): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -26,11 +53,15 @@ export async function listProjects(): Promise<Project[]> {
   return (data ?? []) as Project[];
 }
 
-export async function getProject(id: string): Promise<Project> {
+/** Resolve a project from its URL segment, which may be a slug (new URLs) or a
+ *  raw UUID (old links, or rows created before the slug backfill). RLS scopes
+ *  both lookups to the caller's org, so slugs only need to be unique per org. */
+export async function getProject(idOrSlug: string): Promise<Project> {
+  const column = UUID_RE.test(idOrSlug) ? "id" : "slug";
   const { data, error } = await supabase
     .from(TABLE)
     .select("*")
-    .eq("id", id)
+    .eq(column, idOrSlug)
     .single();
   if (error) throw error;
   return data as Project;
@@ -44,17 +75,30 @@ export async function createProject(
   // unless the caller explicitly passed their own. Saves the user from
   // having to clone an existing project just to set up rates / margins.
   const normalized = normalize(input);
-  const fullPayload = {
+  const slug = await generateUniqueSlug(String(normalized.name ?? ""));
+  const seeded = {
     ...normalized,
     user_id: userId,
     config: normalized.config ?? defaultConfig,
     description: normalized.description ?? DEFAULT_PROJECT_DESCRIPTION,
   };
-  const { data, error } = await supabase
+  const fullPayload = slug ? { ...seeded, slug } : seeded;
+  let { data, error } = await supabase
     .from(TABLE)
     .insert(fullPayload)
     .select()
     .single();
+
+  // Slug race: another insert claimed this slug between our pre-check and the
+  // insert (unique index on (org_id, slug) -> 23505). Retry once with a
+  // disambiguating suffix.
+  if (error && (error as { code?: string }).code === "23505" && slug) {
+    ({ data, error } = await supabase
+      .from(TABLE)
+      .insert({ ...seeded, slug: `${slug}-${Date.now().toString(36)}` })
+      .select()
+      .single());
+  }
   if (!error) return data as Project;
 
   // If the Phase-2 migration hasn't been applied yet, `config` /

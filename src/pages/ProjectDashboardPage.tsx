@@ -44,7 +44,7 @@ export function ProjectDashboardPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading } = useProject(id);
-  const { walls, loading: wallsLoading } = useProjectWalls(id);
+  const { walls, loading: wallsLoading } = useProjectWalls(project?.id);
 
   if (!id) return <Navigate to="/dashboard" replace />;
 

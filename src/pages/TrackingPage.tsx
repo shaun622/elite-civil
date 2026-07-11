@@ -93,7 +93,7 @@ function emptyEntry(phase: TrackingPhase): TrackingEntry {
 export function TrackingPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading, update } = useProject(id);
-  const { walls, loading: wallsLoading } = useProjectWalls(id);
+  const { walls, loading: wallsLoading } = useProjectWalls(project?.id);
   const [activePhase, setActivePhase] = useState<TrackingPhase>("Drilling");
   const [draft, setDraft] = useState<TrackingEntry>(emptyEntry("Drilling"));
 

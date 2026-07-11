@@ -78,11 +78,10 @@ export function NewProjectDialog({ trigger }: { trigger: ReactNode }) {
       const project = await create(payload);
       setOpen(false);
       reset();
-      navigate(
-        goToDrawings
-          ? `/projects/${project.id}/drawings`
-          : `/projects/${project.id}`,
-      );
+      // Prefer the slug; fall back to the UUID for pre-migration rows (the
+      // route resolver accepts either).
+      const seg = project.slug ?? project.id;
+      navigate(goToDrawings ? `/projects/${seg}/drawings` : `/projects/${seg}`);
     } catch (err) {
       const message =
         err instanceof Error

@@ -121,7 +121,7 @@ function LinesTable({
 export function MaterialsOrderPage() {
   const { id } = useParams<{ id: string }>();
   const { project, loading: projectLoading } = useProject(id);
-  const { walls, loading: wallsLoading } = useProjectWalls(id);
+  const { walls, loading: wallsLoading } = useProjectWalls(project?.id);
   const [openCats, setOpenCats] = useState<Set<string>>(
     () => new Set<string>(CATEGORY_ORDER),
   );

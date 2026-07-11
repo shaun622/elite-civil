@@ -310,11 +310,11 @@ export function ProjectsTable({
                   <TableRow
                     key={p.id}
                     className="cursor-pointer"
-                    onClick={() => navigate(`/projects/${p.id}`)}
+                    onClick={() => navigate(`/projects/${p.slug ?? p.id}`)}
                   >
                     <TableCell>
                       <Link
-                        to={`/projects/${p.id}`}
+                        to={`/projects/${p.slug ?? p.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="font-medium text-foreground hover:underline"
                       >
