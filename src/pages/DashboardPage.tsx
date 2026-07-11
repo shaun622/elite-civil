@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, FileUp, PlayCircle, Plus } from "lucide-react";
+import { BookOpen, FileUp, FolderKanban, PlayCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { NewProjectDialog } from "@/components/projects/NewProjectDialog";
 import { ProjectsTable } from "@/components/projects/ProjectsTable";
@@ -38,12 +39,12 @@ export function DashboardPage() {
 
   return (
     <main className="container space-y-6 py-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{heading}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Welcome back{user?.email ? `, ${user.email}` : ""}.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        icon={FolderKanban}
+        title={heading}
+        subtitle={`Welcome back${user?.email ? `, ${user.email}` : ""}.`}
+      />
 
       {/* CTA */}
       <Card className="bg-brand-gradient overflow-hidden border-0 text-white shadow-md">

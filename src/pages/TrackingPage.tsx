@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { Plus, Printer, Trash2 } from "lucide-react";
+import { ClipboardCheck, Plus, Printer, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import {
   Card,
   CardContent,
@@ -141,19 +142,19 @@ export function TrackingPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Tracking</h2>
-          <p className="text-muted-foreground">
-            Monthly labour &amp; progress log. Enter actuals during office
-            meetings.
-          </p>
-        </div>
-        <Button variant="outline" onClick={() => window.print()}>
-          <Printer className="mr-2 h-4 w-4" />
-          Print for site
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Operations"
+        icon={ClipboardCheck}
+        as="h2"
+        title="Tracking"
+        subtitle="Monthly labour & progress log. Enter actuals during office meetings."
+        actions={
+          <Button variant="outline" onClick={() => window.print()}>
+            <Printer className="mr-2 h-4 w-4" />
+            Print for site
+          </Button>
+        }
+      />
 
       <Tabs
         value={activePhase}

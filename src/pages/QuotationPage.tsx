@@ -1,7 +1,15 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { ChevronRight, Info, Plus, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ChevronRight,
+  FileText,
+  Info,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import {
   Card,
   CardContent,
@@ -210,21 +218,22 @@ export function QuotationPage() {
 
   return (
     <div className="max-w-4xl space-y-6 p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Quotation</h2>
-          <p className="text-muted-foreground">
-            Generated pricing for {project.name}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          className="print:hidden"
-          onClick={() => window.print()}
-        >
-          Print / save PDF
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Quote"
+        icon={FileText}
+        as="h2"
+        title="Quotation"
+        subtitle={`Generated pricing for ${project.name}`}
+        actions={
+          <Button
+            variant="outline"
+            className="print:hidden"
+            onClick={() => window.print()}
+          >
+            Print / save PDF
+          </Button>
+        }
+      />
 
       {/* Project header */}
       <Card>

@@ -1,7 +1,8 @@
 import { Fragment } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { Printer, RotateCcw } from "lucide-react";
+import { Calculator, Printer, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { DraftInput } from "@/components/ui/draft-input";
 import {
@@ -95,29 +96,27 @@ export function CostBreakdownPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Cost Breakdown
-          </h2>
-          <p className="text-muted-foreground">
-            Auto-calculated from take-off. Override any quantity to reflect
-            actual job needs.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {hasOverrides && (
-            <Button variant="outline" onClick={clearOverrides}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Reset overrides
+      <PageHeader
+        eyebrow="Estimate"
+        icon={Calculator}
+        as="h2"
+        title="Cost Breakdown"
+        subtitle="Auto-calculated from take-off. Override any quantity to reflect actual job needs."
+        actions={
+          <>
+            {hasOverrides && (
+              <Button variant="outline" onClick={clearOverrides}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Reset overrides
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print
             </Button>
-          )}
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {detail.lines.length === 0 ? (
         <Card>
@@ -145,7 +144,7 @@ export function CostBreakdownPage() {
                   const subtotal = detail.categoryTotals[cat] ?? 0;
                   return (
                     <Fragment key={cat}>
-                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableRow className="bg-sky-50/70 hover:bg-sky-50/70 print:bg-transparent">
                         <TableCell
                           colSpan={5}
                           className="py-1.5 text-xs font-semibold uppercase tracking-wide"

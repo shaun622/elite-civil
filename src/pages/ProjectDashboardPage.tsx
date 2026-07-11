@@ -14,7 +14,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Layers, Plus, Ruler, TrendingUp } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
+import {
+  DollarSign,
+  Layers,
+  LayoutDashboard,
+  Plus,
+  Ruler,
+  TrendingUp,
+} from "lucide-react";
 
 const aud = new Intl.NumberFormat("en-AU", {
   style: "currency",
@@ -63,22 +71,29 @@ export function ProjectDashboardPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">{project.name}</h2>
-        <p className="text-muted-foreground">
-          {project.client_name
-            ? `Client: ${project.client_name}`
-            : "Project overview and summary"}
-          {project.quote_number ? ` · ${project.quote_number}` : ""}
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Project overview"
+        icon={LayoutDashboard}
+        as="h2"
+        title={project.name}
+        subtitle={
+          <>
+            {project.client_name
+              ? `Client: ${project.client_name}`
+              : "Project overview and summary"}
+            {project.quote_number ? ` · ${project.quote_number}` : ""}
+          </>
+        }
+      />
 
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total m²</CardTitle>
-            <Layers className="h-4 w-4 text-muted-foreground" />
+            <span className="bg-brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-white shadow-sm">
+              <Layers className="h-4 w-4" />
+            </span>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -93,7 +108,9 @@ export function ProjectDashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Cost Total</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <span className="bg-brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-white shadow-sm">
+              <DollarSign className="h-4 w-4" />
+            </span>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -110,7 +127,9 @@ export function ProjectDashboardPage() {
             <CardTitle className="text-sm font-medium">
               Quote Total (ex GST)
             </CardTitle>
-            <Ruler className="h-4 w-4 text-muted-foreground" />
+            <span className="bg-brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-white shadow-sm">
+              <Ruler className="h-4 w-4" />
+            </span>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -127,7 +146,9 @@ export function ProjectDashboardPage() {
             <CardTitle className="text-sm font-medium">
               Projected Profit
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <span className="bg-brand-gradient flex h-8 w-8 items-center justify-center rounded-lg text-white shadow-sm">
+              <TrendingUp className="h-4 w-4" />
+            </span>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">

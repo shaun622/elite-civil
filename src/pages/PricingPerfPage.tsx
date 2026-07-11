@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { DollarSign } from "lucide-react";
 import { useProject } from "@/hooks/useProjects";
 import { POST_SIZE_OPTIONS, defaultConfig } from "@/lib/engine/defaults";
 import { defaultQuoteLabel } from "@/lib/engine/calculations";
@@ -104,15 +106,13 @@ export function PricingPerfPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">
-          Pricing &amp; Performance
-        </h2>
-        <p className="text-muted-foreground">
-          Configure rates, material prices, and engineering parameters for
-          this project. Changes save automatically.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Estimate"
+        icon={DollarSign}
+        as="h2"
+        title="Pricing & Performance"
+        subtitle="Configure rates, material prices, and engineering parameters for this project. Changes save automatically."
+      />
 
       <Tabs defaultValue="labour">
         <TabsList>

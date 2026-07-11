@@ -1,7 +1,8 @@
 import { Fragment, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { AlertTriangle, Plus, ScanLine, Trash2 } from "lucide-react";
+import { AlertTriangle, Plus, Ruler, ScanLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { DraftInput } from "@/components/ui/draft-input";
 import { Badge } from "@/components/ui/badge";
@@ -161,20 +162,20 @@ export function TakeOffPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Take Off</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {project.name} · enter measurements, or measure from a PDF.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to={`/projects/${id}/drawings`} className="gap-1.5">
-            <ScanLine className="h-4 w-4" />
-            Measure from PDF
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Measure"
+        icon={Ruler}
+        title="Take Off"
+        subtitle={`${project.name} · enter measurements, or measure from a PDF.`}
+        actions={
+          <Button asChild>
+            <Link to={`/projects/${id}/drawings`} className="gap-1.5">
+              <ScanLine className="h-4 w-4" />
+              Measure from PDF
+            </Link>
+          </Button>
+        }
+      />
 
       {actionError && (
         <Card className="border-destructive/50 bg-destructive/5">
@@ -302,10 +303,10 @@ export function TakeOffPage() {
 
       {rows.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">{rows.length} segments</Badge>
-          <Badge variant="secondary">{totalLM.toFixed(0)} LM total</Badge>
-          <Badge variant="secondary">{totalEngM2.toFixed(1)} m² total</Badge>
-          <Badge variant="secondary">
+          <Badge variant="brand">{rows.length} segments</Badge>
+          <Badge variant="brand">{totalLM.toFixed(0)} LM total</Badge>
+          <Badge variant="brand">{totalEngM2.toFixed(1)} m² total</Badge>
+          <Badge variant="brand">
             {bundle.uniqueLotCount} lot{bundle.uniqueLotCount === 1 ? "" : "s"}
           </Badge>
           {over4m.length > 0 && (
@@ -341,7 +342,7 @@ export function TakeOffPage() {
           <CardContent className="p-0">
             <div>
               <Table containerClassName="max-h-[75vh]">
-                <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:border-b [&_th]:bg-card">
+                <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-20 [&_th]:border-b [&_th]:bg-sky-50">
                   <TableRow>
                     <TableHead className="w-16">Lot</TableHead>
                     <TableHead>Type</TableHead>

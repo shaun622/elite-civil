@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
-import { Printer } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { LifeBuoy, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { cn } from "@/lib/utils";
 
 const SECTIONS: { id: string; title: string }[] = [
   { id: "getting-started", title: "Getting started" },
@@ -18,26 +21,25 @@ const SECTIONS: { id: string; title: string }[] = [
 ];
 
 export function HelpPage() {
+  const { hash } = useLocation();
   return (
     <main className="container py-8">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Documentation
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            How Elite Civil turns a plan into a priced retaining-wall quote.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          className="gap-2 print:hidden"
-          onClick={() => window.print()}
-        >
-          <Printer className="h-4 w-4" />
-          Print / save PDF
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Support"
+        icon={LifeBuoy}
+        title="Documentation"
+        subtitle="How Elite Civil turns a plan into a priced retaining-wall quote."
+        actions={
+          <Button
+            variant="outline"
+            className="gap-2 print:hidden"
+            onClick={() => window.print()}
+          >
+            <Printer className="h-4 w-4" />
+            Print / save PDF
+          </Button>
+        }
+      />
 
       <div className="mt-6 grid gap-10 lg:grid-cols-[200px_1fr]">
         <nav className="sticky top-4 hidden self-start text-sm print:hidden lg:block">
@@ -49,7 +51,12 @@ export function HelpPage() {
               <li key={s.id}>
                 <a
                   href={`#${s.id}`}
-                  className="text-muted-foreground hover:text-foreground"
+                  className={cn(
+                    "hover:text-foreground",
+                    hash === `#${s.id}`
+                      ? "font-medium text-sky-700"
+                      : "text-muted-foreground",
+                  )}
                 >
                   {s.title}
                 </a>

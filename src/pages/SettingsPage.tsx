@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Building, CreditCard, Loader2, User, Users, X } from "lucide-react";
+import {
+  Building,
+  CreditCard,
+  Loader2,
+  Settings as SettingsIcon,
+  User,
+  Users,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,10 +47,12 @@ export function SettingsPage() {
 
   return (
     <main className="container py-10">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage your account, company branding, and subscription.
-        </p>
+        <PageHeader
+          eyebrow="Account"
+          icon={SettingsIcon}
+          title="Settings"
+          subtitle="Manage your account, company branding, and subscription."
+        />
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[200px_1fr]">
           <nav className="flex flex-row gap-2 lg:flex-col">
@@ -100,7 +111,7 @@ function TabButton({
       className={cn(
         "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
         active
-          ? "bg-foreground text-background"
+          ? "bg-primary text-primary-foreground"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
       )}
     >
@@ -777,7 +788,7 @@ function UsageBar({
                 ? "bg-red-500"
                 : pct >= 70
                   ? "bg-amber-500"
-                  : "bg-foreground",
+                  : "bg-primary",
             )}
             style={{ width: `${pct}%` }}
           />

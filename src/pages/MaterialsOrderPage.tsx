@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Printer } from "lucide-react";
+import { ChevronDown, ChevronRight, PackageSearch, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
 import {
   Table,
@@ -175,29 +176,27 @@ export function MaterialsOrderPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            Materials Order
-          </h2>
-          <p className="text-muted-foreground">
-            Consolidated procurement list for {project.name}. Quantities are
-            auto-calculated from take-off.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <Button variant="ghost" size="sm" onClick={expandAll}>
-            Expand all
-          </Button>
-          <Button variant="ghost" size="sm" onClick={collapseAll}>
-            Collapse all
-          </Button>
-          <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="mr-2 h-4 w-4" />
-            Print
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Order"
+        icon={PackageSearch}
+        as="h2"
+        title="Materials Order"
+        subtitle={`Consolidated procurement list for ${project.name}. Quantities are auto-calculated from take-off.`}
+        actions={
+          <>
+            <Button variant="ghost" size="sm" onClick={expandAll}>
+              Expand all
+            </Button>
+            <Button variant="ghost" size="sm" onClick={collapseAll}>
+              Collapse all
+            </Button>
+            <Button variant="outline" onClick={() => window.print()}>
+              <Printer className="mr-2 h-4 w-4" />
+              Print
+            </Button>
+          </>
+        }
+      />
 
       {order.lines.length === 0 ? (
         <Card className="py-12 text-center text-muted-foreground">
@@ -214,12 +213,12 @@ export function MaterialsOrderPage() {
                 <button
                   type="button"
                   onClick={() => toggleCat(cat)}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/50"
+                  className="flex w-full items-center gap-2 border-l-2 border-l-sky-500 bg-sky-50/50 px-4 py-3 text-left transition-colors hover:bg-sky-50 print:border-l-0 print:bg-transparent"
                 >
                   {open ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    <ChevronDown className="h-4 w-4 text-sky-600" />
                   ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <ChevronRight className="h-4 w-4 text-sky-600" />
                   )}
                   <span className="text-sm font-semibold uppercase tracking-wide">
                     {cat}
