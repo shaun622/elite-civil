@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, PackageSearch, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -108,9 +109,8 @@ function LinesTable({
           <TableRow key={i} className={cn(l.excluded && "opacity-50 print:hidden")}>
             {onToggle && (
               <TableCell className="print:hidden">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-foreground"
+                <Switch
+                  size="sm"
                   checked={!l.excluded}
                   disabled={disabled}
                   title={
@@ -118,7 +118,7 @@ function LinesTable({
                       ? "Turned off by its category"
                       : "Include this item in the order and costings"
                   }
-                  onChange={() => onToggle(l)}
+                  onCheckedChange={() => onToggle(l)}
                 />
               </TableCell>
             )}
@@ -256,15 +256,16 @@ export function MaterialsOrderPage() {
             return (
               <Card key={cat} className="overflow-hidden">
                 <div className="flex w-full items-center gap-2 border-l-2 border-l-sky-500 bg-sky-50/50 px-4 py-3 print:border-l-0 print:bg-transparent">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-foreground print:hidden"
-                    checked={!catOff}
-                    title="Include this category in the order and costings"
-                    onChange={(e) =>
-                      setExclude(excludeMatKey(matCat), !e.target.checked)
-                    }
-                  />
+                  <span className="print:hidden">
+                    <Switch
+                      size="sm"
+                      checked={!catOff}
+                      title="Include this category in the order and costings"
+                      onCheckedChange={(on) =>
+                        setExclude(excludeMatKey(matCat), !on)
+                      }
+                    />
+                  </span>
                   <button
                     type="button"
                     onClick={() => toggleCat(cat)}

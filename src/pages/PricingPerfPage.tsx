@@ -24,7 +24,13 @@ import { DollarSign, Plus, Trash2 } from "lucide-react";
 import { useProject } from "@/hooks/useProjects";
 import { POST_SIZE_OPTIONS, defaultConfig } from "@/lib/engine/defaults";
 import { defaultQuoteLabel } from "@/lib/engine/calculations";
-import { excludeMatKey } from "@/lib/engine/exclusions";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import {
+  excludeLineKey,
+  excludeMatKey,
+  excludeMatLineKey,
+} from "@/lib/engine/exclusions";
 import type { MaterialCategory } from "@/lib/engine/types";
 import type { CrewType, PostSizeRange, ProjectConfig } from "@/types/db";
 
@@ -152,18 +158,23 @@ export function PricingPerfPage() {
     config.machineRates.findIndex((m) => m.name === "8ton KPR"),
   );
 
-  // Feature include/exclude toggles write to cost_overrides (not config), so
-  // they bypass the config draft/debounce and take effect immediately.
+  // Include/exclude toggles write to cost_overrides (not config), so they
+  // bypass the config draft/debounce and take effect immediately.
   const costOverrides = project.cost_overrides ?? {};
-  const matIncluded = (cat: MaterialCategory) =>
-    !costOverrides[excludeMatKey(cat)];
-  function setMatIncluded(cat: MaterialCategory, include: boolean) {
+  const included = (key: string) => !costOverrides[key];
+  const matIncluded = (cat: MaterialCategory) => included(excludeMatKey(cat));
+  function setKeysExcluded(keys: string[], exclude: boolean) {
     const next = { ...costOverrides };
-    const key = excludeMatKey(cat);
-    if (include) delete next[key];
-    else next[key] = 1;
+    for (const key of keys) {
+      if (exclude) next[key] = 1;
+      else delete next[key];
+    }
     void update({ cost_overrides: next });
   }
+  const setExcluded = (key: string, exclude: boolean) =>
+    setKeysExcluded([key], exclude);
+  const setMatIncluded = (cat: MaterialCategory, include: boolean) =>
+    setExcluded(excludeMatKey(cat), !include);
 
   return (
     <div className="space-y-6 p-6">
@@ -366,24 +377,42 @@ export function PricingPerfPage() {
                   order and quotation.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent
+                className={cn(
+                  "space-y-3 transition-opacity",
+                  !matIncluded("Sleepers") && "opacity-50",
+                )}
+              >
                 {(
                   [
-                    ["superSleeper", "Super Sleeper", "ea"],
-                    ["superSupport", "Super Support", "ea"],
-                    ["wedges", "Wedges", "ea"],
-                    ["concreteSleeper", "Concrete Sleeper", "ea"],
+                    ["superSleeper", "Super Sleeper", "ea", excludeLineKey("build-super-sleepers")],
+                    ["superSupport", "Super Support", "ea", excludeLineKey("build-super-supports")],
+                    ["wedges", "Wedges", "ea", excludeMatLineKey("Sleepers", "Wedges")],
+                    ["concreteSleeper", "Concrete Sleeper", "ea", excludeLineKey("build-concrete-sleepers")],
                   ] as const
-                ).map(([key, label, unit]) => (
-                  <PriceField
-                    key={key}
-                    label={label}
-                    unit={`/${unit}`}
-                    step="0.01"
-                    value={config.materialPrices[key]}
-                    onChange={(v) => setField("materialPrices", key, v)}
-                  />
-                ))}
+                ).map(([key, label, unit, exKey]) => {
+                  const master = matIncluded("Sleepers");
+                  const own = !included(exKey);
+                  return (
+                    <PriceField
+                      key={key}
+                      label={label}
+                      unit={`/${unit}`}
+                      step="0.01"
+                      value={config.materialPrices[key]}
+                      onChange={(v) => setField("materialPrices", key, v)}
+                      included={master && !own}
+                      toggleDisabled={!master}
+                      onIncludedChange={(v) => setExcluded(exKey, !v)}
+                      dimmed={own}
+                      toggleTitle={
+                        key === "wedges"
+                          ? "Affects the materials order only"
+                          : undefined
+                      }
+                    />
+                  );
+                })}
               </CardContent>
             </Card>
 
@@ -396,32 +425,26 @@ export function PricingPerfPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <IncludeToggle
-                    label="Include concrete"
-                    checked={matIncluded("Concrete")}
-                    onChange={(v) => setMatIncluded("Concrete", v)}
-                  />
-                  <IncludeToggle
-                    label="Include gravel"
-                    checked={matIncluded("Gravel")}
-                    onChange={(v) => setMatIncluded("Gravel", v)}
-                  />
-                </div>
                 {(
                   [
-                    ["concreteRate", "Concrete", "m³"],
-                    ["gravelRate", "Gravel", "m³"],
+                    ["concreteRate", "Concrete", "m³", "Concrete"],
+                    ["gravelRate", "Gravel", "m³", "Gravel"],
                   ] as const
-                ).map(([key, label, unit]) => (
-                  <PriceField
-                    key={key}
-                    label={label}
-                    unit={`/${unit}`}
-                    value={config.materialPrices[key]}
-                    onChange={(v) => setField("materialPrices", key, v)}
-                  />
-                ))}
+                ).map(([key, label, unit, cat]) => {
+                  const inc = matIncluded(cat);
+                  return (
+                    <PriceField
+                      key={key}
+                      label={label}
+                      unit={`/${unit}`}
+                      value={config.materialPrices[key]}
+                      onChange={(v) => setField("materialPrices", key, v)}
+                      included={inc}
+                      onIncludedChange={(v) => setMatIncluded(cat, v)}
+                      dimmed={!inc}
+                    />
+                  );
+                })}
               </CardContent>
             </Card>
 
@@ -443,34 +466,57 @@ export function PricingPerfPage() {
                   quotation; posting labour stays.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {config.engineering.postSizeRanges.map((range, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <Badge variant="outline" className="w-20 justify-center">
-                      {range.postSize}
-                    </Badge>
-                    <DollarInput
-                      step="0.01"
-                      value={range.pricePerMetre}
-                      onChange={(v) => {
-                        const next = structuredClone(config);
-                        next.engineering.postSizeRanges[i].pricePerMetre = v;
-                        setConfig(next);
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">/m steel</span>
-                    <DollarInput
-                      step="0.5"
-                      value={range.postingLabourPerM2}
-                      onChange={(v) => {
-                        const next = structuredClone(config);
-                        next.engineering.postSizeRanges[i].postingLabourPerM2 = v;
-                        setConfig(next);
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">/m² labour</span>
-                  </div>
-                ))}
+              <CardContent
+                className={cn(
+                  "space-y-3 transition-opacity",
+                  !matIncluded("Steel") && "opacity-50",
+                )}
+              >
+                {config.engineering.postSizeRanges.map((range, i) => {
+                  const master = matIncluded("Steel");
+                  const exKey = excludeLineKey(`post-steel-${range.postSize}`);
+                  const own = !included(exKey);
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex items-center gap-3 transition-opacity",
+                        own && "opacity-50",
+                      )}
+                    >
+                      <Switch
+                        size="sm"
+                        checked={master && !own}
+                        disabled={!master}
+                        title="Include this steel size in the costs and quotation"
+                        onCheckedChange={(v) => setExcluded(exKey, !v)}
+                      />
+                      <Badge variant="outline" className="w-20 justify-center">
+                        {range.postSize}
+                      </Badge>
+                      <DollarInput
+                        step="0.01"
+                        value={range.pricePerMetre}
+                        onChange={(v) => {
+                          const next = structuredClone(config);
+                          next.engineering.postSizeRanges[i].pricePerMetre = v;
+                          setConfig(next);
+                        }}
+                      />
+                      <span className="text-xs text-muted-foreground">/m steel</span>
+                      <DollarInput
+                        step="0.5"
+                        value={range.postingLabourPerM2}
+                        onChange={(v) => {
+                          const next = structuredClone(config);
+                          next.engineering.postSizeRanges[i].postingLabourPerM2 = v;
+                          setConfig(next);
+                        }}
+                      />
+                      <span className="text-xs text-muted-foreground">/m² labour</span>
+                    </div>
+                  );
+                })}
               </CardContent>
             </Card>
 
@@ -488,17 +534,40 @@ export function PricingPerfPage() {
                   order and quotation.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent
+                className={cn(
+                  "space-y-3 transition-opacity",
+                  !matIncluded("Fence Brackets") && "opacity-50",
+                )}
+              >
                 <PriceField
                   label="Bracket"
                   unit="/ea"
                   value={config.materialPrices.fenceBracket}
                   onChange={(v) => setField("materialPrices", "fenceBracket", v)}
+                  included={
+                    matIncluded("Fence Brackets") &&
+                    included(excludeLineKey("other-brackets-material"))
+                  }
+                  toggleDisabled={!matIncluded("Fence Brackets")}
+                  onIncludedChange={(v) =>
+                    setExcluded(excludeLineKey("other-brackets-material"), !v)
+                  }
+                  dimmed={!included(excludeLineKey("other-brackets-material"))}
                 />
                 <PriceField
                   label="Install labour"
                   unit="/ea"
                   value={config.materialPrices.fenceBracketLabour}
+                  included={
+                    matIncluded("Fence Brackets") &&
+                    included(excludeLineKey("other-brackets-labour"))
+                  }
+                  toggleDisabled={!matIncluded("Fence Brackets")}
+                  onIncludedChange={(v) =>
+                    setExcluded(excludeLineKey("other-brackets-labour"), !v)
+                  }
+                  dimmed={!included(excludeLineKey("other-brackets-labour"))}
                   onChange={(v) =>
                     setField("materialPrices", "fenceBracketLabour", v)
                   }
@@ -530,23 +599,33 @@ export function PricingPerfPage() {
                 <div className="grid gap-3 sm:grid-cols-2">
                 {(
                   [
-                    ["geo1mX50m", "Geofab 0.9m × 50m", "roll"],
-                    ["geo2mX50m", "Geofab 2m × 50m", "roll"],
-                    ["geo1mX100m", "Geofab 0.9m × 100m", "roll"],
-                    ["geo2mX100m", "Geofab 2m × 100m", "roll"],
-                    ["agLine100mmX100m", "Ag Line 100mm × 100m", "roll"],
+                    ["geo1mX50m", "Geofab 0.9m × 50m", "roll", "Geofabric", excludeLineKey("backfill-geo1m")],
+                    ["geo2mX50m", "Geofab 2m × 50m", "roll", "Geofabric", excludeLineKey("backfill-geo2m")],
+                    ["geo1mX100m", "Geofab 0.9m × 100m", "roll", "Geofabric", null],
+                    ["geo2mX100m", "Geofab 2m × 100m", "roll", "Geofabric", null],
+                    ["agLine100mmX100m", "Ag Line 100mm × 100m", "roll", "Ag Line", excludeLineKey("backfill-agline")],
                   ] as const
-                ).map(([key, label, unit]) => (
-                  <PriceField
-                    key={key}
-                    label={label}
-                    unit={`/${unit}`}
-                    step="0.01"
-                    labelWidth="w-44"
-                    value={config.materialPrices[key]}
-                    onChange={(v) => setField("materialPrices", key, v)}
-                  />
-                ))}
+                ).map(([key, label, unit, group, exKey]) => {
+                  const master = matIncluded(group);
+                  const own = exKey ? !included(exKey) : false;
+                  return (
+                    <PriceField
+                      key={key}
+                      label={label}
+                      unit={`/${unit}`}
+                      step="0.01"
+                      labelWidth="w-44"
+                      value={config.materialPrices[key]}
+                      onChange={(v) => setField("materialPrices", key, v)}
+                      included={exKey ? master && !own : undefined}
+                      toggleDisabled={exKey ? !master : undefined}
+                      onIncludedChange={
+                        exKey ? (v) => setExcluded(exKey, !v) : undefined
+                      }
+                      dimmed={!master || own}
+                    />
+                  );
+                })}
                 </div>
               </CardContent>
             </Card>
@@ -882,19 +961,42 @@ export function PricingPerfPage() {
                 labelWidth="w-40"
                 value={config.admin.engineering}
                 onChange={(v) => setField("admin", "engineering", v)}
+                included={included(excludeLineKey("eng-form15"))}
+                onIncludedChange={(v) =>
+                  setExcluded(excludeLineKey("eng-form15"), !v)
+                }
+                dimmed={!included(excludeLineKey("eng-form15"))}
               />
               <PriceField
                 label="Form 12 (per lot)"
                 labelWidth="w-40"
                 value={config.admin.formPerLot}
                 onChange={(v) => setField("admin", "formPerLot", v)}
+                included={included(excludeLineKey("eng-form12"))}
+                onIncludedChange={(v) =>
+                  setExcluded(excludeLineKey("eng-form12"), !v)
+                }
+                dimmed={!included(excludeLineKey("eng-form12"))}
               />
-              <PriceField
-                label="Mobe & Demobe"
-                labelWidth="w-40"
-                value={config.admin.mobeAndDemobe}
-                onChange={(v) => setField("admin", "mobeAndDemobe", v)}
-              />
+              {(() => {
+                const mobeKeys = [
+                  excludeLineKey("other-establishment"),
+                  excludeLineKey("other-deestablishment"),
+                ];
+                const mobeIncluded = mobeKeys.every(included);
+                return (
+                  <PriceField
+                    label="Mobe & Demobe"
+                    labelWidth="w-40"
+                    value={config.admin.mobeAndDemobe}
+                    onChange={(v) => setField("admin", "mobeAndDemobe", v)}
+                    included={mobeIncluded}
+                    onIncludedChange={(v) => setKeysExcluded(mobeKeys, !v)}
+                    dimmed={!mobeIncluded}
+                    toggleTitle="Includes establishment and de-establishment"
+                  />
+                );
+              })()}
               <div className="flex items-center gap-3">
                 <label className="w-40 text-sm text-muted-foreground">Markup</label>
                 <Input
@@ -1094,7 +1196,7 @@ export function PricingPerfPage() {
   );
 }
 
-/** A labelled include/exclude tick box for the Materials feature toggles. */
+/** A labelled include/exclude switch for the Materials feature toggles. */
 function IncludeToggle({
   checked,
   onChange,
@@ -1105,15 +1207,10 @@ function IncludeToggle({
   label?: string;
 }) {
   return (
-    <label className="flex items-center gap-1.5 whitespace-nowrap text-xs font-normal text-muted-foreground">
-      <input
-        type="checkbox"
-        className="h-4 w-4 accent-foreground"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+    <span className="flex items-center gap-2 whitespace-nowrap text-xs font-normal text-muted-foreground">
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
       {label}
-    </label>
+    </span>
   );
 }
 
@@ -1147,6 +1244,11 @@ function PriceField({
   onChange,
   step,
   labelWidth = "w-32",
+  included,
+  onIncludedChange,
+  toggleDisabled,
+  toggleTitle,
+  dimmed,
 }: {
   label: string;
   unit?: string;
@@ -1154,9 +1256,34 @@ function PriceField({
   onChange: (v: number) => void;
   step?: string;
   labelWidth?: string;
+  /** When set, a leading switch includes / excludes this line from costings. */
+  included?: boolean;
+  onIncludedChange?: (include: boolean) => void;
+  toggleDisabled?: boolean;
+  toggleTitle?: string;
+  dimmed?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <div
+      className={cn(
+        "flex items-center gap-3 transition-opacity",
+        dimmed && "opacity-50",
+      )}
+    >
+      {onIncludedChange && (
+        <Switch
+          size="sm"
+          checked={!!included}
+          disabled={toggleDisabled}
+          onCheckedChange={onIncludedChange}
+          title={
+            toggleTitle ??
+            (toggleDisabled
+              ? "Turned off by the card toggle"
+              : "Include this line in the costs and quotation")
+          }
+        />
+      )}
       <label className={`${labelWidth} text-sm text-muted-foreground`}>
         {label}
       </label>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { DraftInput } from "@/components/ui/draft-input";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -193,15 +194,14 @@ export function CostBreakdownPage() {
                     <Fragment key={cat}>
                       <TableRow className="bg-sky-50/70 hover:bg-sky-50/70 print:bg-transparent">
                         <TableCell className="py-1.5 print:hidden">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-foreground"
+                          <Switch
+                            size="sm"
                             checked={!catOff}
                             title="Include this category in the costs and quotation"
-                            onChange={(e) =>
+                            onCheckedChange={(on) =>
                               setExclude(
                                 excludeCatKey(cat as CostCategory),
-                                !e.target.checked,
+                                !on,
                               )
                             }
                           />
@@ -229,9 +229,8 @@ export function CostBreakdownPage() {
                             )}
                           >
                             <TableCell className="print:hidden">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-foreground"
+                              <Switch
+                                size="sm"
                                 checked={!l.excluded}
                                 disabled={parentOff}
                                 title={
@@ -239,11 +238,8 @@ export function CostBreakdownPage() {
                                     ? "Turned off by its category or a Pricing and Performance toggle"
                                     : "Include this line in the costs and quotation"
                                 }
-                                onChange={(e) =>
-                                  setExclude(
-                                    excludeLineKey(l.id),
-                                    !e.target.checked,
-                                  )
+                                onCheckedChange={(on) =>
+                                  setExclude(excludeLineKey(l.id), !on)
                                 }
                               />
                             </TableCell>
