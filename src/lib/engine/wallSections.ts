@@ -34,7 +34,7 @@ export function pricingBandEdges(config: ProjectConfig): number[] {
     if (r.heightMax > 0) edges.add(r.heightMax);
   }
   for (const b of config.extraOverBands) {
-    if (/upper|lower/i.test(b.label)) continue;
+    if (b.tier != null || /upper|lower/i.test(b.label)) continue;
     if (b.heightMin > 0) edges.add(b.heightMin);
     if (b.heightMax > 0) edges.add(b.heightMax);
   }

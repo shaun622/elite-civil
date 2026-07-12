@@ -11,6 +11,11 @@ import type {
   CostDetailLine,
   CostOverrides,
 } from "./types";
+import {
+  isCostLineExcluded,
+  isExcludeKey,
+  isMaterialLineExcluded,
+} from "./exclusions";
 
 /**
  * Round wall height UP to the next embedment increment (default 0.2 m, the
@@ -58,9 +63,18 @@ export function drillingMachineRate(config: ProjectConfig): number {
  *  custom `quoteLabel`. Shared by the engine and the Pricing & Performance
  *  editor's placeholder so they never drift. */
 export function defaultQuoteLabel(band: ExtraOverBand): string {
-  if (/upper/i.test(band.label)) return "Upper 2 tier wall";
-  if (/lower/i.test(band.label)) return "Lower 2 tier wall";
+  if (band.tier === "upper" || /upper/i.test(band.label))
+    return "Upper 2 tier wall";
+  if (band.tier === "lower" || /lower/i.test(band.label))
+    return "Lower 2 tier wall";
   return `Height ${band.heightMin}-${band.heightMax}m - Single Tier`;
+}
+
+/** A band prices the upper or lower wall of a two-tier build. The `tier` tag
+ *  is authoritative; the label regex is a fallback for configs saved before
+ *  the tag existed. */
+export function isTierBand(band: ExtraOverBand): boolean {
+  return band.tier != null || /upper|lower/i.test(band.label);
 }
 
 /**
@@ -241,116 +255,50 @@ export function calculateCostBreakdown(
 ): CostBreakdown {
   const calculated = calculateAllWalls(walls, config);
   const totalM2 = calculated.reduce((sum, w) => sum + w.m2, 0);
-  const totalDrillHrs = calculated.reduce((sum, w) => sum + w.drillTimeHrs, 0);
-  const totalBuildHrs = calculated.reduce((sum, w) => sum + w.timeToBuildHrs, 0);
-  const totalConcreteM3 = calculated.reduce((sum, w) => sum + w.concreteM3, 0);
-  const totalGravelM3 = calculated.reduce((sum, w) => sum + w.gravelM3, 0);
-  const totalFenceBrackets = calculated.reduce(
-    (sum, w) => sum + w.fenceBrackets,
-    0,
+  // Derive every stage component from the detail lines so the Dashboard cost
+  // figures stay in lock-step with the Cost Breakdown page and honour the
+  // include/exclude toggles. Only `exclude:` keys are applied here; qty
+  // overrides keep being ignored by the cost total (they move the quote, not
+  // the cost). Employee mode is identical to the previous inline maths; Subbie
+  // mode drops the old phantom backfill-machine line the page never had.
+  const exclusionOnly: CostOverrides = Object.fromEntries(
+    Object.entries(overrides).filter(([k]) => isExcludeKey(k)),
   );
-  const lotCount = getUniqueLotCount(walls);
+  const detail = generateCostBreakdownDetail(walls, config, exclusionOnly);
+  const sumIds = (match: (id: string) => boolean) =>
+    detail.lines.filter((l) => match(l.id)).reduce((s, l) => s + l.total, 0);
+  const anyOf =
+    (...ids: string[]) =>
+    (id: string) =>
+      ids.includes(id);
 
-  // --- DRILLING ---
-  let drillingLabour: number;
-  let drillingMachine: number;
-  if (config.crewType === "Subbie Crew") {
-    drillingLabour = config.labourRates.subbieDrill * totalM2;
-    drillingMachine = config.labourRates.subbieMachine * totalM2;
-  } else {
-    const workHours = config.performance.workHours || 7.5;
-    const drillDays = totalDrillHrs / workHours;
-    drillingLabour = drillDays * config.labourRates.employeeDrill * workHours;
-    drillingMachine = drillDays * drillingMachineRate(config);
-  }
-
-  // --- POSTING ---
-  // Subbie mode: labour is charged per m² and varies by post size.
-  let postingLabour: number;
-  if (config.crewType === "Subbie Crew") {
-    postingLabour = calculated.reduce((sum, w) => {
-      const range = config.engineering.postSizeRanges.find(
-        (r) => w.height >= r.heightMin && w.height <= r.heightMax,
-      );
-      const rate = range?.postingLabourPerM2 ?? config.labourRates.subbiePost;
-      return sum + w.m2 * rate;
-    }, 0);
-  } else {
-    const postDays = totalM2 / (config.performance.maxPostingPerDay || 75);
-    postingLabour =
-      postDays *
-      config.labourRates.employeePost *
-      (config.performance.workHours || 7.5);
-  }
-  const postingConcrete = totalConcreteM3 * config.materialPrices.concreteRate;
-  const postingSteel = calculated.reduce((sum, w) => {
-    const postInfo = getPostSize(w.height, config);
-    return sum + postInfo.pricePerMetre * w.ucLength * (w.ucQty + w.pfcQty);
-  }, 0);
-
-  // --- WALL BUILDING ---
-  let buildingLabour: number;
-  if (config.crewType === "Subbie Crew") {
-    buildingLabour = config.labourRates.subbieBuild * totalM2;
-  } else {
-    buildingLabour = totalBuildHrs * config.labourRates.employeeBuild;
-  }
-
-  const concreteSleepersM2 = calculated
-    .filter((w) => w.wallDesign === "Concrete")
-    .reduce((sum, w) => sum + w.sleeperQty, 0);
-  const superSleepersQty = calculated
-    .filter((w) => w.wallDesign === "Super Sleeper")
-    .reduce((sum, w) => sum + w.sleeperQty, 0);
-  const superSupportsQty = calculated.reduce(
-    (sum, w) => sum + w.superSupports,
-    0,
+  const drillingLabour = sumIds(anyOf("drill-subbie-labour", "drill-labour-hrs"));
+  const drillingMachine = sumIds(
+    anyOf("drill-subbie-machine", "drill-machine-days"),
   );
+  const postingLabour = sumIds(
+    (id) => id === "post-labour-hrs" || id.startsWith("post-subbie-labour-"),
+  );
+  const postingConcrete = sumIds(anyOf("post-concrete"));
+  const postingSteel = sumIds((id) => id.startsWith("post-steel-"));
+  const buildingLabour = sumIds(anyOf("build-subbie-labour", "build-labour-hrs"));
+  const concreteSleepersTotal = sumIds(anyOf("build-concrete-sleepers"));
+  const superSleepersTotal = sumIds(
+    anyOf("build-super-sleepers", "build-super-supports"),
+  );
+  const geofabCost = sumIds(anyOf("backfill-geo1m", "backfill-geo2m"));
+  const agLineCost = sumIds(anyOf("backfill-agline"));
+  const gravelCost = sumIds(anyOf("backfill-gravel"));
+  const backfillLabourAndMachine = sumIds(
+    anyOf(
+      "backfill-subbie-labour",
+      "backfill-labour-hrs",
+      "backfill-machine-days",
+    ),
+  );
+  const form15 = sumIds(anyOf("eng-form15"));
+  const form12 = sumIds(anyOf("eng-form12"));
 
-  const concreteSleepersTotal =
-    concreteSleepersM2 * config.materialPrices.concreteSleeper;
-  const superSleepersTotal =
-    superSleepersQty * config.materialPrices.superSleeper +
-    superSupportsQty * config.materialPrices.superSupport;
-
-  // --- BACKFILL & GRAVEL ---
-  // Walls ≤ 1 m get 0.9 m wide geofab; walls > 1 m get 2 m wide. 50 m rolls.
-  const lmUnder1m = calculated
-    .filter((w) => w.height <= 1.0)
-    .reduce((sum, w) => sum + w.lengthLM, 0);
-  const lmOver1m = calculated
-    .filter((w) => w.height > 1.0)
-    .reduce((sum, w) => sum + w.lengthLM, 0);
-
-  const geo1mRolls = lmUnder1m > 0 ? Math.ceil(lmUnder1m / 50) : 0;
-  const geo2mRolls = lmOver1m > 0 ? Math.ceil(lmOver1m / 50) : 0;
-  const geofabCost =
-    geo1mRolls * config.materialPrices.geo1mX50m +
-    geo2mRolls * config.materialPrices.geo2mX50m;
-
-  const totalLM = calculated.reduce((sum, w) => sum + w.lengthLM, 0);
-  const agLineRolls = totalLM > 0 ? Math.ceil(totalLM / 100) : 0;
-  const agLineCost = agLineRolls * config.materialPrices.agLine100mmX100m;
-
-  const gravelCost = totalGravelM3 * config.materialPrices.gravelRate;
-
-  let backfillLabour: number;
-  if (config.crewType === "Subbie Crew") {
-    backfillLabour = config.labourRates.subbieBackfill * totalM2;
-  } else {
-    backfillLabour = totalBuildHrs * config.labourRates.employeeBackfill;
-  }
-  const backfillMachineRate = drillingMachineRate(config);
-  const backfillMachine =
-    (totalBuildHrs / (config.performance.workHours || 7.5)) *
-    backfillMachineRate;
-  const backfillLabourAndMachine = backfillLabour + backfillMachine;
-
-  // --- ENGINEERING ---
-  const form15 = config.admin.engineering;
-  const form12 = config.admin.formPerLot * lotCount;
-
-  // --- TOTALS ---
   const drillingTotal = drillingLabour + drillingMachine;
   const postingTotal = postingLabour + postingConcrete + postingSteel;
   const buildingTotal =
@@ -373,7 +321,6 @@ export function calculateCostBreakdown(
 
   const totalWithGST = totalExGST * 1.1;
   const projectedProfit = totalExGST - costTotal;
-  void totalFenceBrackets;
 
   return {
     drilling: {
@@ -473,6 +420,7 @@ export function generateQuotationLines(
   const getQty = (id: string, fallback: number): number => {
     const line = detail.lines.find((l) => l.id === id);
     if (!line) return fallback;
+    if (line.excluded) return 0; // toggled off: drop the gated quote line
     return line.qtyOverride ?? line.qtyEstimated;
   };
 
@@ -494,7 +442,6 @@ export function generateQuotationLines(
     margin: config.admin.margin,
     bandMultiplier: multiplier,
   });
-  const isTierBand = (label: string) => /upper|lower/i.test(label);
 
   const estQty = getQty("other-establishment", 1);
   if (estQty > 0) {
@@ -509,7 +456,9 @@ export function generateQuotationLines(
     .reduce((s, w) => s + w.m2, 0);
 
   if (m2_upper > 0) {
-    const tierBand = bands.find((b) => /upper/i.test(b.label));
+    const tierBand =
+      bands.find((b) => b.tier === "upper") ??
+      bands.find((b) => /upper/i.test(b.label));
     const mult = tierBand?.multiplier ?? 0.12;
     pushLine(
       "upper-tier",
@@ -521,7 +470,9 @@ export function generateQuotationLines(
     );
   }
   if (m2_lower > 0) {
-    const tierBand = bands.find((b) => /lower/i.test(b.label));
+    const tierBand =
+      bands.find((b) => b.tier === "lower") ??
+      bands.find((b) => /lower/i.test(b.label));
     const mult = tierBand?.multiplier ?? 0.11;
     pushLine(
       "lower-tier",
@@ -534,7 +485,7 @@ export function generateQuotationLines(
   }
 
   const singles = calculated.filter((w) => w.type === "Single");
-  const heightBands = bands.filter((b) => !isTierBand(b.label));
+  const heightBands = bands.filter((b) => !isTierBand(b));
 
   for (const band of heightBands) {
     const m2InBand = singles
@@ -585,6 +536,7 @@ export function generateQuotationLines(
 export function generateMaterialsOrder(
   walls: WallEntry[],
   config: ProjectConfig,
+  overrides: CostOverrides = {},
 ): MaterialsOrder {
   const calculated = calculateAllWalls(walls, config);
   const lines: MaterialOrderLine[] = [];
@@ -775,8 +727,13 @@ export function generateMaterialsOrder(
     });
   }
 
-  const grandTotal = lines.reduce((s, l) => s + l.total, 0);
-  return { lines, grandTotal };
+  const finalLines = lines.map((l) =>
+    isMaterialLineExcluded(overrides, l)
+      ? { ...l, excluded: true, total: 0 }
+      : l,
+  );
+  const grandTotal = finalLines.reduce((s, l) => s + l.total, 0);
+  return { lines: finalLines, grandTotal };
 }
 
 /**
@@ -1110,10 +1067,12 @@ export function generateCostBreakdownDetail(
   const lines = raw.map((l) => {
     const override = overrides[l.id];
     const effectiveQty = override !== undefined ? override : l.qtyEstimated;
+    const excluded = isCostLineExcluded(overrides, l);
     return {
       ...l,
       qtyOverride: override,
-      total: effectiveQty * l.rate,
+      excluded,
+      total: excluded ? 0 : effectiveQty * l.rate,
     };
   });
 

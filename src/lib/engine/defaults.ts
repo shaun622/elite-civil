@@ -105,8 +105,8 @@ export const defaultConfig: ProjectConfig = {
     { label: "1.6 - 2.2m High", heightMin: 1.6, heightMax: 2.2, multiplier: 0.1 },
     { label: "2.2 - 3.0m High", heightMin: 2.2, heightMax: 3.0, multiplier: 0.1 },
     { label: "3.0 - 4.0m High", heightMin: 3.0, heightMax: 4.0, multiplier: 0.2 },
-    { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.12 },
-    { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.11 },
+    { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.12, tier: "upper" },
+    { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.11, tier: "lower" },
   ],
 
   heightBandEdges: [1.6, 3.0],
@@ -195,8 +195,8 @@ export const zeroConfig: ProjectConfig = {
     { label: "1.6 - 2.2m High", heightMin: 1.6, heightMax: 2.2, multiplier: 0 },
     { label: "2.2 - 3.0m High", heightMin: 2.2, heightMax: 3.0, multiplier: 0 },
     { label: "3.0 - 4.0m High", heightMin: 3.0, heightMax: 4.0, multiplier: 0 },
-    { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0 },
-    { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0 },
+    { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0, tier: "upper" },
+    { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0, tier: "lower" },
   ],
 
   heightBandEdges: [1.6, 3.0],

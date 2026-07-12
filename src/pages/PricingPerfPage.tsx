@@ -24,6 +24,8 @@ import { DollarSign, Plus, Trash2 } from "lucide-react";
 import { useProject } from "@/hooks/useProjects";
 import { POST_SIZE_OPTIONS, defaultConfig } from "@/lib/engine/defaults";
 import { defaultQuoteLabel } from "@/lib/engine/calculations";
+import { excludeMatKey } from "@/lib/engine/exclusions";
+import type { MaterialCategory } from "@/lib/engine/types";
 import type { CrewType, PostSizeRange, ProjectConfig } from "@/types/db";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -38,6 +40,23 @@ function rechainRanges(ranges: PostSizeRange[]): void {
       ranges[i].heightMax = r2(ranges[i].heightMin + 0.1);
     }
   }
+}
+
+/** Give legacy tier bands an explicit `tier` tag derived from the label, so a
+ *  later rename can't break tier pricing. Returns true if anything changed. */
+function tagLegacyTiers(cfg: ProjectConfig): boolean {
+  let changed = false;
+  for (const b of cfg.extraOverBands) {
+    if (b.tier != null) continue;
+    if (/upper/i.test(b.label)) {
+      b.tier = "upper";
+      changed = true;
+    } else if (/lower/i.test(b.label)) {
+      b.tier = "lower";
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /**
@@ -59,7 +78,13 @@ export function PricingPerfPage() {
   const pendingRef = useRef<ProjectConfig | null>(null);
 
   useEffect(() => {
-    if (project) setDraft(structuredClone(project.config ?? defaultConfig));
+    if (!project) return;
+    const cloned = structuredClone(project.config ?? defaultConfig);
+    const changed = tagLegacyTiers(cloned);
+    setDraft(cloned);
+    // Persist the backfilled tier tags once, only when a saved config already
+    // exists (don't mint one for null-config projects).
+    if (changed && project.config) void update({ config: cloned });
     // Re-seed only when the project identity changes, so debounced saves
     // (which refresh `project`) don't clobber in-progress edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,6 +151,19 @@ export function PricingPerfPage() {
     0,
     config.machineRates.findIndex((m) => m.name === "8ton KPR"),
   );
+
+  // Feature include/exclude toggles write to cost_overrides (not config), so
+  // they bypass the config draft/debounce and take effect immediately.
+  const costOverrides = project.cost_overrides ?? {};
+  const matIncluded = (cat: MaterialCategory) =>
+    !costOverrides[excludeMatKey(cat)];
+  function setMatIncluded(cat: MaterialCategory, include: boolean) {
+    const next = { ...costOverrides };
+    const key = excludeMatKey(cat);
+    if (include) delete next[key];
+    else next[key] = 1;
+    void update({ cost_overrides: next });
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -314,9 +352,19 @@ export function PricingPerfPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  Sleepers &amp; Supports
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">
+                    Sleepers &amp; Supports
+                  </CardTitle>
+                  <IncludeToggle
+                    checked={matIncluded("Sleepers")}
+                    onChange={(v) => setMatIncluded("Sleepers", v)}
+                  />
+                </div>
+                <CardDescription>
+                  Unticked items are left out of the cost breakdown, materials
+                  order and quotation.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(
@@ -342,8 +390,24 @@ export function PricingPerfPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Concrete &amp; Gravel</CardTitle>
+                <CardDescription>
+                  Unticked items are left out of the cost breakdown, materials
+                  order and quotation.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <IncludeToggle
+                    label="Include concrete"
+                    checked={matIncluded("Concrete")}
+                    onChange={(v) => setMatIncluded("Concrete", v)}
+                  />
+                  <IncludeToggle
+                    label="Include gravel"
+                    checked={matIncluded("Gravel")}
+                    onChange={(v) => setMatIncluded("Gravel", v)}
+                  />
+                </div>
                 {(
                   [
                     ["concreteRate", "Concrete", "m³"],
@@ -363,11 +427,20 @@ export function PricingPerfPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">
-                  Steel &amp; Posting Labour
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">
+                    Steel &amp; Posting Labour
+                  </CardTitle>
+                  <IncludeToggle
+                    label="Include steel in costings"
+                    checked={matIncluded("Steel")}
+                    onChange={(v) => setMatIncluded("Steel", v)}
+                  />
+                </div>
                 <CardDescription>
                   Steel cost ($/LM) and posting labour ($/m²) per post size.
+                  Unticking removes the steel material from the costs, order and
+                  quotation; posting labour stays.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -403,7 +476,17 @@ export function PricingPerfPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Fence Brackets</CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base">Fence Brackets</CardTitle>
+                  <IncludeToggle
+                    checked={matIncluded("Fence Brackets")}
+                    onChange={(v) => setMatIncluded("Fence Brackets", v)}
+                  />
+                </div>
+                <CardDescription>
+                  Unticked items are left out of the cost breakdown, materials
+                  order and quotation.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <PriceField
@@ -427,10 +510,24 @@ export function PricingPerfPage() {
               <CardHeader>
                 <CardTitle className="text-base">Backfill Materials</CardTitle>
                 <CardDescription>
-                  Geofabric rolls and ag-line per roll.
+                  Geofabric rolls and ag-line per roll. Unticked items are left
+                  out of the cost breakdown, materials order and quotation.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3 sm:grid-cols-2">
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <IncludeToggle
+                    label="Include geofabric"
+                    checked={matIncluded("Geofabric")}
+                    onChange={(v) => setMatIncluded("Geofabric", v)}
+                  />
+                  <IncludeToggle
+                    label="Include ag line"
+                    checked={matIncluded("Ag Line")}
+                    onChange={(v) => setMatIncluded("Ag Line", v)}
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
                 {(
                   [
                     ["geo1mX50m", "Geofab 0.9m × 50m", "roll"],
@@ -450,6 +547,7 @@ export function PricingPerfPage() {
                     onChange={(v) => setField("materialPrices", key, v)}
                   />
                 ))}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -854,6 +952,7 @@ export function PricingPerfPage() {
                 <span className="w-14">Min m</span>
                 <span className="w-14">Max m</span>
                 <span className="w-16">Multiplier</span>
+                <span className="w-24">Tier</span>
                 <span className="w-8" />
               </div>
               {config.extraOverBands.map((band, i) => (
@@ -915,6 +1014,35 @@ export function PricingPerfPage() {
                       setConfig(next);
                     }}
                   />
+                  {band.tier ? (
+                    <Badge
+                      variant="brand"
+                      className="w-24 justify-center capitalize"
+                    >
+                      {band.tier} tier
+                    </Badge>
+                  ) : (
+                    <Select
+                      value="single"
+                      onValueChange={(v) => {
+                        if (!v) return;
+                        const next = structuredClone(config);
+                        if (v === "single") delete next.extraOverBands[i].tier;
+                        else
+                          next.extraOverBands[i].tier = v as "upper" | "lower";
+                        setConfig(next);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-24 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="single">Single</SelectItem>
+                        <SelectItem value="upper">Upper</SelectItem>
+                        <SelectItem value="lower">Lower</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
@@ -951,9 +1079,8 @@ export function PricingPerfPage() {
                 <Plus className="h-3.5 w-3.5" /> Add band
               </Button>
               <p className="text-xs text-muted-foreground">
-                Bands with Upper or Lower in the name price the two tier walls.
-                Keep those words in the name or two tier pricing falls back to
-                the standard multipliers.
+                Tier bands price the upper and lower walls of a two tier build.
+                The tier tag keeps that working no matter what the band is named.
               </p>
               <p className="text-xs text-muted-foreground">
                 Single tier walls only appear on the quote when their height
@@ -964,6 +1091,29 @@ export function PricingPerfPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/** A labelled include/exclude tick box for the Materials feature toggles. */
+function IncludeToggle({
+  checked,
+  onChange,
+  label = "Include in costings",
+}: {
+  checked: boolean;
+  onChange: (include: boolean) => void;
+  label?: string;
+}) {
+  return (
+    <label className="flex items-center gap-1.5 whitespace-nowrap text-xs font-normal text-muted-foreground">
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-foreground"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
   );
 }
 

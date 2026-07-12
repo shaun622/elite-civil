@@ -132,6 +132,9 @@ export interface MaterialOrderLine {
   total: number;
   /** Lot this line belongs to (steel posts only), for per-lot delivery bundling. */
   lot?: string;
+  /** Toggled off: total is forced to 0. Line is kept (dimmed) so it stays
+   *  re-includable in the UI. */
+  excluded?: boolean;
 }
 
 export interface MaterialsOrder {
@@ -156,6 +159,9 @@ export interface CostDetailLine {
   unit: string;
   rate: number;
   total: number;
+  /** Toggled off: total is 0 while excluded; qty/rate are retained so the UI
+   *  can show the forgone amount and the line stays re-includable. */
+  excluded?: boolean;
 }
 
 export interface CostBreakdownDetail {

@@ -32,7 +32,10 @@ export interface Project {
   /** Custom quote line items added during quote review. */
   extra_over_items: ExtraOverItem[];
   /** Per-cost-line manual overrides — keyed by `CostDetailLine.id`. Also holds
-   *  the quote's numeric per-line overrides ("quote_rate:" / "quote_qty:"). */
+   *  the quote's numeric per-line overrides ("quote_rate:" / "quote_qty:") and
+   *  include/exclude toggles ("exclude:<id>", "exclude:cat:<CostCategory>",
+   *  "exclude:mat:<MaterialCategory>[:<description>]" = 1). See
+   *  `src/lib/engine/exclusions.ts`. */
   cost_overrides: Record<string, number>;
   /** Display-only overrides for the customer-facing Quotation (custom line
    *  text / hidden / added lines, editable summary + boilerplate). Never feeds
@@ -217,6 +220,10 @@ export interface ExtraOverBand {
    *  auto range ("Height 1.6-2.2m - Single Tier") is used. `label` is kept
    *  for tier detection + config-editor identity and is unaffected. */
   quoteLabel?: string;
+  /** Marks the two-tier upper/lower bands so pricing does not depend on the
+   *  label text. When set, the engine treats the band as that tier no matter
+   *  what it is named. Absent = legacy /upper|lower/i label detection. */
+  tier?: "upper" | "lower";
 }
 
 export interface ProjectConfig {

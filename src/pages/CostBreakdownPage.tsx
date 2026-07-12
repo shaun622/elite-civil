@@ -16,7 +16,16 @@ import {
 import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
-import type { CostDetailLine } from "@/lib/engine/types";
+import {
+  excludeCatKey,
+  excludeLineKey,
+  excludeMatKey,
+  isExcludeKey,
+  isQtyOverrideKey,
+  materialCategoryForCostLine,
+} from "@/lib/engine/exclusions";
+import { cn } from "@/lib/utils";
+import type { CostCategory, CostDetailLine } from "@/lib/engine/types";
 
 const CATEGORY_ORDER = [
   "Drilling",
@@ -46,8 +55,9 @@ function formatQty(n: number): string {
 /**
  * Cost Breakdown — one consolidated table, grouped into category
  * sections with subtotals and a grand total. Each line shows the
- * engine's estimated quantity plus an editable override; overrides
- * persist into projects.cost_overrides.
+ * engine's estimated quantity plus an editable override; a tick box per line
+ * and per category leaves it out of the costs and the quotation. Overrides and
+ * exclusions persist into projects.cost_overrides.
  */
 export function CostBreakdownPage() {
   const { id } = useParams<{ id: string }>();
@@ -73,7 +83,9 @@ export function CostBreakdownPage() {
   const bundle = calculateBundle(walls, project);
   const detail = bundle.costBreakdownDetail;
   const overrides = project.cost_overrides ?? {};
-  const hasOverrides = Object.keys(overrides).length > 0;
+  const keys = Object.keys(overrides);
+  const hasQtyOverrides = keys.some(isQtyOverrideKey);
+  const hasExclusions = keys.some(isExcludeKey);
 
   const byCategory = new Map<string, CostDetailLine[]>();
   for (const line of detail.lines) {
@@ -90,8 +102,36 @@ export function CostBreakdownPage() {
     void update({ cost_overrides: next });
   }
 
-  function clearOverrides() {
-    void update({ cost_overrides: {} });
+  function setExclude(key: string, on: boolean) {
+    const next = { ...overrides };
+    if (on) next[key] = 1;
+    else delete next[key];
+    void update({ cost_overrides: next });
+  }
+
+  // "Reset quantity overrides" keeps exclusions and the quote's rate/qty keys.
+  function resetQtyOverrides() {
+    void update({
+      cost_overrides: Object.fromEntries(
+        Object.entries(overrides).filter(([k]) => !isQtyOverrideKey(k)),
+      ),
+    });
+  }
+  // "Include all lines" clears only the exclusions.
+  function includeAllLines() {
+    void update({
+      cost_overrides: Object.fromEntries(
+        Object.entries(overrides).filter(([k]) => !isExcludeKey(k)),
+      ),
+    });
+  }
+
+  /** A line switched off by its category box or a feature toggle rather than
+   *  its own tick box: show it unchecked and disabled. */
+  function excludedByParent(l: CostDetailLine): boolean {
+    if (overrides[excludeCatKey(l.category)]) return true;
+    const mat = materialCategoryForCostLine(l.id);
+    return !!(mat && overrides[excludeMatKey(mat)]);
   }
 
   return (
@@ -101,13 +141,18 @@ export function CostBreakdownPage() {
         icon={Calculator}
         as="h2"
         title="Cost Breakdown"
-        subtitle="Auto-calculated from take-off. Override any quantity to reflect actual job needs."
+        subtitle="Auto-calculated from take-off. Untick a line to leave it out of the costs and the quotation, or override any quantity."
         actions={
           <>
-            {hasOverrides && (
-              <Button variant="outline" onClick={clearOverrides}>
+            {hasExclusions && (
+              <Button variant="outline" onClick={includeAllLines}>
+                Include all lines
+              </Button>
+            )}
+            {hasQtyOverrides && (
+              <Button variant="outline" onClick={resetQtyOverrides}>
                 <RotateCcw className="mr-2 h-4 w-4" />
-                Reset overrides
+                Reset quantity overrides
               </Button>
             )}
             <Button variant="outline" onClick={() => window.print()}>
@@ -130,6 +175,7 @@ export function CostBreakdownPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8 print:hidden" />
                   <TableHead>Description</TableHead>
                   <TableHead className="w-24 text-right">Est. qty</TableHead>
                   <TableHead className="w-28 text-right">Override</TableHead>
@@ -142,9 +188,24 @@ export function CostBreakdownPage() {
                 {cats.map((cat) => {
                   const lines = byCategory.get(cat) ?? [];
                   const subtotal = detail.categoryTotals[cat] ?? 0;
+                  const catOff = !!overrides[excludeCatKey(cat as CostCategory)];
                   return (
                     <Fragment key={cat}>
                       <TableRow className="bg-sky-50/70 hover:bg-sky-50/70 print:bg-transparent">
+                        <TableCell className="py-1.5 print:hidden">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-foreground"
+                            checked={!catOff}
+                            title="Include this category in the costs and quotation"
+                            onChange={(e) =>
+                              setExclude(
+                                excludeCatKey(cat as CostCategory),
+                                !e.target.checked,
+                              )
+                            }
+                          />
+                        </TableCell>
                         <TableCell
                           colSpan={5}
                           className="py-1.5 text-xs font-semibold uppercase tracking-wide"
@@ -157,8 +218,35 @@ export function CostBreakdownPage() {
                       </TableRow>
                       {lines.map((l) => {
                         const isOverridden = l.qtyOverride !== undefined;
+                        const parentOff = excludedByParent(l);
+                        const forgone =
+                          (l.qtyOverride ?? l.qtyEstimated) * l.rate;
                         return (
-                          <TableRow key={l.id}>
+                          <TableRow
+                            key={l.id}
+                            className={cn(
+                              l.excluded && "opacity-50 print:hidden",
+                            )}
+                          >
+                            <TableCell className="print:hidden">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-foreground"
+                                checked={!l.excluded}
+                                disabled={parentOff}
+                                title={
+                                  parentOff
+                                    ? "Turned off by its category or a Pricing and Performance toggle"
+                                    : "Include this line in the costs and quotation"
+                                }
+                                onChange={(e) =>
+                                  setExclude(
+                                    excludeLineKey(l.id),
+                                    !e.target.checked,
+                                  )
+                                }
+                              />
+                            </TableCell>
                             <TableCell>{l.description}</TableCell>
                             <TableCell className="text-right tabular-nums text-muted-foreground">
                               {formatQty(l.qtyEstimated)}
@@ -167,6 +255,7 @@ export function CostBreakdownPage() {
                               <DraftInput
                                 type="number"
                                 step="0.1"
+                                disabled={l.excluded}
                                 className={`ml-auto h-7 w-24 text-right text-xs ${
                                   isOverridden ? "border-primary" : ""
                                 }`}
@@ -195,8 +284,13 @@ export function CostBreakdownPage() {
                             <TableCell className="text-right tabular-nums text-muted-foreground">
                               {formatCurrency(l.rate)}
                             </TableCell>
-                            <TableCell className="text-right font-medium tabular-nums">
-                              {formatCurrency(l.total)}
+                            <TableCell
+                              className={cn(
+                                "text-right font-medium tabular-nums",
+                                l.excluded && "text-muted-foreground line-through",
+                              )}
+                            >
+                              {formatCurrency(l.excluded ? forgone : l.total)}
                             </TableCell>
                           </TableRow>
                         );
@@ -205,6 +299,7 @@ export function CostBreakdownPage() {
                   );
                 })}
                 <TableRow className="border-t-2 bg-muted/30 font-semibold hover:bg-muted/30">
+                  <TableCell className="py-2 print:hidden" />
                   <TableCell colSpan={5} className="py-2">
                     Total cost
                     <span className="ml-2 text-xs font-normal text-muted-foreground">

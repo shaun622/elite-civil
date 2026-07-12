@@ -140,7 +140,7 @@ export function calculateBundle(
     overrides,
   );
   const quotationLines = generateQuotationLines(entries, config, overrides);
-  const materialsOrder = generateMaterialsOrder(entries, config);
+  const materialsOrder = generateMaterialsOrder(entries, config, overrides);
   const uniqueLotCount = getUniqueLotCount(entries);
 
   return {

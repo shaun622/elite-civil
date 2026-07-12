@@ -15,7 +15,12 @@ import {
 import { useProject } from "@/hooks/useProjects";
 import { useProjectWalls } from "@/hooks/useProjectWalls";
 import { calculateBundle } from "@/lib/engine/adapter";
-import type { MaterialOrderLine } from "@/lib/engine/types";
+import {
+  excludeMatKey,
+  materialLineExclusionKey,
+} from "@/lib/engine/exclusions";
+import { cn } from "@/lib/utils";
+import type { MaterialCategory, MaterialOrderLine } from "@/lib/engine/types";
 
 const CATEGORY_ORDER = [
   "Concrete",
@@ -74,15 +79,22 @@ function groupLinesByLot(
 function LinesTable({
   lines,
   showHeader = true,
+  onToggle,
+  disabled = false,
 }: {
   lines: MaterialOrderLine[];
   showHeader?: boolean;
+  /** When set, a leading tick box per line toggles it in / out of the order. */
+  onToggle?: (line: MaterialOrderLine) => void;
+  /** Category is switched off: line tick boxes are shown but disabled. */
+  disabled?: boolean;
 }) {
   return (
     <Table>
       {showHeader && (
         <TableHeader>
           <TableRow>
+            {onToggle && <TableHead className="w-8 print:hidden" />}
             <TableHead>Description</TableHead>
             <TableHead className="w-24 text-right">Qty</TableHead>
             <TableHead className="w-16">Unit</TableHead>
@@ -93,7 +105,23 @@ function LinesTable({
       )}
       <TableBody>
         {lines.map((l, i) => (
-          <TableRow key={i}>
+          <TableRow key={i} className={cn(l.excluded && "opacity-50 print:hidden")}>
+            {onToggle && (
+              <TableCell className="print:hidden">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-foreground"
+                  checked={!l.excluded}
+                  disabled={disabled}
+                  title={
+                    disabled
+                      ? "Turned off by its category"
+                      : "Include this item in the order and costings"
+                  }
+                  onChange={() => onToggle(l)}
+                />
+              </TableCell>
+            )}
             <TableCell>{l.description}</TableCell>
             <TableCell className="w-24 text-right tabular-nums">
               {formatQty(l.qty, l.unit)}
@@ -102,8 +130,13 @@ function LinesTable({
             <TableCell className="w-28 text-right tabular-nums text-muted-foreground">
               {formatCurrency(l.unitPrice)}
             </TableCell>
-            <TableCell className="w-32 text-right font-medium tabular-nums">
-              {formatCurrency(l.total)}
+            <TableCell
+              className={cn(
+                "w-32 text-right font-medium tabular-nums",
+                l.excluded && "text-muted-foreground line-through",
+              )}
+            >
+              {formatCurrency(l.excluded ? l.qty * l.unitPrice : l.total)}
             </TableCell>
           </TableRow>
         ))}
@@ -120,7 +153,7 @@ function LinesTable({
  */
 export function MaterialsOrderPage() {
   const { id } = useParams<{ id: string }>();
-  const { project, loading: projectLoading } = useProject(id);
+  const { project, loading: projectLoading, update } = useProject(id);
   const { walls, loading: wallsLoading } = useProjectWalls(project?.id);
   const [openCats, setOpenCats] = useState<Set<string>>(
     () => new Set<string>(CATEGORY_ORDER),
@@ -144,6 +177,16 @@ export function MaterialsOrderPage() {
   }
 
   const order = calculateBundle(walls, project).materialsOrder;
+  const overrides = project.cost_overrides ?? {};
+
+  function setExclude(key: string, on: boolean) {
+    const next = { ...overrides };
+    if (on) next[key] = 1;
+    else delete next[key];
+    void update({ cost_overrides: next });
+  }
+  const toggleLineExclusion = (line: MaterialOrderLine) =>
+    setExclude(materialLineExclusionKey(line), !line.excluded);
 
   const byCategory = new Map<string, MaterialOrderLine[]>();
   for (const line of order.lines) {
@@ -181,7 +224,7 @@ export function MaterialsOrderPage() {
         icon={PackageSearch}
         as="h2"
         title="Materials Order"
-        subtitle={`Consolidated procurement list for ${project.name}. Quantities are auto-calculated from take-off.`}
+        subtitle="Consolidated procurement list, auto-calculated from take-off. Untick items the client supplies. Category toggles also remove the item from costs and the quotation; individual steel rows and wedges affect this order only."
         actions={
           <>
             <Button variant="ghost" size="sm" onClick={expandAll}>
@@ -208,25 +251,43 @@ export function MaterialsOrderPage() {
             const lines = byCategory.get(cat) ?? [];
             const subtotal = lines.reduce((s, l) => s + l.total, 0);
             const open = openCats.has(cat);
+            const matCat = cat as MaterialCategory;
+            const catOff = !!overrides[excludeMatKey(matCat)];
             return (
               <Card key={cat} className="overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => toggleCat(cat)}
-                  className="flex w-full items-center gap-2 border-l-2 border-l-sky-500 bg-sky-50/50 px-4 py-3 text-left transition-colors hover:bg-sky-50 print:border-l-0 print:bg-transparent"
-                >
-                  {open ? (
-                    <ChevronDown className="h-4 w-4 text-sky-600" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-sky-600" />
-                  )}
-                  <span className="text-sm font-semibold uppercase tracking-wide">
-                    {cat}
-                  </span>
-                  <span className="ml-auto text-sm font-semibold tabular-nums">
-                    {formatCurrency(subtotal)}
-                  </span>
-                </button>
+                <div className="flex w-full items-center gap-2 border-l-2 border-l-sky-500 bg-sky-50/50 px-4 py-3 print:border-l-0 print:bg-transparent">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-foreground print:hidden"
+                    checked={!catOff}
+                    title="Include this category in the order and costings"
+                    onChange={(e) =>
+                      setExclude(excludeMatKey(matCat), !e.target.checked)
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => toggleCat(cat)}
+                    className="flex flex-1 items-center gap-2 text-left"
+                  >
+                    {open ? (
+                      <ChevronDown className="h-4 w-4 text-sky-600" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-sky-600" />
+                    )}
+                    <span
+                      className={cn(
+                        "text-sm font-semibold uppercase tracking-wide",
+                        catOff && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {cat}
+                    </span>
+                    <span className="ml-auto text-sm font-semibold tabular-nums">
+                      {formatCurrency(subtotal)}
+                    </span>
+                  </button>
+                </div>
 
                 {open &&
                   (cat === "Steel" ? (
@@ -234,10 +295,16 @@ export function MaterialsOrderPage() {
                       lines={lines}
                       openLots={openLots}
                       toggleLot={toggleLot}
+                      onToggle={toggleLineExclusion}
+                      disabled={catOff}
                     />
                   ) : (
                     <div className="border-t">
-                      <LinesTable lines={lines} />
+                      <LinesTable
+                        lines={lines}
+                        onToggle={toggleLineExclusion}
+                        disabled={catOff}
+                      />
                     </div>
                   ))}
               </Card>
@@ -265,10 +332,14 @@ function SteelBody({
   lines,
   openLots,
   toggleLot,
+  onToggle,
+  disabled,
 }: {
   lines: MaterialOrderLine[];
   openLots: Set<string>;
   toggleLot: (k: string) => void;
+  onToggle: (line: MaterialOrderLine) => void;
+  disabled: boolean;
 }) {
   const totals = aggregateByType(lines);
   const byLot = groupLinesByLot(lines);
@@ -283,7 +354,7 @@ function SteelBody({
         <p className="mb-2 text-[11px] text-muted-foreground">
           What to order: every post summed by size &amp; length across all lots.
         </p>
-        <LinesTable lines={totals} />
+        <LinesTable lines={totals} onToggle={onToggle} disabled={disabled} />
       </div>
 
       {/* Per-lot breakdown — collapsible, for staging deliveries by location. */}
