@@ -60,6 +60,31 @@ const config: Config = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      keyframes: {
+        "tour-draw": {
+          from: { strokeDashoffset: "var(--tour-dash, 640)" },
+          to: { strokeDashoffset: "0" },
+        },
+        "tour-float": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
+        "tour-pop": {
+          "0%": { opacity: "0", transform: "scale(.6)" },
+          "60%": { opacity: "1", transform: "scale(1.06)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        "tour-sweep": {
+          from: { transform: "translateX(-150%)", opacity: "1" },
+          to: { transform: "translateX(250%)", opacity: "1" },
+        },
+      },
+      animation: {
+        "tour-draw": "tour-draw 0.7s ease-out both",
+        "tour-float": "tour-float 5s ease-in-out infinite",
+        "tour-pop": "tour-pop 0.5s cubic-bezier(.2,1.4,.4,1) both",
+        "tour-sweep": "tour-sweep 1.1s ease-in-out both",
+      },
     },
   },
   plugins: [animate],

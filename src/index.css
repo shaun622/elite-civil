@@ -93,6 +93,15 @@
   }
 }
 
+/* Virtual tour: under reduced motion every scene settles to its final frame
+ * (scenes are authored so the animation-less state IS the settled state). */
+@media (prefers-reduced-motion: reduce) {
+  [data-tour-anim],
+  [data-tour-anim] * {
+    animation: none !important;
+  }
+}
+
 /* Printing (used by the Quotation "Print / save PDF"): drop the app shell and
  * render editable fields as plain text, not input boxes. */
 @media print {
