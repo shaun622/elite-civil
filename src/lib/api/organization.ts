@@ -10,6 +10,9 @@ export type Organization = {
   company_address: string | null;
   company_logo_url: string | null;
   created_at: string;
+  /** New projects seed the all-zero starter config instead of the BE template.
+   *  Optional so a pre-migration `select *` still types. */
+  seed_zero_config?: boolean;
 };
 
 export type OrgMember = {

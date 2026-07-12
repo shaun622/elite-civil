@@ -17,12 +17,28 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { DraftInput } from "@/components/ui/draft-input";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { DollarSign } from "lucide-react";
+import { DollarSign, Plus, Trash2 } from "lucide-react";
 import { useProject } from "@/hooks/useProjects";
 import { POST_SIZE_OPTIONS, defaultConfig } from "@/lib/engine/defaults";
 import { defaultQuoteLabel } from "@/lib/engine/calculations";
-import type { CrewType, ProjectConfig } from "@/types/db";
+import type { CrewType, PostSizeRange, ProjectConfig } from "@/types/db";
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Chain post-size ranges so each row's min equals the previous row's max, and
+ *  no row's max drops to or below its own min. Keeps the height ladder gap-free
+ *  and overlap-free, so a boundary number is never entered twice. */
+function rechainRanges(ranges: PostSizeRange[]): void {
+  for (let i = 1; i < ranges.length; i++) {
+    ranges[i].heightMin = ranges[i - 1].heightMax;
+    if (ranges[i].heightMax <= ranges[i].heightMin) {
+      ranges[i].heightMax = r2(ranges[i].heightMin + 0.1);
+    }
+  }
+}
 
 /**
  * Pricing & Performance — full project-config editor. Mirrors the BE
@@ -103,6 +119,13 @@ export function PricingPerfPage() {
     (next[section] as unknown as Record<string, unknown>)[field] = value;
     setConfig(next);
   }
+
+  // The machine row that actually prices drilling / backfill time: "8ton KPR"
+  // if present, else the first row (matches drillingMachineRate in the engine).
+  const drivingMachineIndex = Math.max(
+    0,
+    config.machineRates.findIndex((m) => m.name === "8ton KPR"),
+  );
 
   return (
     <div className="space-y-6 p-6">
@@ -206,29 +229,82 @@ export function PricingPerfPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Machine Rates</CardTitle>
-              <CardDescription>Daily rates for equipment</CardDescription>
+              <CardDescription>
+                Daily rates for equipment. Drilling and backfill machine time is
+                priced from the row named 8ton KPR, or the first row when no row
+                has that name.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {config.machineRates.map((m, i) => (
-                  <div key={m.name} className="flex items-center gap-3">
-                    <label className="w-24 truncate text-sm text-muted-foreground">
-                      {m.name}
-                    </label>
-                    <DollarInput
-                      value={m.rate}
-                      onChange={(v) => {
-                        const next = structuredClone(config);
-                        next.machineRates[i].rate = v;
-                        setConfig(next);
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      /{m.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <CardContent className="space-y-2.5">
+              {config.machineRates.map((m, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input
+                    type="text"
+                    className="h-8 flex-1 text-sm"
+                    value={m.name}
+                    onChange={(e) => {
+                      const next = structuredClone(config);
+                      next.machineRates[i].name = e.target.value;
+                      setConfig(next);
+                    }}
+                  />
+                  <DollarInput
+                    value={m.rate}
+                    onChange={(v) => {
+                      const next = structuredClone(config);
+                      next.machineRates[i].rate = v;
+                      setConfig(next);
+                    }}
+                  />
+                  <Input
+                    type="text"
+                    className="h-8 w-16 text-sm"
+                    value={m.unit}
+                    onChange={(e) => {
+                      const next = structuredClone(config);
+                      next.machineRates[i].unit = e.target.value;
+                      setConfig(next);
+                    }}
+                  />
+                  {drivingMachineIndex === i && (
+                    <Badge variant="brand" className="shrink-0">
+                      machine pricing
+                    </Badge>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    title="Remove row"
+                    disabled={config.machineRates.length === 1}
+                    onClick={() => {
+                      const next = structuredClone(config);
+                      next.machineRates.splice(i, 1);
+                      setConfig(next);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  const next = structuredClone(config);
+                  next.machineRates.push({
+                    name: "New machine",
+                    rate: 0,
+                    unit: "Day",
+                  });
+                  setConfig(next);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add machine
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -296,7 +372,7 @@ export function PricingPerfPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {config.engineering.postSizeRanges.map((range, i) => (
-                  <div key={`${range.postSize}-${i}`} className="flex items-center gap-3">
+                  <div key={i} className="flex items-center gap-3">
                     <Badge variant="outline" className="w-20 justify-center">
                       {range.postSize}
                     </Badge>
@@ -459,7 +535,7 @@ export function PricingPerfPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {config.engineering.postSizeRanges.map((range, i) => (
-                  <div key={`${range.postSize}-${i}`} className="flex items-center gap-2">
+                  <div key={i} className="flex items-center gap-2">
                     <Select
                       value={range.postSize}
                       onValueChange={(v) => {
@@ -494,34 +570,87 @@ export function PricingPerfPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      className="h-8 w-16 text-xs"
-                      value={range.heightMin}
-                      onChange={(e) => {
-                        const next = structuredClone(config);
-                        next.engineering.postSizeRanges[i].heightMin =
-                          parseFloat(e.target.value) || 0;
-                        setConfig(next);
-                      }}
-                    />
+                    {i === 0 ? (
+                      <NumberDraft
+                        value={range.heightMin}
+                        onCommit={(n) => {
+                          const next = structuredClone(config);
+                          const rows = next.engineering.postSizeRanges;
+                          rows[0].heightMin = r2(
+                            Math.min(n, r2(rows[0].heightMax - 0.1)),
+                          );
+                          rechainRanges(rows);
+                          setConfig(next);
+                        }}
+                      />
+                    ) : (
+                      <span className="w-16 text-xs text-muted-foreground">
+                        over {range.heightMin}
+                      </span>
+                    )}
                     <span className="text-xs text-muted-foreground">to</span>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      className="h-8 w-16 text-xs"
+                    <NumberDraft
                       value={range.heightMax}
-                      onChange={(e) => {
+                      onCommit={(n) => {
                         const next = structuredClone(config);
-                        next.engineering.postSizeRanges[i].heightMax =
-                          parseFloat(e.target.value) || 0;
+                        const rows = next.engineering.postSizeRanges;
+                        rows[i].heightMax = Math.max(
+                          r2(n),
+                          r2(rows[i].heightMin + 0.1),
+                        );
+                        rechainRanges(rows);
                         setConfig(next);
                       }}
                     />
                     <span className="text-xs text-muted-foreground">m</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                      title="Remove row"
+                      disabled={
+                        config.engineering.postSizeRanges.length === 1
+                      }
+                      onClick={() => {
+                        const next = structuredClone(config);
+                        const rows = next.engineering.postSizeRanges;
+                        const removedMin = rows[i].heightMin;
+                        rows.splice(i, 1);
+                        if (i === 0 && rows.length) {
+                          rows[0].heightMin = removedMin;
+                        }
+                        rechainRanges(rows);
+                        setConfig(next);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    const next = structuredClone(config);
+                    const rows = next.engineering.postSizeRanges;
+                    const last = rows[rows.length - 1];
+                    rows.push({
+                      ...structuredClone(last),
+                      heightMin: last.heightMax,
+                      heightMax: r2(last.heightMax + 1.0),
+                    });
+                    setConfig(next);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add range
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Ranges are chained so heights can never overlap or leave gaps.
+                  A wall exactly on a boundary uses the lower range.
+                </p>
               </CardContent>
             </Card>
 
@@ -720,19 +849,25 @@ export function PricingPerfPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="hidden gap-3 px-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:flex">
-                <span className="w-32">Band</span>
+                <span className="w-32">Band name</span>
                 <span className="flex-1">Quote label (prints on the quote)</span>
-                <span className="w-20">Multiplier</span>
-                <span className="w-20" />
+                <span className="w-14">Min m</span>
+                <span className="w-14">Max m</span>
+                <span className="w-16">Multiplier</span>
+                <span className="w-8" />
               </div>
               {config.extraOverBands.map((band, i) => (
-                <div
-                  key={band.label}
-                  className="flex flex-wrap items-center gap-3"
-                >
-                  <label className="w-32 text-sm text-muted-foreground">
-                    {band.label}
-                  </label>
+                <div key={i} className="flex flex-wrap items-center gap-3">
+                  <Input
+                    type="text"
+                    className="h-8 w-32 text-sm"
+                    value={band.label}
+                    onChange={(e) => {
+                      const next = structuredClone(config);
+                      next.extraOverBands[i].label = e.target.value;
+                      setConfig(next);
+                    }}
+                  />
                   <Input
                     type="text"
                     className="h-8 min-w-40 flex-1 text-sm"
@@ -746,8 +881,32 @@ export function PricingPerfPage() {
                   />
                   <Input
                     type="number"
+                    step="0.1"
+                    className="h-8 w-14 text-sm"
+                    value={band.heightMin}
+                    onChange={(e) => {
+                      const next = structuredClone(config);
+                      next.extraOverBands[i].heightMin =
+                        parseFloat(e.target.value) || 0;
+                      setConfig(next);
+                    }}
+                  />
+                  <Input
+                    type="number"
+                    step="0.1"
+                    className="h-8 w-14 text-sm"
+                    value={band.heightMax}
+                    onChange={(e) => {
+                      const next = structuredClone(config);
+                      next.extraOverBands[i].heightMax =
+                        parseFloat(e.target.value) || 0;
+                      setConfig(next);
+                    }}
+                  />
+                  <Input
+                    type="number"
                     step="0.01"
-                    className="h-8 w-20 text-sm"
+                    className="h-8 w-16 text-sm"
                     value={band.multiplier}
                     onChange={(e) => {
                       const next = structuredClone(config);
@@ -756,16 +915,78 @@ export function PricingPerfPage() {
                       setConfig(next);
                     }}
                   />
-                  <span className="w-20 text-xs text-muted-foreground">
-                    ({(band.multiplier * 100).toFixed(0)}% extra)
-                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    title="Remove row"
+                    disabled={config.extraOverBands.length === 1}
+                    onClick={() => {
+                      const next = structuredClone(config);
+                      next.extraOverBands.splice(i, 1);
+                      setConfig(next);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  const next = structuredClone(config);
+                  next.extraOverBands.push({
+                    label: "New band",
+                    heightMin: 0,
+                    heightMax: 0,
+                    multiplier: 0,
+                  });
+                  setConfig(next);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add band
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Bands with Upper or Lower in the name price the two tier walls.
+                Keep those words in the name or two tier pricing falls back to
+                the standard multipliers.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Single tier walls only appear on the quote when their height
+                falls inside one of these bands.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/** A commit-on-blur number input for the chained post-size range fields.
+ *  Clamping / re-chaining runs on commit, not per keystroke, so it never
+ *  fights the user's typing. */
+function NumberDraft({
+  value,
+  onCommit,
+  className,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  className?: string;
+}) {
+  return (
+    <DraftInput
+      type="number"
+      step="0.1"
+      className={className ?? "h-8 w-16 text-xs"}
+      value={String(value)}
+      onCommit={(s) => onCommit(parseFloat(s) || 0)}
+    />
   );
 }
 

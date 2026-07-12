@@ -1,9 +1,27 @@
 import { supabase } from "@/lib/supabase";
 import type { Project, ProjectInsert, ProjectUpdate } from "@/types/db";
-import { defaultConfig, DEFAULT_PROJECT_DESCRIPTION } from "@/lib/engine/defaults";
+import {
+  defaultConfig,
+  zeroConfig,
+  DEFAULT_PROJECT_DESCRIPTION,
+} from "@/lib/engine/defaults";
 import { slugify } from "@/lib/slug";
 
 const TABLE = "projects";
+
+/** True when the caller's organisation seeds new projects with the all-zero
+ *  starter config instead of the BE template. Any error (column not migrated
+ *  yet, no org row) falls back to the template, mirroring the slug/42703
+ *  tolerance elsewhere in this file. RLS scopes the select to the caller's one
+ *  org, the same guarantee getMyOrg relies on. */
+async function orgSeedsZeroConfig(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("seed_zero_config")
+    .maybeSingle();
+  if (error || !data) return false;
+  return Boolean((data as { seed_zero_config?: boolean }).seed_zero_config);
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -76,10 +94,13 @@ export async function createProject(
   // having to clone an existing project just to set up rates / margins.
   const normalized = normalize(input);
   const slug = await generateUniqueSlug(String(normalized.name ?? ""));
+  // New companies start from an all-zero config; existing companies keep the
+  // BE template. Falls back to the template when the flag can't be read.
+  const seedConfig = (await orgSeedsZeroConfig()) ? zeroConfig : defaultConfig;
   const seeded = {
     ...normalized,
     user_id: userId,
-    config: normalized.config ?? defaultConfig,
+    config: normalized.config ?? seedConfig,
     description: normalized.description ?? DEFAULT_PROJECT_DESCRIPTION,
   };
   const fullPayload = slug ? { ...seeded, slug } : seeded;

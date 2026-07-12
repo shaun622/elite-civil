@@ -681,45 +681,6 @@ export function ReviewPage() {
                       )}
                     </div>
                   )}
-                {/* Client-facing view toggles + print. */}
-                <div className="mb-2 flex flex-wrap items-center gap-2 print:hidden">
-                  <ToggleChip
-                    active={bandColorsOn}
-                    onClick={() => setBandColorsOn((v) => !v)}
-                  >
-                    Height colours
-                  </ToggleChip>
-                  <ToggleChip
-                    active={sectionsOn}
-                    disabled={!bandColorsOn}
-                    onClick={() => setSectionsOn((v) => !v)}
-                  >
-                    Sections
-                  </ToggleChip>
-                  <ToggleChip
-                    active={badgesOn}
-                    onClick={() => setBadgesOn((v) => !v)}
-                  >
-                    Badges · length &amp; m²
-                  </ToggleChip>
-                  <ToggleChip
-                    active={bwDrawingOn}
-                    onClick={() => setBwDrawingOn((v) => !v)}
-                  >
-                    B&amp;W drawing
-                  </ToggleChip>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="ml-auto h-8 gap-1.5"
-                    onClick={handlePrintSummary}
-                  >
-                    <Printer className="h-3.5 w-3.5" />
-                    Print summary
-                  </Button>
-                </div>
-
                 <div className="h-[78vh] min-h-[480px] overflow-hidden rounded-lg border bg-[#1f2937]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
@@ -747,6 +708,46 @@ export function ReviewPage() {
                     grayscale={bwDrawingOn}
                     snapshotFnRef={snapshotFnRef}
                     bandMeta={{ edges, roundOpts }}
+                    toolbar={
+                      <>
+                        <ToggleChip
+                          active={bandColorsOn}
+                          onClick={() => setBandColorsOn((v) => !v)}
+                        >
+                          Height colours
+                        </ToggleChip>
+                        <ToggleChip
+                          active={sectionsOn}
+                          disabled={!bandColorsOn}
+                          onClick={() => setSectionsOn((v) => !v)}
+                        >
+                          Sections
+                        </ToggleChip>
+                        <ToggleChip
+                          active={badgesOn}
+                          onClick={() => setBadgesOn((v) => !v)}
+                        >
+                          Badges · length &amp; m²
+                        </ToggleChip>
+                        <ToggleChip
+                          active={bwDrawingOn}
+                          onClick={() => setBwDrawingOn((v) => !v)}
+                        >
+                          B&amp;W drawing
+                        </ToggleChip>
+                        <span className="mx-0.5 h-4 w-px bg-border" />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 px-2 text-xs"
+                          onClick={handlePrintSummary}
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          Print summary
+                        </Button>
+                      </>
+                    }
                   />
                 </div>
 
@@ -877,7 +878,7 @@ function ToggleChip({
         disabled ? "cursor-not-allowed opacity-40 " : ""
       }${
         active
-          ? "border-foreground bg-foreground text-background"
+          ? "border-primary bg-primary text-primary-foreground"
           : "border-border bg-background text-muted-foreground hover:text-foreground"
       }`}
     >

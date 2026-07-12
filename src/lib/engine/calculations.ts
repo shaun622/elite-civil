@@ -43,6 +43,17 @@ export function embedmentOpts(config: ProjectConfig): {
   };
 }
 
+/** Daily rate that prices drilling / backfill machine time: the row named
+ *  "8ton KPR" if present, otherwise the first machine row (so a renamed list
+ *  still prices), otherwise 375. `??` (not `||`) keeps a real 0 rate at $0. */
+export function drillingMachineRate(config: ProjectConfig): number {
+  return (
+    config.machineRates.find((m) => m.name === "8ton KPR")?.rate ??
+    config.machineRates[0]?.rate ??
+    375
+  );
+}
+
 /** The auto Quotation label for an extra-over band, used when the band has no
  *  custom `quoteLabel`. Shared by the engine and the Pricing & Performance
  *  editor's placeholder so they never drift. */
@@ -247,12 +258,10 @@ export function calculateCostBreakdown(
     drillingLabour = config.labourRates.subbieDrill * totalM2;
     drillingMachine = config.labourRates.subbieMachine * totalM2;
   } else {
-    const drillDays = totalDrillHrs / config.performance.workHours;
-    drillingLabour =
-      drillDays * config.labourRates.employeeDrill * config.performance.workHours;
-    drillingMachine =
-      drillDays *
-      (config.machineRates.find((m) => m.name === "8ton KPR")?.rate ?? 375);
+    const workHours = config.performance.workHours || 7.5;
+    const drillDays = totalDrillHrs / workHours;
+    drillingLabour = drillDays * config.labourRates.employeeDrill * workHours;
+    drillingMachine = drillDays * drillingMachineRate(config);
   }
 
   // --- POSTING ---
@@ -267,9 +276,11 @@ export function calculateCostBreakdown(
       return sum + w.m2 * rate;
     }, 0);
   } else {
-    const postDays = totalM2 / config.performance.maxPostingPerDay;
+    const postDays = totalM2 / (config.performance.maxPostingPerDay || 75);
     postingLabour =
-      postDays * config.labourRates.employeePost * config.performance.workHours;
+      postDays *
+      config.labourRates.employeePost *
+      (config.performance.workHours || 7.5);
   }
   const postingConcrete = totalConcreteM3 * config.materialPrices.concreteRate;
   const postingSteel = calculated.reduce((sum, w) => {
@@ -329,10 +340,10 @@ export function calculateCostBreakdown(
   } else {
     backfillLabour = totalBuildHrs * config.labourRates.employeeBackfill;
   }
-  const backfillMachineRate =
-    config.machineRates.find((m) => m.name === "8ton KPR")?.rate ?? 375;
+  const backfillMachineRate = drillingMachineRate(config);
   const backfillMachine =
-    (totalBuildHrs / config.performance.workHours) * backfillMachineRate;
+    (totalBuildHrs / (config.performance.workHours || 7.5)) *
+    backfillMachineRate;
   const backfillLabourAndMachine = backfillLabour + backfillMachine;
 
   // --- ENGINEERING ---
@@ -791,8 +802,7 @@ export function generateCostBreakdownDetail(
   const totalLM = calculated.reduce((s, w) => s + w.lengthLM, 0);
   const lotCount = getUniqueLotCount(walls);
   const workHours = config.performance.workHours || 7.5;
-  const kprRate =
-    config.machineRates.find((m) => m.name === "8ton KPR")?.rate ?? 375;
+  const kprRate = drillingMachineRate(config);
 
   const raw: Array<Omit<CostDetailLine, "total" | "qtyOverride">> = [];
 

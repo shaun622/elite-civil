@@ -86,7 +86,7 @@ export const defaultConfig: ProjectConfig = {
     heightAboveThreshold: 2.0,
     sleeperLengthAbove: 1.6,
     defaultSleeperLength: 2.0,
-    embedmentRoundUp: true,
+    embedmentRoundUp: false,
     embedmentIncrementM: 0.2,
     postEmbedmentRatio: 1.0,
     holeDepthOverEmbedmentM: 0.2,
@@ -107,6 +107,96 @@ export const defaultConfig: ProjectConfig = {
     { label: "3.0 - 4.0m High", heightMin: 3.0, heightMax: 4.0, multiplier: 0.2 },
     { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.12 },
     { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0.11 },
+  ],
+
+  heightBandEdges: [1.6, 3.0],
+};
+
+/**
+ * All-zero starter config for organisations created after v1.0.10. A complete
+ * ProjectConfig (getEffectiveConfig REPLACES, so every section must exist) with
+ * all rates, prices, multipliers and margins zeroed, so a new company enters
+ * their own numbers. Geometry (hole sizes, sleeper lengths, ratios) and the
+ * range/band structure are kept so the engine never divides by zero or hits an
+ * empty range array; workHours / maxPostingPerDay stay realistic to avoid NaN.
+ */
+export const zeroConfig: ProjectConfig = {
+  crewType: "Employee Crew",
+
+  machineRates: [{ name: "Drilling machine", rate: 0, unit: "Day" }],
+
+  materialPrices: {
+    superSleeper: 0,
+    superSupport: 0,
+    wedges: 0,
+    concreteSleeper: 0,
+    concreteRate: 0,
+    gravelRate: 0,
+    geo1mX50m: 0,
+    geo2mX50m: 0,
+    geo1mX100m: 0,
+    geo2mX100m: 0,
+    agLine100mmX100m: 0,
+    fenceBracket: 0,
+    fenceBracketLabour: 0,
+  },
+
+  labourRates: {
+    subbieDrill: 0,
+    subbiePost: 0,
+    subbieBuild: 0,
+    subbieBackfill: 0,
+    subbieMachine: 0,
+    employeeBuild: 0,
+    employeePost: 0,
+    employeeBackfill: 0,
+    employeeDrill: 0,
+  },
+
+  performance: {
+    timeToDrill1LM: 0,
+    timeToInstall1Sleeper: 0,
+    buildCrewM2PerDay: 0,
+    workHours: 7.5,
+    breakTime: 0,
+    maxPostingPerDay: 75,
+  },
+
+  engineering: {
+    holeSize: 450,
+    heightPlusFactor: 0.4,
+    postSizeRanges: [
+      { postSize: "100UC",   heightMin: 0.2, heightMax: 1.6, pricePerMetre: 0, lengthPerUnit: 3.6, pricePerUnit: 0, postingLabourPerM2: 0 },
+      { postSize: "150UC24", heightMin: 1.6, heightMax: 2.2, pricePerMetre: 0, lengthPerUnit: 5.2, pricePerUnit: 0, postingLabourPerM2: 0 },
+      { postSize: "150UC30", heightMin: 2.2, heightMax: 3.0, pricePerMetre: 0, lengthPerUnit: 5.6, pricePerUnit: 0, postingLabourPerM2: 0 },
+      { postSize: "250UB37", heightMin: 3.0, heightMax: 4.0, pricePerMetre: 0, lengthPerUnit: 5.8, pricePerUnit: 0, postingLabourPerM2: 0 },
+    ],
+    heightBelowThreshold: 0.6,
+    sleeperLengthBelow: 2.4,
+    heightAboveThreshold: 2.0,
+    sleeperLengthAbove: 1.6,
+    defaultSleeperLength: 2.0,
+    embedmentRoundUp: false,
+    embedmentIncrementM: 0.2,
+    postEmbedmentRatio: 1.0,
+    holeDepthOverEmbedmentM: 0.2,
+  },
+
+  admin: {
+    engineering: 0,
+    formPerLot: 0,
+    mobeAndDemobe: 0,
+    markup: 0,
+    margin: 0,
+  },
+
+  extraOverBands: [
+    { label: "0 - 1.6m High",   heightMin: 0,   heightMax: 1.6, multiplier: 0 },
+    { label: "1.6 - 2.2m High", heightMin: 1.6, heightMax: 2.2, multiplier: 0 },
+    { label: "2.2 - 3.0m High", heightMin: 2.2, heightMax: 3.0, multiplier: 0 },
+    { label: "3.0 - 4.0m High", heightMin: 3.0, heightMax: 4.0, multiplier: 0 },
+    { label: "Upper Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0 },
+    { label: "Lower Tier",      heightMin: 0,   heightMax: 4.0, multiplier: 0 },
   ],
 
   heightBandEdges: [1.6, 3.0],

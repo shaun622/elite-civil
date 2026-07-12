@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type MutableRefObject,
+  type ReactNode,
 } from "react";
 import {
   Circle,
@@ -96,6 +97,9 @@ type Props = {
     edges: number[];
     roundOpts: { enabled: boolean; incrementM: number };
   };
+  /** View controls rendered top-left over the drawing (the Review toggles +
+   *  print). Kept in the parent; the viewer just gives them a home on the map. */
+  toolbar?: ReactNode;
 };
 
 export function DrawingViewer({
@@ -124,6 +128,7 @@ export function DrawingViewer({
   grayscale = false,
   snapshotFnRef,
   bandMeta,
+  toolbar,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -728,6 +733,11 @@ export function DrawingViewer({
       </Stage>
 
       <div className="pointer-events-none absolute inset-0">
+        {toolbar && (
+          <div className="pointer-events-auto absolute left-3 top-3 flex max-w-[65%] flex-wrap items-center gap-1.5 rounded-md border bg-background/95 p-1.5 shadow-sm backdrop-blur-sm print:hidden">
+            {toolbar}
+          </div>
+        )}
         <div className="pointer-events-auto absolute right-3 top-3 flex flex-col gap-2">
           <div className="flex items-center gap-1 rounded-md border bg-background/95 p-1 shadow-sm backdrop-blur-sm">
             <Button
