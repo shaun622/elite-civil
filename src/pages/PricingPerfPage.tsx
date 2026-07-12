@@ -291,7 +291,7 @@ export function PricingPerfPage() {
                 {(
                   [
                     ["subbieBuild", "Build", excludeLineKey("build-subbie-labour")],
-                    ["subbiePost", "Post", null],
+                    ["subbiePost", "Post", excludeLineKey("post-subbie-labour")],
                     ["subbieBackfill", "Backfill", excludeLineKey("backfill-subbie-labour")],
                     ["subbieDrill", "Drill", excludeLineKey("drill-subbie-labour")],
                     ["subbieMachine", "Machine", excludeLineKey("drill-subbie-machine")],

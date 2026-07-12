@@ -112,13 +112,26 @@ export function materialLineExclusionKey(line: {
   return excludeMatLineKey(line.category, line.description);
 }
 
-/** Is this Cost Breakdown line excluded: by its own key, its category box, or
- *  the feature (material category) it belongs to. */
+/** Some cost lines are emitted one-per-post-size at run time (their ids carry
+ *  the size, e.g. `post-subbie-labour-100UC`), so a single UI switch can't key
+ *  off a fixed id. Such lines share a stable GROUP key (the id stem) that one
+ *  toggle writes as `exclude:<group>`, turning the whole set off together.
+ *  Steel size rows are deliberately absent: they toggle via the Steel material
+ *  category instead. */
+export function costLineGroup(id: string): string | null {
+  if (id.startsWith("post-subbie-labour-")) return "post-subbie-labour";
+  return null;
+}
+
+/** Is this Cost Breakdown line excluded: by its own key, its size-group key,
+ *  its category box, or the feature (material category) it belongs to. */
 export function isCostLineExcluded(
   ov: CostOverrides,
   line: { id: string; category: CostCategory },
 ): boolean {
   if (ov[excludeLineKey(line.id)]) return true;
+  const group = costLineGroup(line.id);
+  if (group && ov[excludeLineKey(group)]) return true;
   if (ov[excludeCatKey(line.category)]) return true;
   const mat = materialCategoryForCostLine(line.id);
   if (mat && ov[excludeMatKey(mat)]) return true;
