@@ -239,6 +239,12 @@ export interface ProjectConfig {
    *  height band" breakdown on Review + Dashboard. Shared across the team.
    *  Optional for back-compat: undefined = default 0–1.6 / 1.6–3.0 / 3.0+. */
   heightBandEdges?: number[];
+  /** Display-name overrides for otherwise-fixed labels, keyed by stable dotted
+   *  ids ("materialPrices.superSleeper", "admin.markup", card titles
+   *  "card.sleepers", ...). Absent key = default label. Engine line ids never
+   *  change, so renaming is override / exclusion-safe. See fieldLabel() in the
+   *  editor and lbl() in the engine. */
+  fieldLabels?: Record<string, string>;
 }
 
 export type TrackingPhase =

@@ -135,6 +135,10 @@ export interface MaterialOrderLine {
   /** Toggled off: total is forced to 0. Line is kept (dimmed) so it stays
    *  re-includable in the UI. */
   excluded?: boolean;
+  /** The cost-breakdown line id this materials line is 1:1 with, when one
+   *  exists. Stable across renames, so exclusion pairing keys off this rather
+   *  than the (renameable) description. */
+  pairedCostId?: string;
 }
 
 export interface MaterialsOrder {

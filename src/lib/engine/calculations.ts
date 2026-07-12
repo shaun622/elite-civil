@@ -59,6 +59,13 @@ export function drillingMachineRate(config: ProjectConfig): number {
   );
 }
 
+/** A user-renamed display label for an otherwise-fixed line, or the fallback.
+ *  Keyed by stable dotted ids (see ProjectConfig.fieldLabels) so a rename never
+ *  changes an engine line id, and overrides / exclusions stay intact. */
+function fieldLabel(config: ProjectConfig, key: string, fallback: string): string {
+  return config.fieldLabels?.[key]?.trim() || fallback;
+}
+
 /** The auto Quotation label for an extra-over band, used when the band has no
  *  custom `quoteLabel`. Shared by the engine and the Pricing & Performance
  *  editor's placeholder so they never drift. */
@@ -424,6 +431,9 @@ export function generateQuotationLines(
     return line.qtyOverride ?? line.qtyEstimated;
   };
 
+  const lbl = (key: string, fb: string) => fieldLabel(config, key, fb);
+  const mobe = config.fieldLabels?.["admin.mobeAndDemobe"]?.trim();
+
   const directCosts =
     (detail.categoryTotals["Drilling"] ?? 0) +
     (detail.categoryTotals["Posting"] ?? 0) +
@@ -445,7 +455,13 @@ export function generateQuotationLines(
 
   const estQty = getQty("other-establishment", 1);
   if (estQty > 0) {
-    pushLine("establishment", "Establishment", estQty, "EA", config.admin.mobeAndDemobe);
+    pushLine(
+      "establishment",
+      mobe ? `${mobe} (establishment)` : "Establishment",
+      estQty,
+      "EA",
+      config.admin.mobeAndDemobe,
+    );
   }
 
   const m2_upper = calculated
@@ -508,22 +524,40 @@ export function generateQuotationLines(
   if (totalBrackets > 0) {
     const bracketCost =
       config.materialPrices.fenceBracket + config.materialPrices.fenceBracketLabour;
-    pushLine("brackets", "Fence Brackets - 6mm", totalBrackets, "EA", bracketCost * markupMargin);
+    pushLine(
+      "brackets",
+      lbl("materialPrices.fenceBracket", "Fence Brackets - 6mm"),
+      totalBrackets,
+      "EA",
+      bracketCost * markupMargin,
+    );
   }
 
   const form15Qty = getQty("eng-form15", 1);
   if (form15Qty > 0) {
-    pushLine("form15", "Form 15", form15Qty, "", config.admin.engineering);
+    pushLine("form15", lbl("admin.engineering", "Form 15"), form15Qty, "", config.admin.engineering);
   }
 
   const form12Qty = getQty("eng-form12", getUniqueLotCount(walls));
   if (form12Qty > 0) {
-    pushLine("form12", "Form 12 (per lot)", form12Qty, "lots", config.admin.formPerLot);
+    pushLine(
+      "form12",
+      lbl("admin.formPerLot", "Form 12 (per lot)"),
+      form12Qty,
+      "lots",
+      config.admin.formPerLot,
+    );
   }
 
   const deestQty = getQty("other-deestablishment", 1);
   if (deestQty > 0) {
-    pushLine("deestablishment", "De-establishment", deestQty, "EA", config.admin.mobeAndDemobe);
+    pushLine(
+      "deestablishment",
+      mobe ? `${mobe} (de-establishment)` : "De-establishment",
+      deestQty,
+      "EA",
+      config.admin.mobeAndDemobe,
+    );
   }
 
   return lines;
@@ -540,12 +574,14 @@ export function generateMaterialsOrder(
 ): MaterialsOrder {
   const calculated = calculateAllWalls(walls, config);
   const lines: MaterialOrderLine[] = [];
+  const lbl = (key: string, fb: string) => fieldLabel(config, key, fb);
 
   const totalConcreteM3 = calculated.reduce((s, w) => s + w.concreteM3, 0);
   if (totalConcreteM3 > 0) {
     lines.push({
       category: "Concrete",
-      description: "Concrete for post holes",
+      description: lbl("materialPrices.concreteRate", "Concrete for post holes"),
+      pairedCostId: "post-concrete",
       qty: totalConcreteM3,
       unit: "m3",
       unitPrice: config.materialPrices.concreteRate,
@@ -612,7 +648,7 @@ export function generateMaterialsOrder(
   if (totalBrackets > 0) {
     lines.push({
       category: "Fence Brackets",
-      description: "Fence brackets - 6mm",
+      description: lbl("materialPrices.fenceBracket", "Fence brackets - 6mm"),
       qty: totalBrackets,
       unit: "EA",
       unitPrice: config.materialPrices.fenceBracket,
@@ -635,7 +671,8 @@ export function generateMaterialsOrder(
   if (superSleepersQty > 0) {
     lines.push({
       category: "Sleepers",
-      description: "Super Sleepers",
+      description: lbl("materialPrices.superSleeper", "Super Sleepers"),
+      pairedCostId: "build-super-sleepers",
       qty: superSleepersQty,
       unit: "EA",
       unitPrice: config.materialPrices.superSleeper,
@@ -645,7 +682,8 @@ export function generateMaterialsOrder(
   if (superSupportsQty > 0) {
     lines.push({
       category: "Sleepers",
-      description: "Super Supports",
+      description: lbl("materialPrices.superSupport", "Super Supports"),
+      pairedCostId: "build-super-supports",
       qty: superSupportsQty,
       unit: "EA",
       unitPrice: config.materialPrices.superSupport,
@@ -655,7 +693,7 @@ export function generateMaterialsOrder(
   if (wedgesQty > 0) {
     lines.push({
       category: "Sleepers",
-      description: "Wedges",
+      description: lbl("materialPrices.wedges", "Wedges"),
       qty: wedgesQty,
       unit: "EA",
       unitPrice: config.materialPrices.wedges,
@@ -665,7 +703,8 @@ export function generateMaterialsOrder(
   if (concreteSleepersQty > 0) {
     lines.push({
       category: "Sleepers",
-      description: "Concrete Sleepers",
+      description: lbl("materialPrices.concreteSleeper", "Concrete Sleepers"),
+      pairedCostId: "build-concrete-sleepers",
       qty: concreteSleepersQty,
       unit: "EA",
       unitPrice: config.materialPrices.concreteSleeper,
@@ -684,7 +723,8 @@ export function generateMaterialsOrder(
   if (geo1mRolls > 0) {
     lines.push({
       category: "Geofabric",
-      description: "Geofabric 0.9m x 50m (walls ≤ 1m)",
+      description: lbl("materialPrices.geo1mX50m", "Geofabric 0.9m x 50m (walls ≤ 1m)"),
+      pairedCostId: "backfill-geo1m",
       qty: geo1mRolls,
       unit: "roll",
       unitPrice: config.materialPrices.geo1mX50m,
@@ -694,7 +734,8 @@ export function generateMaterialsOrder(
   if (geo2mRolls > 0) {
     lines.push({
       category: "Geofabric",
-      description: "Geofabric 2m x 50m (walls > 1m)",
+      description: lbl("materialPrices.geo2mX50m", "Geofabric 2m x 50m (walls > 1m)"),
+      pairedCostId: "backfill-geo2m",
       qty: geo2mRolls,
       unit: "roll",
       unitPrice: config.materialPrices.geo2mX50m,
@@ -707,7 +748,8 @@ export function generateMaterialsOrder(
   if (agRolls > 0) {
     lines.push({
       category: "Ag Line",
-      description: "Ag line 100mm x 100m",
+      description: lbl("materialPrices.agLine100mmX100m", "Ag line 100mm x 100m"),
+      pairedCostId: "backfill-agline",
       qty: agRolls,
       unit: "roll",
       unitPrice: config.materialPrices.agLine100mmX100m,
@@ -719,7 +761,8 @@ export function generateMaterialsOrder(
   if (totalGravelM3 > 0) {
     lines.push({
       category: "Gravel",
-      description: "Gravel backfill",
+      description: lbl("materialPrices.gravelRate", "Gravel backfill"),
+      pairedCostId: "backfill-gravel",
       qty: totalGravelM3,
       unit: "m3",
       unitPrice: config.materialPrices.gravelRate,
@@ -760,6 +803,7 @@ export function generateCostBreakdownDetail(
   const lotCount = getUniqueLotCount(walls);
   const workHours = config.performance.workHours || 7.5;
   const kprRate = drillingMachineRate(config);
+  const lbl = (key: string, fb: string) => fieldLabel(config, key, fb);
 
   const raw: Array<Omit<CostDetailLine, "total" | "qtyOverride">> = [];
 
@@ -768,7 +812,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "drill-subbie-labour",
       category: "Drilling",
-      description: "Subbie drill labour",
+      description: lbl("labourRates.subbieDrill", "Subbie drill labour"),
       qtyEstimated: totalM2,
       unit: "m2",
       rate: config.labourRates.subbieDrill,
@@ -776,7 +820,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "drill-subbie-machine",
       category: "Drilling",
-      description: "Subbie drill machine",
+      description: lbl("labourRates.subbieMachine", "Subbie drill machine"),
       qtyEstimated: totalM2,
       unit: "m2",
       rate: config.labourRates.subbieMachine,
@@ -785,7 +829,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "drill-labour-hrs",
       category: "Drilling",
-      description: "Drill labour hours",
+      description: lbl("labourRates.employeeDrill", "Drill labour hours"),
       qtyEstimated: totalDrillHrs,
       unit: "hrs",
       rate: config.labourRates.employeeDrill,
@@ -829,7 +873,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "post-labour-hrs",
       category: "Posting",
-      description: "Post labour hours",
+      description: lbl("labourRates.employeePost", "Post labour hours"),
       qtyEstimated: postDays * workHours,
       unit: "hrs",
       rate: config.labourRates.employeePost,
@@ -838,7 +882,7 @@ export function generateCostBreakdownDetail(
   raw.push({
     id: "post-concrete",
     category: "Posting",
-    description: "Concrete (post holes)",
+    description: lbl("materialPrices.concreteRate", "Concrete (post holes)"),
     qtyEstimated: totalConcreteM3,
     unit: "m3",
     rate: config.materialPrices.concreteRate,
@@ -878,7 +922,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "build-subbie-labour",
       category: "Wall Building",
-      description: "Subbie build labour",
+      description: lbl("labourRates.subbieBuild", "Subbie build labour"),
       qtyEstimated: totalM2,
       unit: "m2",
       rate: config.labourRates.subbieBuild,
@@ -887,7 +931,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "build-labour-hrs",
       category: "Wall Building",
-      description: "Build labour hours",
+      description: lbl("labourRates.employeeBuild", "Build labour hours"),
       qtyEstimated: totalBuildHrs,
       unit: "hrs",
       rate: config.labourRates.employeeBuild,
@@ -909,7 +953,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "build-super-sleepers",
       category: "Wall Building",
-      description: "Super sleepers",
+      description: lbl("materialPrices.superSleeper", "Super sleepers"),
       qtyEstimated: superSleepersQty,
       unit: "EA",
       rate: config.materialPrices.superSleeper,
@@ -918,7 +962,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "build-super-supports",
       category: "Wall Building",
-      description: "Super supports",
+      description: lbl("materialPrices.superSupport", "Super supports"),
       qtyEstimated: superSupportsQty,
       unit: "EA",
       rate: config.materialPrices.superSupport,
@@ -927,7 +971,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "build-concrete-sleepers",
       category: "Wall Building",
-      description: "Concrete sleepers",
+      description: lbl("materialPrices.concreteSleeper", "Concrete sleepers"),
       qtyEstimated: concreteSleepersQty,
       unit: "EA",
       rate: config.materialPrices.concreteSleeper,
@@ -948,7 +992,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "backfill-geo1m",
       category: "Backfill & Gravel",
-      description: "Geofab 0.9m x 50m",
+      description: lbl("materialPrices.geo1mX50m", "Geofab 0.9m x 50m"),
       qtyEstimated: geo1mRolls,
       unit: "roll",
       rate: config.materialPrices.geo1mX50m,
@@ -957,7 +1001,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "backfill-geo2m",
       category: "Backfill & Gravel",
-      description: "Geofab 2m x 50m",
+      description: lbl("materialPrices.geo2mX50m", "Geofab 2m x 50m"),
       qtyEstimated: geo2mRolls,
       unit: "roll",
       rate: config.materialPrices.geo2mX50m,
@@ -966,7 +1010,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "backfill-agline",
       category: "Backfill & Gravel",
-      description: "Ag line 100mm x 100m",
+      description: lbl("materialPrices.agLine100mmX100m", "Ag line 100mm x 100m"),
       qtyEstimated: agRolls,
       unit: "roll",
       rate: config.materialPrices.agLine100mmX100m,
@@ -975,7 +1019,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "backfill-gravel",
       category: "Backfill & Gravel",
-      description: "Gravel",
+      description: lbl("materialPrices.gravelRate", "Gravel"),
       qtyEstimated: totalGravelM3,
       unit: "m3",
       rate: config.materialPrices.gravelRate,
@@ -985,7 +1029,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "backfill-subbie-labour",
       category: "Backfill & Gravel",
-      description: "Subbie backfill labour",
+      description: lbl("labourRates.subbieBackfill", "Subbie backfill labour"),
       qtyEstimated: totalM2,
       unit: "m2",
       rate: config.labourRates.subbieBackfill,
@@ -994,7 +1038,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "backfill-labour-hrs",
       category: "Backfill & Gravel",
-      description: "Backfill labour hours",
+      description: lbl("labourRates.employeeBackfill", "Backfill labour hours"),
       qtyEstimated: totalBuildHrs,
       unit: "hrs",
       rate: config.labourRates.employeeBackfill,
@@ -1013,7 +1057,7 @@ export function generateCostBreakdownDetail(
   raw.push({
     id: "eng-form15",
     category: "Engineering",
-    description: "Form 15",
+    description: lbl("admin.engineering", "Form 15"),
     qtyEstimated: 1,
     unit: "EA",
     rate: config.admin.engineering,
@@ -1022,7 +1066,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "eng-form12",
       category: "Engineering",
-      description: "Form 12 (per lot)",
+      description: lbl("admin.formPerLot", "Form 12 (per lot)"),
       qtyEstimated: lotCount,
       unit: "lots",
       rate: config.admin.formPerLot,
@@ -1033,7 +1077,7 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "other-brackets-material",
       category: "Other",
-      description: "Fence brackets (material)",
+      description: lbl("materialPrices.fenceBracket", "Fence brackets (material)"),
       qtyEstimated: totalFenceBrackets,
       unit: "EA",
       rate: config.materialPrices.fenceBracket,
@@ -1041,16 +1085,19 @@ export function generateCostBreakdownDetail(
     raw.push({
       id: "other-brackets-labour",
       category: "Other",
-      description: "Fence brackets (labour)",
+      description: lbl("materialPrices.fenceBracketLabour", "Fence brackets (labour)"),
       qtyEstimated: totalFenceBrackets,
       unit: "EA",
       rate: config.materialPrices.fenceBracketLabour,
     });
   }
+  // Establishment / de-establishment share the Mobe & Demobe price + label; when
+  // that label is renamed, suffix each so they stay distinguishable.
+  const mobe = config.fieldLabels?.["admin.mobeAndDemobe"]?.trim();
   raw.push({
     id: "other-establishment",
     category: "Other",
-    description: "Establishment",
+    description: mobe ? `${mobe} (establishment)` : "Establishment",
     qtyEstimated: 1,
     unit: "EA",
     rate: config.admin.mobeAndDemobe,
@@ -1058,7 +1105,7 @@ export function generateCostBreakdownDetail(
   raw.push({
     id: "other-deestablishment",
     category: "Other",
-    description: "De-establishment",
+    description: mobe ? `${mobe} (de-establishment)` : "De-establishment",
     qtyEstimated: 1,
     unit: "EA",
     rate: config.admin.mobeAndDemobe,

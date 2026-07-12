@@ -67,11 +67,15 @@ export function materialCategoryForCostLine(
 
 /** The single cost line a Materials line is 1:1 with, or null when there is no
  *  clean pair (steel size rows, wedges, and fence brackets which map to two
- *  cost lines and so use the category key instead). */
+ *  cost lines and so use the category key instead). Prefers the stable
+ *  `pairedCostId` set at generation; the description switch is a back-compat
+ *  fallback for lines built without it. */
 export function pairedCostLineId(line: {
   category: string;
   description: string;
+  pairedCostId?: string;
 }): string | null {
+  if (line.pairedCostId) return line.pairedCostId;
   switch (line.category) {
     case "Concrete":
       return "post-concrete";
@@ -100,6 +104,7 @@ export function pairedCostLineId(line: {
 export function materialLineExclusionKey(line: {
   category: MaterialCategory;
   description: string;
+  pairedCostId?: string;
 }): string {
   const paired = pairedCostLineId(line);
   if (paired) return excludeLineKey(paired);
@@ -125,7 +130,7 @@ export function isCostLineExcluded(
  *  page exclusion shows here too). Cost-only category boxes do not apply. */
 export function isMaterialLineExcluded(
   ov: CostOverrides,
-  line: { category: MaterialCategory; description: string },
+  line: { category: MaterialCategory; description: string; pairedCostId?: string },
 ): boolean {
   if (ov[excludeMatKey(line.category)]) return true;
   if (ov[materialLineExclusionKey(line)]) return true;

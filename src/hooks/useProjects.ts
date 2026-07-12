@@ -143,9 +143,18 @@ export function useProject(id: string | undefined) {
   const update = useCallback(
     async (patch: ProjectUpdate) => {
       if (!project) throw new Error("Project not loaded.");
-      const next = await updateProject(project.id, patch);
-      setProject(next);
-      return next;
+      const snapshot = project;
+      // Paint the change immediately so toggles / inline edits feel instant;
+      // the server echo reconciles below, and a failure rolls back.
+      setProject({ ...project, ...(patch as Partial<Project>) });
+      try {
+        const next = await updateProject(project.id, patch);
+        setProject(next);
+        return next;
+      } catch (err) {
+        setProject(snapshot);
+        throw err;
+      }
     },
     [project],
   );

@@ -176,6 +176,24 @@ export function PricingPerfPage() {
   const setMatIncluded = (cat: MaterialCategory, include: boolean) =>
     setExcluded(excludeMatKey(cat), !include);
 
+  // Rename support: display-name overrides live in config.fieldLabels, keyed by
+  // stable dotted ids. Editing writes to the config draft (instant + debounced);
+  // clearing the text reverts to the default.
+  function setFieldLabel(key: string, value: string) {
+    const next = structuredClone(config);
+    const labels = { ...(next.fieldLabels ?? {}) };
+    const v = value.trim();
+    if (v) labels[key] = v;
+    else delete labels[key];
+    next.fieldLabels = labels;
+    setConfig(next);
+  }
+  const labelEdit = (key: string, fallback: string): LabelEdit => ({
+    value: config.fieldLabels?.[key] ?? "",
+    fallback,
+    onCommit: (v) => setFieldLabel(key, v),
+  });
+
   return (
     <div className="space-y-6 p-6">
       <PageHeader
@@ -225,24 +243,34 @@ export function PricingPerfPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Employee Rates</CardTitle>
-                <CardDescription>Per hour</CardDescription>
+                <EditableCardTitle
+                  edit={labelEdit("card.employeeRates", "Employee Rates")}
+                />
+                <CardDescription>
+                  Per hour. Switches apply when this crew type is selected. Each
+                  rate feeds a fixed engine calculation, so new rows can't be
+                  added here.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(
                   [
-                    ["employeeBuild", "Build"],
-                    ["employeePost", "Post"],
-                    ["employeeBackfill", "Backfill"],
-                    ["employeeDrill", "Drill"],
+                    ["employeeBuild", "Build", excludeLineKey("build-labour-hrs")],
+                    ["employeePost", "Post", excludeLineKey("post-labour-hrs")],
+                    ["employeeBackfill", "Backfill", excludeLineKey("backfill-labour-hrs")],
+                    ["employeeDrill", "Drill", excludeLineKey("drill-labour-hrs")],
                   ] as const
-                ).map(([key, label]) => (
+                ).map(([key, label, exKey]) => (
                   <PriceField
                     key={key}
                     label={label}
                     unit="/hr"
                     value={config.labourRates[key]}
                     onChange={(v) => setField("labourRates", key, v)}
+                    labelEdit={labelEdit(`labourRates.${key}`, label)}
+                    included={included(exKey)}
+                    onIncludedChange={(v) => setExcluded(exKey, !v)}
+                    dimmed={!included(exKey)}
                   />
                 ))}
               </CardContent>
@@ -250,25 +278,37 @@ export function PricingPerfPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Subbie Rates</CardTitle>
-                <CardDescription>Per m²</CardDescription>
+                <EditableCardTitle
+                  edit={labelEdit("card.subbieRates", "Subbie Rates")}
+                />
+                <CardDescription>
+                  Per m². Switches apply when this crew type is selected. Each
+                  rate feeds a fixed engine calculation, so new rows can't be
+                  added here.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {(
                   [
-                    ["subbieBuild", "Build"],
-                    ["subbiePost", "Post"],
-                    ["subbieBackfill", "Backfill"],
-                    ["subbieDrill", "Drill"],
-                    ["subbieMachine", "Machine"],
+                    ["subbieBuild", "Build", excludeLineKey("build-subbie-labour")],
+                    ["subbiePost", "Post", null],
+                    ["subbieBackfill", "Backfill", excludeLineKey("backfill-subbie-labour")],
+                    ["subbieDrill", "Drill", excludeLineKey("drill-subbie-labour")],
+                    ["subbieMachine", "Machine", excludeLineKey("drill-subbie-machine")],
                   ] as const
-                ).map(([key, label]) => (
+                ).map(([key, label, exKey]) => (
                   <PriceField
                     key={key}
                     label={label}
                     unit="/m²"
                     value={config.labourRates[key]}
                     onChange={(v) => setField("labourRates", key, v)}
+                    labelEdit={labelEdit(`labourRates.${key}`, label)}
+                    included={exKey ? included(exKey) : undefined}
+                    onIncludedChange={
+                      exKey ? (v) => setExcluded(exKey, !v) : undefined
+                    }
+                    dimmed={exKey ? !included(exKey) : false}
                   />
                 ))}
               </CardContent>
@@ -277,7 +317,9 @@ export function PricingPerfPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Machine Rates</CardTitle>
+              <EditableCardTitle
+                edit={labelEdit("card.machineRates", "Machine Rates")}
+              />
               <CardDescription>
                 Daily rates for equipment. Drilling and backfill machine time is
                 priced from the row named 8ton KPR, or the first row when no row
@@ -364,9 +406,11 @@ export function PricingPerfPage() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base">
-                    Sleepers &amp; Supports
-                  </CardTitle>
+                  <div className="min-w-0 flex-1">
+                    <EditableCardTitle
+                      edit={labelEdit("card.sleepers", "Sleepers & Supports")}
+                    />
+                  </div>
                   <IncludeToggle
                     checked={matIncluded("Sleepers")}
                     onChange={(v) => setMatIncluded("Sleepers", v)}
@@ -401,6 +445,7 @@ export function PricingPerfPage() {
                       step="0.01"
                       value={config.materialPrices[key]}
                       onChange={(v) => setField("materialPrices", key, v)}
+                      labelEdit={labelEdit(`materialPrices.${key}`, label)}
                       included={master && !own}
                       toggleDisabled={!master}
                       onIncludedChange={(v) => setExcluded(exKey, !v)}
@@ -418,7 +463,9 @@ export function PricingPerfPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Concrete &amp; Gravel</CardTitle>
+                <EditableCardTitle
+                  edit={labelEdit("card.concreteGravel", "Concrete & Gravel")}
+                />
                 <CardDescription>
                   Unticked items are left out of the cost breakdown, materials
                   order and quotation.
@@ -439,6 +486,7 @@ export function PricingPerfPage() {
                       unit={`/${unit}`}
                       value={config.materialPrices[key]}
                       onChange={(v) => setField("materialPrices", key, v)}
+                      labelEdit={labelEdit(`materialPrices.${key}`, label)}
                       included={inc}
                       onIncludedChange={(v) => setMatIncluded(cat, v)}
                       dimmed={!inc}
@@ -451,9 +499,11 @@ export function PricingPerfPage() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base">
-                    Steel &amp; Posting Labour
-                  </CardTitle>
+                  <div className="min-w-0 flex-1">
+                    <EditableCardTitle
+                      edit={labelEdit("card.steel", "Steel & Posting Labour")}
+                    />
+                  </div>
                   <IncludeToggle
                     label="Include steel in costings"
                     checked={matIncluded("Steel")}
@@ -523,7 +573,11 @@ export function PricingPerfPage() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base">Fence Brackets</CardTitle>
+                  <div className="min-w-0 flex-1">
+                    <EditableCardTitle
+                      edit={labelEdit("card.fenceBrackets", "Fence Brackets")}
+                    />
+                  </div>
                   <IncludeToggle
                     checked={matIncluded("Fence Brackets")}
                     onChange={(v) => setMatIncluded("Fence Brackets", v)}
@@ -545,6 +599,7 @@ export function PricingPerfPage() {
                   unit="/ea"
                   value={config.materialPrices.fenceBracket}
                   onChange={(v) => setField("materialPrices", "fenceBracket", v)}
+                  labelEdit={labelEdit("materialPrices.fenceBracket", "Bracket")}
                   included={
                     matIncluded("Fence Brackets") &&
                     included(excludeLineKey("other-brackets-material"))
@@ -559,6 +614,10 @@ export function PricingPerfPage() {
                   label="Install labour"
                   unit="/ea"
                   value={config.materialPrices.fenceBracketLabour}
+                  labelEdit={labelEdit(
+                    "materialPrices.fenceBracketLabour",
+                    "Install labour",
+                  )}
                   included={
                     matIncluded("Fence Brackets") &&
                     included(excludeLineKey("other-brackets-labour"))
@@ -577,56 +636,46 @@ export function PricingPerfPage() {
 
             <Card className="sm:col-span-2">
               <CardHeader>
-                <CardTitle className="text-base">Backfill Materials</CardTitle>
+                <EditableCardTitle
+                  edit={labelEdit("card.backfill", "Backfill Materials")}
+                />
                 <CardDescription>
                   Geofabric rolls and ag-line per roll. Unticked items are left
                   out of the cost breakdown, materials order and quotation.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <IncludeToggle
-                    label="Include geofabric"
-                    checked={matIncluded("Geofabric")}
-                    onChange={(v) => setMatIncluded("Geofabric", v)}
-                  />
-                  <IncludeToggle
-                    label="Include ag line"
-                    checked={matIncluded("Ag Line")}
-                    onChange={(v) => setMatIncluded("Ag Line", v)}
-                  />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+              <CardContent className="grid gap-3 sm:grid-cols-2">
                 {(
                   [
-                    ["geo1mX50m", "Geofab 0.9m × 50m", "roll", "Geofabric", excludeLineKey("backfill-geo1m")],
-                    ["geo2mX50m", "Geofab 2m × 50m", "roll", "Geofabric", excludeLineKey("backfill-geo2m")],
-                    ["geo1mX100m", "Geofab 0.9m × 100m", "roll", "Geofabric", null],
-                    ["geo2mX100m", "Geofab 2m × 100m", "roll", "Geofabric", null],
-                    ["agLine100mmX100m", "Ag Line 100mm × 100m", "roll", "Ag Line", excludeLineKey("backfill-agline")],
+                    ["geo1mX50m", "Geofab 0.9m × 50m", "Geofabric", excludeLineKey("backfill-geo1m")],
+                    ["geo2mX50m", "Geofab 2m × 50m", "Geofabric", excludeLineKey("backfill-geo2m")],
+                    ["agLine100mmX100m", "Ag Line 100mm × 100m", "Ag Line", excludeLineKey("backfill-agline")],
                   ] as const
-                ).map(([key, label, unit, group, exKey]) => {
+                ).map(([key, label, group, exKey]) => {
                   const master = matIncluded(group);
-                  const own = exKey ? !included(exKey) : false;
+                  const own = !included(exKey);
                   return (
                     <PriceField
                       key={key}
                       label={label}
-                      unit={`/${unit}`}
+                      unit="/roll"
                       step="0.01"
                       labelWidth="w-44"
                       value={config.materialPrices[key]}
                       onChange={(v) => setField("materialPrices", key, v)}
-                      included={exKey ? master && !own : undefined}
-                      toggleDisabled={exKey ? !master : undefined}
-                      onIncludedChange={
-                        exKey ? (v) => setExcluded(exKey, !v) : undefined
+                      labelEdit={labelEdit(`materialPrices.${key}`, label)}
+                      included={master && !own}
+                      toggleDisabled={!master}
+                      toggleTitle={
+                        !master
+                          ? "Turned off on the Materials Order page"
+                          : undefined
                       }
+                      onIncludedChange={(v) => setExcluded(exKey, !v)}
                       dimmed={!master || own}
                     />
                   );
                 })}
-                </div>
               </CardContent>
             </Card>
           </div>
@@ -645,17 +694,18 @@ export function PricingPerfPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
+              <div className="flex items-center gap-2 text-sm">
+                <Switch
+                  size="sm"
                   checked={config.engineering.embedmentRoundUp ?? true}
-                  onChange={(e) =>
-                    setField("engineering", "embedmentRoundUp", e.target.checked)
+                  onCheckedChange={(v) =>
+                    setField("engineering", "embedmentRoundUp", v)
                   }
-                  className="h-4 w-4 accent-foreground"
+                  aria-label="Round heights up for embedment"
+                  title="Round each wall height up to a whole sleeper for the m² pricing basis"
                 />
-                Round heights up for embedment
-              </label>
+                <span>Round heights up for embedment</span>
+              </div>
               <NumberField
                 label="Round-up increment"
                 unit="m"
@@ -665,6 +715,10 @@ export function PricingPerfPage() {
                   setField("engineering", "embedmentIncrementM", v)
                 }
                 disabled={!(config.engineering.embedmentRoundUp ?? true)}
+                labelEdit={labelEdit(
+                  "engineering.embedmentIncrement",
+                  "Round-up increment",
+                )}
               />
             </CardContent>
           </Card>
@@ -672,7 +726,9 @@ export function PricingPerfPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Hole &amp; Pier Design</CardTitle>
+                <EditableCardTitle
+                  edit={labelEdit("card.holePier", "Hole & Pier Design")}
+                />
                 <CardDescription>Adjust for soil conditions</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -681,6 +737,7 @@ export function PricingPerfPage() {
                   unit="mm"
                   value={config.engineering.holeSize}
                   onChange={(v) => setField("engineering", "holeSize", v)}
+                  labelEdit={labelEdit("engineering.holeSize", "Hole size")}
                 />
                 <NumberField
                   label="In-ground embedment ratio"
@@ -690,6 +747,10 @@ export function PricingPerfPage() {
                   onChange={(v) =>
                     setField("engineering", "postEmbedmentRatio", v)
                   }
+                  labelEdit={labelEdit(
+                    "engineering.postEmbedmentRatio",
+                    "In-ground embedment ratio",
+                  )}
                 />
                 <NumberField
                   label="Hole depth over embedment"
@@ -699,13 +760,19 @@ export function PricingPerfPage() {
                   onChange={(v) =>
                     setField("engineering", "holeDepthOverEmbedmentM", v)
                   }
+                  labelEdit={labelEdit(
+                    "engineering.holeDepthOverEmbedment",
+                    "Hole depth over embedment",
+                  )}
                 />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Post Size Ranges</CardTitle>
+                <EditableCardTitle
+                  edit={labelEdit("card.postRanges", "Post Size Ranges")}
+                />
                 <CardDescription>
                   Swap posts per height range for the soil conditions on site.
                 </CardDescription>
@@ -833,7 +900,9 @@ export function PricingPerfPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Sleeper Length Rules</CardTitle>
+                <EditableCardTitle
+                  edit={labelEdit("card.sleeperRules", "Sleeper Length Rules")}
+                />
                 <CardDescription>Bay size by wall height</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -911,6 +980,10 @@ export function PricingPerfPage() {
                   onChange={(v) =>
                     setField("engineering", "defaultSleeperLength", v)
                   }
+                  labelEdit={labelEdit(
+                    "engineering.defaultSleeperLength",
+                    "Default bay size",
+                  )}
                 />
               </CardContent>
             </Card>
@@ -921,9 +994,12 @@ export function PricingPerfPage() {
         <TabsContent value="performance" className="mt-4 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Production Rates</CardTitle>
+              <EditableCardTitle
+                edit={labelEdit("card.production", "Production Rates")}
+              />
               <CardDescription>
-                Time estimates for scheduling and costing.
+                Time estimates for scheduling and costing. These inputs drive the
+                calculations, so they can be renamed but not switched off.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -943,6 +1019,7 @@ export function PricingPerfPage() {
                   step="0.1"
                   value={config.performance[key]}
                   onChange={(v) => setField("performance", key, v)}
+                  labelEdit={labelEdit(`performance.${key}`, label)}
                 />
               ))}
             </CardContent>
@@ -953,7 +1030,9 @@ export function PricingPerfPage() {
         <TabsContent value="admin" className="mt-4 space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Admin &amp; Overheads</CardTitle>
+              <EditableCardTitle
+                edit={labelEdit("card.adminOverheads", "Admin & Overheads")}
+              />
             </CardHeader>
             <CardContent className="space-y-3">
               <PriceField
@@ -961,6 +1040,10 @@ export function PricingPerfPage() {
                 labelWidth="w-40"
                 value={config.admin.engineering}
                 onChange={(v) => setField("admin", "engineering", v)}
+                labelEdit={labelEdit(
+                  "admin.engineering",
+                  "Engineering (Form 15)",
+                )}
                 included={included(excludeLineKey("eng-form15"))}
                 onIncludedChange={(v) =>
                   setExcluded(excludeLineKey("eng-form15"), !v)
@@ -972,6 +1055,7 @@ export function PricingPerfPage() {
                 labelWidth="w-40"
                 value={config.admin.formPerLot}
                 onChange={(v) => setField("admin", "formPerLot", v)}
+                labelEdit={labelEdit("admin.formPerLot", "Form 12 (per lot)")}
                 included={included(excludeLineKey("eng-form12"))}
                 onIncludedChange={(v) =>
                   setExcluded(excludeLineKey("eng-form12"), !v)
@@ -990,6 +1074,7 @@ export function PricingPerfPage() {
                     labelWidth="w-40"
                     value={config.admin.mobeAndDemobe}
                     onChange={(v) => setField("admin", "mobeAndDemobe", v)}
+                    labelEdit={labelEdit("admin.mobeAndDemobe", "Mobe & Demobe")}
                     included={mobeIncluded}
                     onIncludedChange={(v) => setKeysExcluded(mobeKeys, !v)}
                     dimmed={!mobeIncluded}
@@ -998,7 +1083,10 @@ export function PricingPerfPage() {
                 );
               })()}
               <div className="flex items-center gap-3">
-                <label className="w-40 text-sm text-muted-foreground">Markup</label>
+                <EditableLabel
+                  edit={labelEdit("admin.markup", "Markup")}
+                  className="w-40"
+                />
                 <Input
                   type="number"
                   step="0.01"
@@ -1017,7 +1105,10 @@ export function PricingPerfPage() {
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                <label className="w-40 text-sm text-muted-foreground">Margin</label>
+                <EditableLabel
+                  edit={labelEdit("admin.margin", "Margin")}
+                  className="w-40"
+                />
                 <Input
                   type="number"
                   step="0.01"
@@ -1040,7 +1131,9 @@ export function PricingPerfPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Extra Over Bands</CardTitle>
+              <EditableCardTitle
+                edit={labelEdit("card.extraOverBands", "Extra Over Bands")}
+              />
               <CardDescription>
                 Price multipliers by wall height range. The quote label is what
                 prints on the Quotation for that band. Leave it blank to use the
@@ -1196,6 +1289,42 @@ export function PricingPerfPage() {
   );
 }
 
+type LabelEdit = { value: string; fallback: string; onCommit: (v: string) => void };
+
+/** A quiet inline text field for renaming an otherwise-fixed label. Shows the
+ *  default as placeholder until renamed; clearing reverts to the default. */
+function EditableLabel({
+  edit,
+  className,
+}: {
+  edit: LabelEdit;
+  className?: string;
+}) {
+  return (
+    <DraftInput
+      value={edit.value}
+      placeholder={edit.fallback}
+      onCommit={edit.onCommit}
+      className={cn(
+        "-ml-1 h-7 border-transparent bg-transparent px-1 text-sm text-muted-foreground hover:border-input focus:border-input",
+        className,
+      )}
+    />
+  );
+}
+
+/** An editable card title (same fieldLabels map, "card.*" keys). */
+function EditableCardTitle({ edit }: { edit: LabelEdit }) {
+  return (
+    <DraftInput
+      value={edit.value}
+      placeholder={edit.fallback}
+      onCommit={edit.onCommit}
+      className="-ml-1 h-8 w-full border-transparent bg-transparent px-1 text-base font-semibold hover:border-input focus:border-input"
+    />
+  );
+}
+
 /** A labelled include/exclude switch for the Materials feature toggles. */
 function IncludeToggle({
   checked,
@@ -1249,6 +1378,7 @@ function PriceField({
   toggleDisabled,
   toggleTitle,
   dimmed,
+  labelEdit,
 }: {
   label: string;
   unit?: string;
@@ -1262,6 +1392,8 @@ function PriceField({
   toggleDisabled?: boolean;
   toggleTitle?: string;
   dimmed?: boolean;
+  /** When set, the label becomes an inline rename field. */
+  labelEdit?: LabelEdit;
 }) {
   return (
     <div
@@ -1284,9 +1416,13 @@ function PriceField({
           }
         />
       )}
-      <label className={`${labelWidth} text-sm text-muted-foreground`}>
-        {label}
-      </label>
+      {labelEdit ? (
+        <EditableLabel edit={labelEdit} className={labelWidth} />
+      ) : (
+        <label className={`${labelWidth} text-sm text-muted-foreground`}>
+          {label}
+        </label>
+      )}
       <DollarInput value={value} onChange={onChange} step={step} />
       {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
     </div>
@@ -1300,6 +1436,7 @@ function NumberField({
   onChange,
   step,
   disabled,
+  labelEdit,
 }: {
   label: string;
   unit: string;
@@ -1307,10 +1444,15 @@ function NumberField({
   onChange: (v: number) => void;
   step?: string;
   disabled?: boolean;
+  labelEdit?: LabelEdit;
 }) {
   return (
     <div className="flex items-center gap-3">
-      <label className="w-40 text-sm text-muted-foreground">{label}</label>
+      {labelEdit ? (
+        <EditableLabel edit={labelEdit} className="w-40" />
+      ) : (
+        <label className="w-40 text-sm text-muted-foreground">{label}</label>
+      )}
       <Input
         type="number"
         step={step}
