@@ -22,6 +22,7 @@ import Konva from "konva";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bboxToPixels, pointsToPixels } from "@/lib/coord";
+import { isCoarsePointer } from "@/lib/pointer";
 import { WallInfoCard } from "@/components/review/WallInfoCard";
 import { bandColor, bandIndex } from "@/lib/engine/heightBands";
 import { pairBandSpans, type BandSpan } from "@/lib/engine/wallSections";
@@ -133,9 +134,25 @@ export function DrawingViewer({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const bgImageRef = useRef<Konva.Image | null>(null);
+  // Two-finger pinch baseline, plus a short window after any gesture (pan or
+  // pinch) during which a synthetic tap is ignored — so lifting fingers at the
+  // end of a gesture never counts as a calibrate / draw / deselect tap.
+  const pinchRef = useRef<{ dist: number } | null>(null);
+  const gestureEndAt = useRef(0);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
+  // Live mirrors of zoom / origin, updated synchronously inside the pinch
+  // handler so back-to-back touchmove events (which fire faster than React
+  // re-renders) compound against fresh values, not a stale render closure.
+  const zoomRef = useRef(zoom);
+  const originRef = useRef(origin);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+  useEffect(() => {
+    originRef.current = origin;
+  }, [origin]);
   // True only while the Stage itself is being panned. The origin state updates
   // at drag-end, so we hide the wall info card mid-pan (it would otherwise
   // float detached from the wall) and snap it back on release.
@@ -397,6 +414,8 @@ export function DrawingViewer({
     e.target.position(next);
     setOrigin(next);
     setPanning(false);
+    // A pan just ended; don't let the trailing tap deselect / place a point.
+    gestureEndAt.current = Date.now();
   }
 
   /** Pointer position in image-pixel coords (undoing pan + zoom). */
@@ -429,6 +448,118 @@ export function DrawingViewer({
     ctx.drawImage(image, x0, y0, bw, bh, 0, 0, canvas.width, canvas.height);
     const base64 = canvas.toDataURL("image/png").split(",")[1] ?? "";
     if (base64) onRlCrop(base64, [x0, y0, x1, y1]);
+  }
+
+  /** Start the "Grab RLs" marquee at the current pointer (mouse or touch). */
+  function startMarquee() {
+    if (!grabbingRls) return;
+    const p = pointerToImage();
+    if (!p) return;
+    setMarquee({ x0: p[0], y0: p[1], x1: p[0], y1: p[1] });
+  }
+
+  /** Extend the in-progress marquee to the current pointer. */
+  function updateMarquee() {
+    if (!marquee) return;
+    const p = pointerToImage();
+    if (p) setMarquee((m) => (m ? { ...m, x1: p[0], y1: p[1] } : m));
+  }
+
+  /** Calibrate / draw-wall / deselect — from a mouse click OR a touch tap.
+   *  Ignored briefly after a pan or pinch so ending a gesture (which Konva
+   *  may surface as a tap) doesn't place a point or deselect. */
+  function handleStageActivate(
+    e: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) {
+    if (Date.now() - gestureEndAt.current < 250) return;
+    if (calibrating || drawingWall) {
+      const pointer = stageRef.current?.getPointerPosition();
+      if (!pointer) return;
+      const p: [number, number] = [
+        (pointer.x - origin.x) / zoom,
+        (pointer.y - origin.y) / zoom,
+      ];
+      if (calibrating) onCalibrateClick(p);
+      else onWallPointClick(p);
+      return;
+    }
+    if (grabbingRls) return; // marquee handled on release
+    // Plain tap on empty drawing area deselects the open wall.
+    if (e.target === stageRef.current) onSelectSegment(null);
+  }
+
+  /** Touch start: begin a marquee when grabbing RLs (the Stage isn't
+   *  draggable then, so a one-finger drag is free to draw the box). */
+  function onStageTouchStart() {
+    if (grabbingRls) startMarquee();
+  }
+
+  /** Touch move: two fingers pinch-zoom toward their midpoint (mirroring the
+   *  wheel handler); one finger extends the marquee while grabbing RLs. */
+  function onStageTouchMove(e: Konva.KonvaEventObject<TouchEvent>) {
+    const touches = e.evt.touches;
+    if (grabbingRls) {
+      if (touches.length === 1) updateMarquee();
+      return;
+    }
+    if (touches.length !== 2) return;
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (stage.isDragging()) stage.stopDrag(); // 2nd finger cancels the pan
+    const rect = stage.container().getBoundingClientRect();
+    const p1 = {
+      x: touches[0].clientX - rect.left,
+      y: touches[0].clientY - rect.top,
+    };
+    const p2 = {
+      x: touches[1].clientX - rect.left,
+      y: touches[1].clientY - rect.top,
+    };
+    const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    if (!pinchRef.current) {
+      pinchRef.current = { dist };
+      // Seed the live mirrors from the stage's actual transform — covers a
+      // pan that only just ended (stopDrag above) when this finger landed,
+      // before the origin state / ref have re-synced.
+      zoomRef.current = stage.scaleX();
+      originRef.current = { x: stage.x(), y: stage.y() };
+      return;
+    }
+    if (dist <= 0) return;
+    const oldScale = zoomRef.current;
+    const oldOrigin = originRef.current;
+    const newScale = Math.max(
+      fitZoom * 0.5,
+      Math.min(oldScale * (dist / pinchRef.current.dist), 8),
+    );
+    const pointTo = {
+      x: (center.x - oldOrigin.x) / oldScale,
+      y: (center.y - oldOrigin.y) / oldScale,
+    };
+    const newOrigin = {
+      x: center.x - pointTo.x * newScale,
+      y: center.y - pointTo.y * newScale,
+    };
+    zoomRef.current = newScale;
+    originRef.current = newOrigin;
+    setZoom(newScale);
+    setOrigin(newOrigin);
+    pinchRef.current = { dist };
+  }
+
+  /** Touch end: commit a marquee, or close out a pinch and start the
+   *  ignore-tap window so the lift doesn't register as a tap. */
+  function onStageTouchEnd(e: Konva.KonvaEventObject<TouchEvent>) {
+    if (grabbingRls) {
+      if (e.evt.touches.length === 0 && marquee) finishMarquee();
+      return;
+    }
+    if (pinchRef.current && e.evt.touches.length < 2) {
+      pinchRef.current = null;
+      gestureEndAt.current = Date.now();
+    }
   }
 
   const mmPerPx = readMmPerPx(extraction.raw_response);
@@ -485,42 +616,21 @@ export function DrawingViewer({
         onDragEnd={onDragEnd}
         style={{
           background: "#1f2937",
+          // Stop the browser's own pan / pinch over the canvas so our Konva
+          // drag + pinch handlers own touch gestures.
+          touchAction: "none",
           cursor:
             calibrating || drawingWall || grabbingRls ? "crosshair" : undefined,
         }}
-        onMouseDown={() => {
-          if (!grabbingRls) return;
-          const p = pointerToImage();
-          if (!p) return;
-          setMarquee({ x0: p[0], y0: p[1], x1: p[0], y1: p[1] });
-        }}
-        onClick={(e) => {
-          // Calibration / draw-wall clicks always do their own thing.
-          if (calibrating || drawingWall) {
-            const pointer = stageRef.current?.getPointerPosition();
-            if (!pointer) return;
-            const p: [number, number] = [
-              (pointer.x - origin.x) / zoom,
-              (pointer.y - origin.y) / zoom,
-            ];
-            if (calibrating) onCalibrateClick(p);
-            else onWallPointClick(p);
-            return;
-          }
-          if (grabbingRls) return; // marquee handled on mouse up
-          // Plain click on empty drawing area deselects the open wall.
-          // Doing this on `onClick` (post-mouseup) rather than `onMouseDown`
-          // means a drag-pan doesn't race with the deselect's React render
-          // and leave the Konva stage stuck at a stale origin — which used
-          // to fling the drawing off-screen and show only the dark
-          // background.
-          if (e.target === stageRef.current) onSelectSegment(null);
-        }}
+        onMouseDown={startMarquee}
+        onClick={handleStageActivate}
+        onTap={handleStageActivate}
+        onTouchStart={onStageTouchStart}
+        onTouchMove={onStageTouchMove}
+        onTouchEnd={onStageTouchEnd}
         onMouseMove={() => {
           if (grabbingRls) {
-            if (!marquee) return;
-            const p = pointerToImage();
-            if (p) setMarquee((m) => (m ? { ...m, x1: p[0], y1: p[1] } : m));
+            updateMarquee();
             return;
           }
           if (!drawingWall || wallPoints.length !== 1) {
@@ -1108,7 +1218,7 @@ function SegmentOverlay({
   const strokeWidth = emphasized
     ? Math.max(minEdge / 280, 4)
     : Math.max(minEdge / 620, 2.2);
-  const handleRadius = 7 / zoom;
+  const handleRadius = (isCoarsePointer ? 12 : 7) / zoom;
 
   function commitGeometry(next: number[]) {
     setDrag(next);
@@ -1205,7 +1315,7 @@ function SegmentOverlay({
             }}
             onMouseEnter={onHoverEnter}
             onMouseLeave={onHoverLeave}
-            hitStrokeWidth={Math.max(strokeWidth * 3, 16)}
+            hitStrokeWidth={Math.max(strokeWidth * 3, isCoarsePointer ? 28 : 16)}
           />
           {sectioned &&
             spans!.map((sp, i) => (

@@ -384,7 +384,7 @@ export function ReviewPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {/* Failsafe save-and-leave. Everything autosaves, but clicking
                     this first blurs (and so commits) any focused field, then
                     navigates to Take Off. */}
@@ -681,7 +681,7 @@ export function ReviewPage() {
                       )}
                     </div>
                   )}
-                <div className="h-[78vh] min-h-[480px] overflow-hidden rounded-lg border bg-[#1f2937]">
+                <div className="h-[60vh] min-h-[360px] overflow-hidden rounded-lg border bg-[#1f2937] sm:h-[78vh] sm:min-h-[480px]">
                   <DrawingViewer
                     imageUrl={review.imageUrl}
                     imageWidth={review.bundle.page.image_width}

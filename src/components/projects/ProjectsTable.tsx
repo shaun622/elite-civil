@@ -84,9 +84,16 @@ export function ProjectsTable({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<NonArchived>("all");
   const [archived, setArchived] = useState(false);
-  const [view, setView] = useState<View>(() =>
-    localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "table",
-  );
+  const [view, setView] = useState<View>(() => {
+    // A saved preference always wins; otherwise default to the card grid on
+    // phones (the wide table is awkward there) and the table on larger screens.
+    const saved = localStorage.getItem(VIEW_KEY);
+    if (saved === "grid" || saved === "table") return saved;
+    return typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 639px)").matches
+      ? "grid"
+      : "table";
+  });
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({
     key: "created",
     dir: -1,

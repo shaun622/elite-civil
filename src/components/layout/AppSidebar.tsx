@@ -1,23 +1,11 @@
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import {
-  Calculator,
-  ClipboardCheck,
-  DollarSign,
-  FileText,
-  FolderKanban,
-  LayoutDashboard,
-  LifeBuoy,
-  PackageSearch,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Ruler,
-  ScanLine,
-  Settings,
-} from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { NavList } from "./NavList";
+import { GLOBAL_NAV, buildProjectNav, isActiveRoute } from "./nav-items";
 
 const SIDEBAR_KEY = "takeoffmate.sidebarCollapsed";
 
@@ -27,7 +15,9 @@ const SIDEBAR_KEY = "takeoffmate.sidebarCollapsed";
  * from PDF, Pricing, Cost Breakdown, Materials, Quotation, Tracking,
  * Settings). The "active" project comes from the URL (`:id` for most pages,
  * `:projectId` on the measure / review routes), so the same sidebar works
- * everywhere. The full project list lives on the Project List page.
+ * everywhere. Shown only at `lg`+; below that the Header's hamburger opens the
+ * same nav (NavList) in a drawer. The full project list lives on the Project
+ * List page.
  */
 export function AppSidebar() {
   const { user } = useAuth();
@@ -51,55 +41,7 @@ export function AppSidebar() {
     });
   }
 
-  const navItems = activeProjectId
-    ? [
-        {
-          title: "Dashboard",
-          to: `/projects/${activeProjectId}`,
-          icon: LayoutDashboard,
-        },
-        {
-          title: "Measure from PDF",
-          to: `/projects/${activeProjectId}/drawings`,
-          icon: ScanLine,
-        },
-        {
-          title: "Take Off",
-          to: `/projects/${activeProjectId}/takeoff`,
-          icon: Ruler,
-        },
-        {
-          title: "Pricing & Performance",
-          to: `/projects/${activeProjectId}/pricing`,
-          icon: DollarSign,
-        },
-        {
-          title: "Cost Breakdown",
-          to: `/projects/${activeProjectId}/cost-breakdown`,
-          icon: Calculator,
-        },
-        {
-          title: "Materials Order",
-          to: `/projects/${activeProjectId}/materials`,
-          icon: PackageSearch,
-        },
-        {
-          title: "Quotation",
-          to: `/projects/${activeProjectId}/quotation`,
-          icon: FileText,
-        },
-        {
-          title: "Tracking",
-          to: `/projects/${activeProjectId}/tracking`,
-          icon: ClipboardCheck,
-        },
-        {
-          title: "Settings",
-          to: `/projects/${activeProjectId}/settings`,
-          icon: Settings,
-        },
-      ]
-    : [];
+  const projectNav = buildProjectNav(activeProjectId);
 
   if (!user) return null;
 
@@ -141,28 +83,17 @@ export function AppSidebar() {
 
       {sidebarCollapsed ? (
         <nav className="flex flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
-          <RailLink
-            to="/dashboard"
-            title="Project List"
-            icon={FolderKanban}
-            active={location.pathname === "/dashboard"}
-          />
-          <RailLink
-            to="/settings"
-            title="Settings"
-            icon={Settings}
-            active={location.pathname === "/settings"}
-          />
-          <RailLink
-            to="/help"
-            title="Help Centre"
-            icon={LifeBuoy}
-            active={location.pathname === "/help"}
-          />
-          {navItems.length > 0 && (
-            <div className="my-1 h-px w-6 bg-border" />
-          )}
-          {navItems.map(({ title, to, icon }) => (
+          {GLOBAL_NAV.map(({ title, to, icon }) => (
+            <RailLink
+              key={title}
+              to={to}
+              title={title}
+              icon={icon}
+              active={location.pathname === to}
+            />
+          ))}
+          {projectNav.length > 0 && <div className="my-1 h-px w-6 bg-border" />}
+          {projectNav.map(({ title, to, icon }) => (
             <RailLink
               key={title}
               to={to}
@@ -183,59 +114,7 @@ export function AppSidebar() {
       ) : (
         <>
           <nav className="flex-1 overflow-y-auto p-2">
-            <div className="mb-4 space-y-0.5">
-              <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Menu
-              </p>
-              <MenuLink
-                to="/dashboard"
-                icon={FolderKanban}
-                label="Project List"
-                active={location.pathname === "/dashboard"}
-              />
-              <MenuLink
-                to="/settings"
-                icon={Settings}
-                label="Settings"
-                active={location.pathname === "/settings"}
-              />
-              <MenuLink
-                to="/help"
-                icon={LifeBuoy}
-                label="Help Centre"
-                active={location.pathname === "/help"}
-              />
-            </div>
-
-            {navItems.length > 0 ? (
-              <div className="space-y-0.5">
-                <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Navigation
-                </p>
-                {navItems.map(({ title, to, icon: Icon }) => {
-                  const active = isActiveRoute(location.pathname, to);
-                  return (
-                    <Link
-                      key={title}
-                      to={to}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                        active
-                          ? "bg-primary/10 font-medium text-accent-foreground"
-                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {title}
-                    </Link>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="px-2 py-4 text-xs text-muted-foreground">
-                Open or create a project to see its nav.
-              </p>
-            )}
+            <NavList activeProjectId={activeProjectId} />
           </nav>
 
           <div className="flex items-center justify-between gap-2 border-t px-4 py-3 text-[10px] text-muted-foreground">
@@ -247,33 +126,6 @@ export function AppSidebar() {
         </>
       )}
     </aside>
-  );
-}
-
-function MenuLink({
-  to,
-  icon: Icon,
-  label,
-  active,
-}: {
-  to: string;
-  icon: LucideIcon;
-  label: string;
-  active: boolean;
-}) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-        active
-          ? "bg-primary/10 font-medium text-accent-foreground"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-      )}
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </Link>
   );
 }
 
@@ -303,22 +155,4 @@ function RailLink({
       <Icon className="h-4 w-4" />
     </Link>
   );
-}
-
-function isActiveRoute(pathname: string, to: string): boolean {
-  if (to === pathname) return true;
-  // The "Measure from PDF" item should also light up while the user is on
-  // the per-page Review or Measure routes (which live under the same
-  // project but use the older /pages/:pageId URL shape).
-  if (to.endsWith("/drawings")) {
-    const projectPath = to.replace(/\/drawings$/, "");
-    if (
-      pathname.startsWith(`${projectPath}/pages/`) ||
-      pathname === to ||
-      pathname.startsWith(`${to}/`)
-    ) {
-      return true;
-    }
-  }
-  return false;
 }

@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, Menu, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { MobileNavDrawer } from "./MobileNavDrawer";
 
 export function Header() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [navOpen, setNavOpen] = useState(false);
 
   async function handleSignOut() {
     try {
@@ -18,17 +21,36 @@ export function Header() {
   return (
     <header className="border-b">
       <div className="container flex h-14 items-center justify-between">
-        <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2">
-          <span className="bg-brand-gradient flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-white shadow-sm">
-            EC
-          </span>
-          <span className="text-sm font-semibold tracking-tight">
-            Elite Civil
-          </span>
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            Retaining Wall Estimator
-          </span>
-        </Link>
+        <div className="flex items-center gap-1">
+          {user && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="-ml-2 lg:hidden"
+                aria-label="Open navigation"
+                onClick={() => setNavOpen(true)}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+              <MobileNavDrawer open={navOpen} onOpenChange={setNavOpen} />
+            </>
+          )}
+          <Link
+            to={user ? "/dashboard" : "/"}
+            className="flex items-center gap-2"
+          >
+            <span className="bg-brand-gradient flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold text-white shadow-sm">
+              EC
+            </span>
+            <span className="text-sm font-semibold tracking-tight">
+              Elite Civil
+            </span>
+            <span className="hidden text-xs text-muted-foreground sm:inline">
+              Retaining Wall Estimator
+            </span>
+          </Link>
+        </div>
 
         <div className="flex items-center gap-3 text-sm">
           {user ? (

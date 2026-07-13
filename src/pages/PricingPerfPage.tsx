@@ -328,10 +328,10 @@ export function PricingPerfPage() {
             </CardHeader>
             <CardContent className="space-y-2.5">
               {config.machineRates.map((m, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className="flex flex-wrap items-center gap-2">
                   <Input
                     type="text"
-                    className="h-8 flex-1 text-sm"
+                    className="h-8 min-w-32 flex-1 text-sm"
                     value={m.name}
                     onChange={(e) => {
                       const next = structuredClone(config);
@@ -530,7 +530,7 @@ export function PricingPerfPage() {
                     <div
                       key={i}
                       className={cn(
-                        "flex items-center gap-3 transition-opacity",
+                        "flex flex-wrap items-center gap-x-3 gap-y-2 transition-opacity",
                         own && "opacity-50",
                       )}
                     >
@@ -544,26 +544,36 @@ export function PricingPerfPage() {
                       <Badge variant="outline" className="w-20 justify-center">
                         {range.postSize}
                       </Badge>
-                      <DollarInput
-                        step="0.01"
-                        value={range.pricePerMetre}
-                        onChange={(v) => {
-                          const next = structuredClone(config);
-                          next.engineering.postSizeRanges[i].pricePerMetre = v;
-                          setConfig(next);
-                        }}
-                      />
-                      <span className="text-xs text-muted-foreground">/m steel</span>
-                      <DollarInput
-                        step="0.5"
-                        value={range.postingLabourPerM2}
-                        onChange={(v) => {
-                          const next = structuredClone(config);
-                          next.engineering.postSizeRanges[i].postingLabourPerM2 = v;
-                          setConfig(next);
-                        }}
-                      />
-                      <span className="text-xs text-muted-foreground">/m² labour</span>
+                      <div className="flex items-center gap-2">
+                        <DollarInput
+                          step="0.01"
+                          value={range.pricePerMetre}
+                          onChange={(v) => {
+                            const next = structuredClone(config);
+                            next.engineering.postSizeRanges[i].pricePerMetre = v;
+                            setConfig(next);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          /m steel
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <DollarInput
+                          step="0.5"
+                          value={range.postingLabourPerM2}
+                          onChange={(v) => {
+                            const next = structuredClone(config);
+                            next.engineering.postSizeRanges[
+                              i
+                            ].postingLabourPerM2 = v;
+                            setConfig(next);
+                          }}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          /m² labour
+                        </span>
+                      </div>
                     </div>
                   );
                 })}
@@ -779,7 +789,7 @@ export function PricingPerfPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {config.engineering.postSizeRanges.map((range, i) => (
-                  <div key={i} className="flex items-center gap-2">
+                  <div key={i} className="flex flex-wrap items-center gap-2">
                     <Select
                       value={range.postSize}
                       onValueChange={(v) => {
@@ -906,7 +916,7 @@ export function PricingPerfPage() {
                 <CardDescription>Bay size by wall height</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <label className="w-40 text-sm text-muted-foreground">
                     If height below
                   </label>
@@ -939,7 +949,7 @@ export function PricingPerfPage() {
                   />
                   <span className="text-xs text-muted-foreground">m bay</span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <label className="w-40 text-sm text-muted-foreground">
                     If height above
                   </label>

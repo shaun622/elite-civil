@@ -99,6 +99,14 @@ export function WallMeasurePage() {
       }
     | null
   >(null);
+  // Two-finger pinch-zoom on touch. `activePointers` tracks every live pointer
+  // on the pan surface; `pinchRef` holds the gesture baseline; `pinchedRef`
+  // swallows the tap that the final lifting finger would otherwise fire.
+  const activePointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(
+    null,
+  );
+  const pinchedRef = useRef(false);
 
   const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
   const [knownDist, setKnownDist] = useState("");
@@ -605,11 +613,29 @@ export function WallMeasurePage() {
     return ds;
   }
 
-  /** Pointer-down on the canvas wrapper starts a potential drag-pan. */
+  /** Pointer-down on the canvas wrapper. One finger starts a potential
+   *  drag-pan; a second finger promotes the gesture to a pinch-zoom. */
   function onPanPointerDown(e: React.PointerEvent<HTMLDivElement>) {
-    if (e.button !== 0) return;
     const el = scrollRef.current;
     if (!el) return;
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointers.current.size === 2) {
+      // Second finger down: abandon any pan and open a pinch.
+      dragRef.current = null;
+      setDragging(false);
+      const pts = [...activePointers.current.values()];
+      pinchRef.current = {
+        startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+        startZoom: zoomRef.current,
+      };
+      return;
+    }
+    if (activePointers.current.size > 2) return;
+
+    if (e.button !== 0) return;
+    // A fresh single-pointer press is a candidate tap/pan, not a pinch tail.
+    pinchedRef.current = false;
     el.setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX,
@@ -621,10 +647,44 @@ export function WallMeasurePage() {
     setDragging(true);
   }
 
-  /** Update scroll position as the user drags. Treats moves under 3 px as
-   *  a still click — the threshold avoids hand-tremor turning every pick
-   *  click into a tiny accidental pan. */
+  /** Drive a pinch (two pointers) or a pan (one). Moves under 3 px count as a
+   *  still click — the threshold stops hand-tremor turning a pick into a tiny
+   *  accidental pan. */
   function onPanPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    // Pinch takes priority. Reuse the wheel handler's zoom-toward-a-point
+    // pipeline: stash an anchor (the finger midpoint) then set the new zoom;
+    // the redraw effect shifts the scroll so that point stays put.
+    const pinch = pinchRef.current;
+    if (pinch && activePointers.current.size >= 2) {
+      const el = scrollRef.current;
+      if (!el) return;
+      const pts = [...activePointers.current.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (dist <= 0) return;
+      const z = zoomRef.current;
+      const nz = Math.max(
+        0.25,
+        Math.min(8, +(pinch.startZoom * (dist / pinch.startDist)).toFixed(3)),
+      );
+      // Gate sub-2% steps so the full-canvas redraw doesn't thrash.
+      if (Math.abs(nz - z) / z < 0.02) return;
+      const rect = el.getBoundingClientRect();
+      zoomAnchorRef.current = {
+        px: (pts[0].x + pts[1].x) / 2 - rect.left,
+        py: (pts[0].y + pts[1].y) / 2 - rect.top,
+        prevLeft: el.scrollLeft,
+        prevTop: el.scrollTop,
+        f: nz / z,
+      };
+      pinchedRef.current = true;
+      setZoom(nz);
+      return;
+    }
+
     const drag = dragRef.current;
     if (!drag) return;
     const el = scrollRef.current;
@@ -640,21 +700,46 @@ export function WallMeasurePage() {
     }
   }
 
-  /** Release the pointer. If the press didn't move (a click, not a drag),
-   *  run the canvas action — picking or placing a calibration point. We do
-   *  this from pointer-up rather than a separate `click` handler because the
-   *  pan's setPointerCapture swallows the canvas `click` event in most
-   *  browsers, which is why clicks "did nothing" before. */
+  /** Release a pointer. If a single press didn't move (a click, not a drag)
+   *  and wasn't the tail of a pinch, run the canvas action. We do this from
+   *  pointer-up rather than a `click` handler because setPointerCapture
+   *  swallows the canvas `click` in most browsers. */
   function onPanPointerUp(e: React.PointerEvent<HTMLDivElement>) {
-    const drag = dragRef.current;
-    const moved = drag?.moved ?? false;
-    dragRef.current = null;
-    setDragging(false);
+    const wasPinching = pinchRef.current !== null;
+    activePointers.current.delete(e.pointerId);
     const el = scrollRef.current;
     if (el && el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
     }
-    if (!moved) activateAt(e.clientX, e.clientY, e.altKey, e.shiftKey);
+
+    if (wasPinching) {
+      if (activePointers.current.size < 2) pinchRef.current = null;
+      pinchedRef.current = true; // swallow this finger's would-be tap
+      dragRef.current = null;
+      setDragging(false);
+      return;
+    }
+
+    const drag = dragRef.current;
+    const moved = drag?.moved ?? false;
+    dragRef.current = null;
+    setDragging(false);
+    if (!moved && !pinchedRef.current) {
+      activateAt(e.clientX, e.clientY, e.altKey, e.shiftKey);
+    }
+  }
+
+  /** A cancelled gesture (e.g. the OS stealing the touch) must never pick or
+   *  place a point — just tear the gesture down. */
+  function onPanPointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    activePointers.current.delete(e.pointerId);
+    if (activePointers.current.size < 2) pinchRef.current = null;
+    const el = scrollRef.current;
+    if (el && el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+    dragRef.current = null;
+    setDragging(false);
   }
 
   /** A click on the canvas (resolved from pointer-up). Picks a colour, picks
@@ -834,12 +919,13 @@ export function WallMeasurePage() {
 
   return (
     <main
-      // Fill exactly the available height under the global Header (3.5rem
-      // tall) so the page never scrolls — the canvas + sidebar each
-      // handle their own internal scrolling. Without this constraint the
-      // 78vh canvas stacks on top of the title + page padding and pushes
-      // the bottom of the layout below the viewport.
-      className="flex h-[calc(100vh-3.5rem)] flex-col gap-3 px-6 py-3"
+      // At lg+ fill exactly the available height under the global Header
+      // (3.5rem tall) so the page never scrolls — the canvas + sidebar each
+      // handle their own internal scrolling. Below lg the two-column layout
+      // stacks, so we drop the fixed height and let the page (AppLayout's
+      // overflow-auto main) scroll; the canvas gets its own explicit height
+      // below so it never collapses to a sliver.
+      className="flex flex-col gap-3 px-3 py-3 sm:px-6 lg:h-[calc(100vh-3.5rem)]"
     >
       <div className="shrink-0 space-y-1">
         <Link
@@ -881,7 +967,7 @@ export function WallMeasurePage() {
                   Toggle "Pick wall by clicking" off when you're done.
                 </div>
               )}
-              <div className="relative flex min-h-0 flex-1 flex-col">
+              <div className="relative flex h-[55dvh] min-h-[320px] flex-col lg:h-auto lg:min-h-0 lg:flex-1">
                 {/* Floating zoom toolbar — sits over the top-right of the
                     canvas so the drawing area stays free for clicks. */}
                 <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border bg-white/95 p-1 shadow-sm backdrop-blur-sm">
@@ -960,8 +1046,8 @@ export function WallMeasurePage() {
                   onPointerDown={onPanPointerDown}
                   onPointerMove={onPanPointerMove}
                   onPointerUp={onPanPointerUp}
-                  onPointerCancel={onPanPointerUp}
-                  className={`min-h-0 flex-1 overflow-auto rounded-lg border bg-white ${
+                  onPointerCancel={onPanPointerCancel}
+                  className={`min-h-0 flex-1 touch-none overflow-auto rounded-lg border bg-white ${
                     dragging ? "cursor-grabbing" : "cursor-grab"
                   }`}
                 >

@@ -168,7 +168,7 @@ export function VirtualTour({
           e.preventDefault();
           nextRef.current?.focus();
         }}
-        className="flex h-[100dvh] max-h-[100dvh] flex-col gap-0 overflow-hidden p-0 duration-300 data-[state=open]:slide-in-from-bottom-4 sm:grid sm:h-[620px] sm:max-h-[90vh] sm:max-w-4xl sm:grid-cols-[248px_1fr]"
+        className="flex h-[100dvh] max-h-[100dvh] flex-col gap-0 overflow-hidden overflow-y-hidden p-0 duration-300 data-[state=open]:slide-in-from-bottom-4 sm:grid sm:h-[620px] sm:max-h-[90vh] sm:max-w-4xl sm:grid-cols-[248px_1fr]"
       >
         {/* Desktop stage rail */}
         <nav

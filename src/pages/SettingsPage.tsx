@@ -55,7 +55,7 @@ export function SettingsPage() {
         />
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[200px_1fr]">
-          <nav className="flex flex-row gap-2 lg:flex-col">
+          <nav className="flex flex-row flex-wrap gap-2 lg:flex-col">
             <TabButton
               active={tab === "profile"}
               onClick={() => setTab("profile")}

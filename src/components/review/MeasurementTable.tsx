@@ -368,6 +368,10 @@ export function MeasurementTable({
         </p>
       </div>
 
+      {/* The fixed-width measurement columns are wider than a phone; scroll
+          them horizontally rather than overflowing the review panel. */}
+      <div className="overflow-x-auto">
+      <div className="min-w-[400px] space-y-2">
       {/* Column headers — a leading spacer matches the row grip + card
           padding so the labels line up over the row cells. */}
       <div className="flex items-stretch gap-1">
@@ -530,6 +534,8 @@ export function MeasurementTable({
           })()}
         </DragOverlay>
       </DndContext>
+      </div>
+      </div>
 
       {!locked &&
         (drawingWall ? (

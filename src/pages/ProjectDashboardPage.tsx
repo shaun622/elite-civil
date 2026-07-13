@@ -169,7 +169,8 @@ export function ProjectDashboardPage() {
             resolveBandEdges(config),
             round,
           );
-          const cols = "grid grid-cols-[1fr_64px_116px_88px] gap-2";
+          const cols =
+            "grid grid-cols-[1fr_44px_84px_72px] gap-1.5 sm:grid-cols-[1fr_64px_116px_88px] sm:gap-2";
           return (
             <Card>
               <CardHeader>
